@@ -1,0 +1,308 @@
+
+
+### 代理配置
+
+git代理
+
+```shell
+#配置
+git config --global http.proxy http://username:passwd@proxy.*.com:port
+git config --global https.proxy http://username:passwd@proxy.*.com:port
+#取消配置
+git config --global --unset http.proxy
+git config --global --unset https.proxy
+
+npm config delete proxy
+```
+
+linux代理配置
+
+```shell
+export http_proxy="http://username:passwd@proxy.*.com:port"
+export https_proxy="username:passwd@proxy.*.com:port"
+unset http_proxy
+unset https_proxy
+
+#wsl本地配置
+wsl hostname -I #查看ip
+cat /etc/resolv.conf |grep -oP '(?<=nameserver\ ).*'  #查看要配置的ip
+export http_proxy="http://192.168.31.1:7890" #配置代理
+```
+
+gradle代理：在`gradle.properties`文件中配置代理
+
+```shell
+systemProp.http.proxyHost=proxy.*.com
+systemProp.http.proxyPort=port
+systemProp.https.proxyHost=proxy.server
+systemProp.https.proxyPort=port
+
+systemProp.http.proxyUser=username
+systemProp.http.proxyPassword=password
+systemProp.https.proxyUser=username
+systemProp.https.proxyPassword=password
+```
+
+### Android开发环境配置
+
+#### jdk安装
+
+```shell
+$ apt search openjdk | egrep "17"
+#查看安装版本
+$ apt --names-only search "openjdk-.*jre$"
+#安装多版本
+$ sudo apt install openjdk-11-jdk
+$ sudo apt install openjdk-17-jre
+#版本切换，选择对应的版本
+sudo update-alternatives --config java
+```
+
+#### Android命令行工具
+
+在 https://developer.android.com/studio/index.html#downloads 页面,下载最新的命令行工具：
+
+```shell
+$ weget https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip
+
+export ANDROID_SDK_ROOT=$HOME/.local/share/android/sdk
+export ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk-bundle
+mkdir -p $ANDROID_SDK_ROOT
+# -P  --directory-prefix，下载到指定目录
+wget -P "$HOME/Downloads" https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip
+unzip "$HOME/Downloads/commandlinetools-linux-8092744_latest.zip" -d $ANDROID_SDK_ROOT
+```
+
+在java11使用sdkmanager会报错：
+
+```cmd
+Error: LinkageError occurred while loading main class com.android.sdklib.tool.sdkmanager.SdkManagerCli        java.lang.UnsupportedClassVersionError: com/android/sdklib/tool/sdkmanager/SdkManagerCli has been compiled by a more recent version of the Java Runtime (class file version 61.0), this version of the Java Runtime only recognizes class file versions up to 55.0
+```
+
+解决方案1：改为下载旧版本：
+
+
+```shell
+$ wget https://dl.google.com/android/repository/commandlinetools-linux-8512546_latest.zip
+```
+
+解决方案2：切换高版本jdk
+
+```shell
+sudo update-alternatives --config java
+```
+
+要使用sdkmanager，需要将下载的文件夹移动到对应的目录，Android SDK 设计支持多版本命令行工具，`latest` 是一个指向当前使用版本的符号链接：
+
+```shell
+$ cd cmdline-tools/
+$ ls
+     bin  lib  NOTICE.txt  source.properties
+$ mkdir latest
+$ mv bin/ lib/ NOTICE.txt source.properties latest/
+
+export PATH="$PATH:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin"
+```
+
+sdkmangager命令
+
+```shell
+$sdkmanager --no_https --proxy=http --proxy_host=proxy.*.com --proxy_port=8080 --list
+$ sdkmanager --no_https --proxy=http --proxy_host=proxy.*.com --proxy_port=8080 --install  "ndk;25.2.9519653"
+```
+
+参考：https://gist.github.com/lboulard/28379f5b4bf3c1cf32422c539a8d7c7d
+
+Android platform tools
+
+- Mac https://dl.google.com/android/repository/platform-tools-latest-darwin.zip
+- Linux https://dl.google.com/android/repository/platform-tools-latest-linux.zip
+- Windows https://dl.google.com/android/repository/platform-tools-latest-windows.zip
+
+#### Android环境变量：ANDROID_HOME
+
+编译时，如果设置了ANDROID_HOME变量，则会优先使用，否则需要在`local.properties`文件中设置sdk路径：`sdk.dir=`
+
+```shell
+export ANDROID_HOME=/usr/lib/android-sdk
+export PATH=$ANDROID_HOME/platform-tools:$ANDROID_HOME/tools:$ANDROID_HOME/tools/bin:$PATH
+
+#或者
+export ANDROID_HOME=~/android-sdk
+export PATH=$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH
+```
+
+参考链接：[环境变量  | Android Studio  | Android Developers](https://developer.android.com/tools/variables?hl=zh-cn)
+
+#### maven配置
+
+```groovy
+mavenRepo=D\:\\workspaces\\maven\\local_repository
+mavenLocal().mavenLocalRepoDir = file("$mavenRepo")
+
+allprojects {
+    repositories {
+        mavenLocal()
+        maven {url file("D\:\\workspaces\\maven\\local_repository"")}
+        maven {url 'file://D:/workspaces/maven/local_repository'}
+    }
+} 	
+```
+
+复制到本地maven仓
+
+```groovy
+task cacheToMavenLocal(type: Copy) {
+    from new File(gradle.gradleUserHomeDir, 'caches/modules-2/files-2.1')
+    into repositories.mavenLocal().url
+    eachFile {
+        List<String> parts = it.path.split('/')
+        it.path = (parts[0]+ '/' + parts[1]).replace('.','/') + '/' + parts[2] + '/' + parts[4]
+    }
+    includeEmptyDirs false
+    duplicatesStrategy DuplicatesStrategy.EXCLUDE
+
+}
+```
+
+#### gradle配置
+
+在`gradle.properties`中增加配置
+
+```shell
+#17版本
+org.gradle.java.home=C\:\\Program Files\\Java\\jdk-17.0.11
+#11版本
+org.gradle.java.home=C\:\\Program Files\\Java\\corretto-11.0.21
+
+#允许不安全协议
+ allowInsecureProtocol = true
+```
+
+问题：PKIX path building failed: sun.security.provider.certpath.SunCertPathBuilderException: unable to find valid certification path to requested target
+
+[解决](https://stackoverflow.com/questions/60720241/gradle-build-fails-due-to-sun-security-validator-validatorexception-despite-inst)
+
+```shell
+# ~/.gradle/gradle.properties (MAC)
+
+systemProp.javax.net.ssl.trustStore=/dev/null
+systemProp.javax.net.ssl.trustStoreType=KeychainStore
+systemProp.java.security.KeyStore=KeychainStore
+
+# (Windows)
+
+systemProp.javax.net.ssl.trustStore=NUL
+systemProp.javax.net.ssl.trustStoreType=Windows-ROOT
+```
+
+### wsl
+
+#### WSL配置
+
+apt代理配置，`vi /etc/apt/apt.conf`:
+
+```shell
+Acquire::http::proxy "http://proxy.hk.*.com:8080/";
+Acquire::ftp::proxy "ftp://proxy.hk.*.com:8080/";
+Acquire::https::proxy "https://proxy.hk.*.com:8080/";
+```
+
+c++编译环境配置
+
+```shell
+sudo apt update
+sudo apt install gdb
+gdb --version
+sudo apt install cmake 
+cmake --version
+sudo apt install build-essential
+gcc --version
+g++ --version
+make --version
+```
+
+opencv安装
+
+```shell
+apt install libopencv-dev
+```
+
+#### wsl使用adb
+
+```shell
+sudo ln -s /home/pei/platform-tools/adb.exe /usr/bin/adb
+sudo ln -s /home/pei/platform-tools/fastboot.exe /usr/bin/fastboot
+#查看wsl版本
+wsl --list --verbose
+```
+
+
+#### wsl中配置git-bash
+
+```shell
+#中文乱码
+将commandline位置从$GIT_INSTALL_DIR\\bin\\bash.exe修改为了$GIT_INSTALL_DIR\\usr\\bin\\bash.exe --login -i
+```
+
+### python
+
+版本下载：
+
+```shell
+https://github.com/adang1345/PythonWindows
+https://www.python.org/downloads/
+```
+
+Linux 3.8 python版本安装
+
+```shell
+# 安装必备组件 ： 运行以下命令以安装software-properties-common，这是添加PPA所需的工具
+sudo apt install software-properties-common
+# 添加Deadsnakes PPA ： 运行以下命令以添加Deadsnakes PPA，这个PPA包含了Python 3.8
+sudo add-apt-repository ppa:deadsnakes/ppa
+sudo apt update
+sudo apt install python3.8
+```
+
+pip安装
+
+```shell
+sudo apt install python3-pip
+pip --version
+pip3 install <package_name>
+```
+
+pip代理配置
+
+- Window下，在 `C:\Users\username\pip\pip.ini`中增加配置参数
+- Linux下，在`~/.pip/pip.conf`
+
+```shell
+[global]
+timeout = 1000
+proxy = http://user:password@proxy.server:port
+index-url= http://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple/
+
+[install]
+trusted-host=mirrors.tuna.tsinghua.edu.cn
+```
+
+### apt
+
+```shell
+sudo apt install <package_name>
+sudo apt remove <package_name>
+# 彻底卸载软件包 （包括配置文件）
+sudo apt purge <package_name>
+apt search <package_name>
+# 查看已安装的软件包
+apt list --installed
+# 清理不再需要的软件包
+sudo apt autoremove
+# 查看软件包信息
+apt show <package_name>
+```
+
+
+

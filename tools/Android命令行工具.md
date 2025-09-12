@@ -1,308 +1,196 @@
 
+### dmpsys
 
-### 代理配置
+```bash
+$ dumpsys activity #查询AMS服务相关信息
+$ dumpsys window #查询WMS服务相关信息
+$ dumpsys cpuinfo #查询CPU情况
+$ dumpsys meminfo #查询内存情况
 
-git代理
+#查看当前运行activity
+$ dumpsys activity top | grep ACTIVITY
+
+#SurfaceFlinger
+$ dumpsys SurfaceFlinger
+
+# 查看焦点所在activity
+$ adb shell dumpsys window | grep mCurrentFocus
+
+# 查看对应包名的Service
+$ adb shell dumpsys activity services com.wt.phonelink
+
+# 查看对应包名信息
+$ adb shell dumpsys package com.huawei.dmsdpdevice | grep versionName
+```
+
+参考：[dumpsys命令用法](http://gityuan.com/2016/05/14/dumpsys-command/)
+
+#### trace
+
+```
+parent_tms=1719212453068
+```
+
+### adb
 
 ```shell
-#配置
-git config --global http.proxy http://username:passwd@proxy.*.com:port
-git config --global https.proxy http://username:passwd@proxy.*.com:port
-#取消配置
-git config --global --unset http.proxy
-git config --global --unset https.proxy
+$ adb help
+$ adb root
+$ adb -s <deviceName> <command> #指定设备执行command
 
-npm config delete proxy
+# Get device android version
+$ adb shell getprop ro.build.version.release 
+
+$ adb push [source] [destination]    # Copy files from your computer to your phone.
+$ adb pull [device file location] [local file location] #Copy files from your phone to your computer.
+
+# Adb Server
+$ adb kill-server
+$ adb start-server 
+
+$ adb shell input text 'content'
+
+# 查看包名
+$ adb shell pm list packages | egrep "magic"
+
+$ run-as <package> cat <file>
 ```
 
-linux代理配置
+#### devices
 
 ```shell
-export http_proxy="http://username:passwd@proxy.*.com:port"
-export https_proxy="username:passwd@proxy.*.com:port"
-unset http_proxy
-unset https_proxy
+$ adb usb
+$ adb devices   //show devices attached
+$ adb devices -l #包含product/mode
+$ adb connect ip_address_of_device
 
-#wsl本地配置
-wsl hostname -I #查看ip
-cat /etc/resolv.conf |grep -oP '(?<=nameserver\ ).*'  #查看要配置的ip
-export http_proxy="http://192.168.31.1:7890" #配置代理
+$ adb -d #连到usb设备上
+$ adb -e #连到模拟器上
 ```
 
-gradle代理：在`gradle.properties`文件中配置代理
+#### logcat
 
 ```shell
-systemProp.http.proxyHost=proxy.*.com
-systemProp.http.proxyPort=port
-systemProp.https.proxyHost=proxy.server
-systemProp.https.proxyPort=port
+# 通过包名获取pid
+$ adb shell pidof -s com.hihonor.magicvoice
+$ adb logcat --pid= #按pid过滤
 
-systemProp.http.proxyUser=username
-systemProp.http.proxyPassword=password
-systemProp.https.proxyUser=username
-systemProp.https.proxyPassword=password
+$ adb logcat -c # clear // The parameter -c will clear the current logs on the device.
+$ adb logcat -d > [path_to_file] # Save the logcat output to a file on the local system.
+$ adb bugreport > [path_to_file] # Will dump the whole device information like dumpstate, dumpsys and logcat output.
 ```
 
-### Android开发环境配置
-
-#### jdk安装
+#### install
 
 ```shell
-$ apt search openjdk | egrep "17"
-#查看安装版本
-$ apt --names-only search "openjdk-.*jre$"
-#安装多版本
-$ sudo apt install openjdk-11-jdk
-$ sudo apt install openjdk-17-jre
-#版本切换，选择对应的版本
-sudo update-alternatives --config java
+adb -e install path/to/app.apk
+-d                        - directs command to the only connected USB device...
+-e                        - directs command to the only running emulator...
+-s <serial number>        ...
+-p <product name or path> ...
+
+#Install the given app on all connected devices.
+$ adb devices | tail -n +2 | cut -sf 1 | xargs -IX adb -s X install -r com.myAppPackage 
+
+# 安装到指定路径
+ -p: partial application install (install-multiple only)
+$ adb install  -p com.hihonor.voiceengine recommend-release.apk
+
+#-t允许安装测试版本 -r重新安装 -g安装时授予运行时权限
+ -d: allow version code downgrade (debuggable packages only)
+ -r: replace existing application
+ -g: grant all runtime permissions
+$ adb install -d -t -r -g
 ```
 
-#### Android命令行工具
-
-在 https://developer.android.com/studio/index.html#downloads 页面,下载最新的命令行工具：
+#### uninstall
 
 ```shell
-$ weget https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip
+$ adb uninstall com.myAppPackage
+$ adb uninstall <app .apk name>
+$ adb uninstall -k <app .apk name> # "Uninstall .apk withour deleting data"
 
-export ANDROID_SDK_ROOT=$HOME/.local/share/android/sdk
-export ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk-bundle
-mkdir -p $ANDROID_SDK_ROOT
-# -P  --directory-prefix，下载到指定目录
-wget -P "$HOME/Downloads" https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip
-unzip "$HOME/Downloads/commandlinetools-linux-8092744_latest.zip" -d $ANDROID_SDK_ROOT
+$ adb shell pm uninstall com.example.MyApp
+$ adb shell pm clear [package] # Deletes all data associated with a package.
+$ adb devices | tail -n +2 | cut -sf 1 | xargs -IX adb -s X uninstall com.myAppPackage
 ```
 
-在java11使用sdkmanager会报错：
-
-```cmd
-Error: LinkageError occurred while loading main class com.android.sdklib.tool.sdkmanager.SdkManagerCli        java.lang.UnsupportedClassVersionError: com/android/sdklib/tool/sdkmanager/SdkManagerCli has been compiled by a more recent version of the Java Runtime (class file version 61.0), this version of the Java Runtime only recognizes class file versions up to 55.0
-```
-
-解决方案1：改为下载旧版本：
-
+#### update
 
 ```shell
-$ wget https://dl.google.com/android/repository/commandlinetools-linux-8512546_latest.zip
+$ adb install -r yourApp.apk  #  -r means re-install the app and keep its data on the device.
+$ adb install –k <.apk file path on computer> # -k keep the data and cache directories
 ```
 
-解决方案2：切换高版本jdk
+#### am(Activity Manager)
 
 ```shell
-sudo update-alternatives --config java
+#-n指定组件名启动
+$ adb shell am start -n com.hihonor.lens/.settings.LensSettingsActivity
+
+$ adb shell am start -a android.intent.action.VIEW
+$ adb shell am broadcast -a 'my_action'
+
+$ adb shell am start -a android.intent.action.CALL -d tel:+972527300294 # Make a call
+
+#Open send sms screen with phone number and the message:
+$ adb shell am start -a android.intent.action.SENDTO -d sms:+972527300294   --es  sms_body "Test --ez exit_on_sent false
 ```
 
-要使用sdkmanager，需要将下载的文件夹移动到对应的目录，Android SDK 设计支持多版本命令行工具，`latest` 是一个指向当前使用版本的符号链接：
+#### 截屏、录屏
 
 ```shell
-$ cd cmdline-tools/
-$ ls
-     bin  lib  NOTICE.txt  source.properties
-$ mkdir latest
-$ mv bin/ lib/ NOTICE.txt source.properties latest/
+$ adb shell screencap  /sdcard/screenshot.png
+-p: outputs in png format
+$ adb shell screencap -p /sdcard/screenshot.png
+$ adb shell screencap -p | sed 's/\r$//' > screen.png
 
-export PATH="$PATH:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin"
+# (press Control + C to stop)
+$ adb shell screenrecord /sdcard/record.mp4
 ```
 
-sdkmangager命令
+#### pm
 
 ```shell
-$sdkmanager --no_https --proxy=http --proxy_host=proxy.*.com --proxy_port=8080 --list
-$ sdkmanager --no_https --proxy=http --proxy_host=proxy.*.com --proxy_port=8080 --install  "ndk;25.2.9519653"
+# 包名查询
+$ adb shell pm list packages | grep name
+#按包名查找安装位置
+$ adb shell pm path com.mypkg
+
+# Reset permissions
+$ adb shell pm reset-permissions -p your.app.package 
+$ adb shell pm grant [packageName] [ Permission]  #Grant a permission to an app. 
+$ adb shell pm revoke [packageName] [ Permission]   #Revoke a permission from an app.
+
+adb shell list packages (list package names)
+adb shell list packages -r (list package name + path to apks)
+adb shell list packages -3 (list third party package names)
+adb shell list packages -s (list only system packages)
+adb shell list packages -u (list package names + uninstalled
 ```
 
-参考：https://gist.github.com/lboulard/28379f5b4bf3c1cf32422c539a8d7c7d
+参考：[Google官方参考文档](https://developer.android.com/tools/adb?hl=zh-cn#pm)
 
-Android platform tools
+#### wm
 
-- Mac https://dl.google.com/android/repository/platform-tools-latest-darwin.zip
-- Linux https://dl.google.com/android/repository/platform-tools-latest-linux.zip
-- Windows https://dl.google.com/android/repository/platform-tools-latest-windows.zip
-
-#### Android环境变量：ANDROID_HOME
-
-编译时，如果设置了ANDROID_HOME变量，则会优先使用，否则需要在`local.properties`文件中设置sdk路径：`sdk.dir=`
+Window manager
 
 ```shell
-export ANDROID_HOME=/usr/lib/android-sdk
-export PATH=$ANDROID_HOME/platform-tools:$ANDROID_HOME/tools:$ANDROID_HOME/tools/bin:$PATH
+$ adb shell wm size # 显示分辨率
+$ adb shell wm size 2048x1536 #设置分辨率
+$ adb shell wm density 288
 
-#或者
-export ANDROID_HOME=~/android-sdk
-export PATH=$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH
+# And reset to default
+$ adb shell wm size reset
+$ adb shell wm density reset
 ```
 
-参考链接：[环境变量  | Android Studio  | Android Developers](https://developer.android.com/tools/variables?hl=zh-cn)
-
-#### maven配置
-
-```groovy
-mavenRepo=D\:\\workspaces\\maven\\local_repository
-mavenLocal().mavenLocalRepoDir = file("$mavenRepo")
-
-allprojects {
-    repositories {
-        mavenLocal()
-        maven {url file("D\:\\workspaces\\maven\\local_repository"")}
-        maven {url 'file://D:/workspaces/maven/local_repository'}
-    }
-} 	
-```
-
-复制到本地maven仓
-
-```groovy
-task cacheToMavenLocal(type: Copy) {
-    from new File(gradle.gradleUserHomeDir, 'caches/modules-2/files-2.1')
-    into repositories.mavenLocal().url
-    eachFile {
-        List<String> parts = it.path.split('/')
-        it.path = (parts[0]+ '/' + parts[1]).replace('.','/') + '/' + parts[2] + '/' + parts[4]
-    }
-    includeEmptyDirs false
-    duplicatesStrategy DuplicatesStrategy.EXCLUDE
-
-}
-```
-
-#### gradle配置
-
-在`gradle.properties`中增加配置
+monkey
 
 ```shell
-#17版本
-org.gradle.java.home=C\:\\Program Files\\Java\\jdk-17.0.11
-#11版本
-org.gradle.java.home=C\:\\Program Files\\Java\\corretto-11.0.21
-
-#允许不安全协议
- allowInsecureProtocol = true
-```
-
-问题：PKIX path building failed: sun.security.provider.certpath.SunCertPathBuilderException: unable to find valid certification path to requested target
-
-[解决](https://stackoverflow.com/questions/60720241/gradle-build-fails-due-to-sun-security-validator-validatorexception-despite-inst)
-
-```shell
-# ~/.gradle/gradle.properties (MAC)
-
-systemProp.javax.net.ssl.trustStore=/dev/null
-systemProp.javax.net.ssl.trustStoreType=KeychainStore
-systemProp.java.security.KeyStore=KeychainStore
-
-# (Windows)
-
-systemProp.javax.net.ssl.trustStore=NUL
-systemProp.javax.net.ssl.trustStoreType=Windows-ROOT
-```
-
-### wsl
-
-#### WSL配置
-
-apt代理配置，`vi /etc/apt/apt.conf`:
-
-```shell
-Acquire::http::proxy "http://proxy.hk.*.com:8080/";
-Acquire::ftp::proxy "ftp://proxy.hk.*.com:8080/";
-Acquire::https::proxy "https://proxy.hk.*.com:8080/";
-```
-
-c++编译环境配置
-
-```shell
-sudo apt update
-sudo apt install gdb
-gdb --version
-sudo apt install cmake 
-cmake --version
-sudo apt install build-essential
-gcc --version
-g++ --version
-make --version
-```
-
-opencv安装
-
-```shell
-apt install libopencv-dev
-```
-
-#### wsl使用adb
-
-```shell
-sudo ln -s /home/pei/platform-tools/adb.exe /usr/bin/adb
-sudo ln -s /home/pei/platform-tools/fastboot.exe /usr/bin/fastboot
-#查看wsl版本
-wsl --list --verbose
-```
-
-
-#### wsl中配置git-bash
-
-```shell
-#中文乱码
-将commandline位置从$GIT_INSTALL_DIR\\bin\\bash.exe修改为了$GIT_INSTALL_DIR\\usr\\bin\\bash.exe --login -i
-```
-
-### python
-
-版本下载：
-
-```shell
-https://github.com/adang1345/PythonWindows
-https://www.python.org/downloads/
-```
-
-Linux 3.8 python版本安装
-
-```shell
-# 安装必备组件 ： 运行以下命令以安装software-properties-common，这是添加PPA所需的工具
-sudo apt install software-properties-common
-# 添加Deadsnakes PPA ： 运行以下命令以添加Deadsnakes PPA，这个PPA包含了Python 3.8
-sudo add-apt-repository ppa:deadsnakes/ppa
-sudo apt update
-sudo apt install python3.8
-```
-
-pip安装
-
-```shell
-sudo apt install python3-pip
-pip --version
-pip3 install <package_name>
-```
-
-pip代理配置
-
-- Window下，在 `C:\Users\username\pip\pip.ini`中增加配置参数
-- Linux下，在`~/.pip/pip.conf`
-
-```shell
-[global]
-timeout = 1000
-proxy = http://user:password@proxy.server:port
-index-url= http://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple/
-
-[install]
-trusted-host=mirrors.tuna.tsinghua.edu.cn
-```
-
-### apt
-
-```shell
-sudo apt install <package_name>
-sudo apt remove <package_name>
-# 彻底卸载软件包 （包括配置文件）
-sudo apt purge <package_name>
-apt search <package_name>
-# 查看已安装的软件包
-apt list --installed
-# 清理不再需要的软件包
-sudo apt autoremove
-# 查看软件包信息
-apt show <package_name>
+$ adb shell monkey -p com.myAppPackage -v 10000 -s 100 # monkey tool is generating 10.000 random events on the real device
 ```
 
 
 
+https://www.automatetheplanet.com/adb-cheat-sheet/

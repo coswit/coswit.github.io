@@ -32,6 +32,7 @@
     - [android_Drawable.md](./android/android开发艺术探索/android_Drawable.md)
   - android_wifi
     - [IP路由.md](./android/android_wifi/IP路由.md)
+    - [WIFI信道.md](./android/android_wifi/WIFI信道.md)
     - [Wifi基础.md](./android/android_wifi/Wifi基础.md)
     - [netd.md](./android/android_wifi/netd.md)
   - [相机.md](./android/相机.md)

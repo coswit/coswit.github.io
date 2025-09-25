@@ -10,4 +10,5 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}   #  GITHUB_TOKEN 需要有写权限
 
-          include: '.*\.md$'
+          #include: '.*\.md$'
+

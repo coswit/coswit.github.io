@@ -1,4 +1,4 @@
-<img src="./images/vi_en.png" alt="img" style="zoom:100%;" />
+<img src="./linux/images/vi_en.png" alt="img" style="zoom:100%;" />
 
 ### 通用
 

@@ -11,6 +11,10 @@
   <!-- <link rel="stylesheet" href="//cdn.jsdelivr.net/npm/docsify-sidebar-collapse/dist/sidebar.min.css" /> -->
   <!-- 侧边栏文档样式 -->
   <link rel="stylesheet" href="//cdn.jsdelivr.net/npm/docsify-sidebar-collapse/dist/sidebar-folder.min.css" />
+  <!-- KaTeX 核心 CSS 和 JS -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@latest/dist/katex.min.css">
+  <!-- 主题 vue buble dark pure dolphin-->
+  <link rel="stylesheet" href="//cdn.jsdelivr.net/npm/docsify/lib/themes/pure.css">
 </head>
 <body>
   <div id="app"></div>
@@ -23,10 +27,75 @@
 	  subMaxLevel: 5,
 	  auto2top: true,
 	  relativePath: false,
-    }
+    sidebarDisplayLevel: 0, // set sidebar display level
+    markdown: {
+      renderer: {
+        // 重写加粗渲染规则
+        strong: function(text) {
+          return '<strong>' + text + '</strong>';
+        }
+      },
+      smartypants: true,
+      breaks: true,
+      langPrefix: 'language-'
+    },
+    mermaid: {
+        theme: 'forest',
+        flowchart: { useMaxWidth: true }
+    },
+    // KaTeX 配置
+    plugins: [
+      function(hook, vm) {
+        hook.beforeEach(function(content) {
+          // 预处理中文加粗问题
+          return content.replace(/\*\*(.*?)\*\*/g, function(match, p1) {
+            return '<strong>' + p1 + '</strong>';
+          });
+        });
+      },
+          
+      function(hook, vm) {
+        hook.ready(function() {
+          // 确保 KaTeX 加载完成后再初始化
+          if (typeof renderMathInElement === 'function') {
+            renderMathInElement(document.body, {
+              delimiters: [
+                {left: '$$', right: '$$', display: true},
+                {left: '$', right: '$', display: false},
+                {left: '\\(', right: '\\)', display: false},
+                {left: '\\[', right: '\\]', display: true}
+              ],
+              macros: {
+                '\\foo': 'x^2',
+                '\\Harr': '\\Leftrightarrow',
+                '\\Lrarr': '\\Leftrightarrow',
+                '\\lrArr': '\\Leftrightarrow',
+                '\\plusmn': '\\pm'
+              },
+              throwOnError: false
+            });
+          }
+        });
+      }
+    ]
+  };
   </script>
-  <!-- Docsify https://cdn.jsdelivr.net/npm/docsify/ -->
+  <!-- Docsify 核心脚本 -->
   <script src="//cdn.jsdelivr.net/npm/docsify/lib/docsify.min.js"></script>
+
+  <!-- KaTeX 插件（优先加载） -->
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js"></script>
+  <!-- Mermaid 插件 -->
+  <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/docsify-mermaid@latest/dist/docsify-mermaid.min.js"></script>
+
+  <script src="https://cdn.jsdelivr.net/npm/docsify@4/lib/plugins/zoom-image.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/docsify@4/lib/plugins/search.js"></script>
+
+  <!-- plugins 侧边栏样式 -->
+  <script src="//cdn.jsdelivr.net/npm/docsify-sidebar-collapse/dist/docsify-sidebar-collapse.min.js"></script>
+
   <!-- 代码高亮 -->
   <script src="//cdn.jsdelivr.net/npm/prismjs@1/components/prism-bash.min.js"></script>
   <script src="//cdn.jsdelivr.net/npm/prismjs@1/components/prism-php.min.js"></script>
@@ -35,12 +104,5 @@
   <script src="//cdn.jsdelivr.net/npm/prismjs@1/components/prism-java.js"></script>
   <script src="//cdn.jsdelivr.net/npm/prismjs@1/components/prism-c.js"></script>
   <script src="//cdn.jsdelivr.net/npm/prismjs@1/components/prism-cpp.js"></script>
-  
-  <!-- 主题 vue buble dark pure dolphin-->
-  <link rel="stylesheet" href="//cdn.jsdelivr.net/npm/docsify/lib/themes/pure.css">
-  
-  <!-- plugins 侧边栏样式 -->
-  <script src="//cdn.jsdelivr.net/npm/docsify-sidebar-collapse/dist/docsify-sidebar-collapse.min.js"></script>
-
 </body>
 </html>

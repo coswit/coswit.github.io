@@ -1,5 +1,3 @@
-  - [README.md](./README.md)
-  - [_sidebar.md](./_sidebar.md)
   - Effective Java
     - [1.对像的创建和销毁.md](./Effective%20Java/1.对像的创建和销毁.md)
     - [2.对像的通用方法.md](./Effective%20Java/2.对像的通用方法.md)

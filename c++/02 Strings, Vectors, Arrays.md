@@ -1,12 +1,12 @@
 ### 1. using声明
 头文件中不应该包含声明，格式：
-```c++
+```cpp
 using namespace::name;
 ```
 
 进行了声明后可以直接访问namespace中的名称，如：
 
-```c++
+```cpp
 #include <iostream>
 using std::cout; using std::endl;
 
@@ -19,7 +19,7 @@ int main() {
 
 导入：
 
-```c++
+```cpp
 #include <string> 
 using std::string;
 ```
@@ -57,7 +57,7 @@ string s8 = temp; // copy temp into s8
 
 读写字符串
 
-```c++
+```cpp
 string s; // empty string
 cin >> s; // 将标准输入的内容读取到s中，会自动忽略开头的空白，直到遇见下一处空白
 cout << s << endl; // 输出s
@@ -121,7 +121,7 @@ string slang = "Hiya";
 ```
 赋值
 
-```c++
+```cpp
 // st1 内容 cccccccccc; st2是字符串
 string st1(10, 'c'), st2;
 
@@ -214,7 +214,7 @@ for (decltype(s.size()) index = 0;
 导入：
 
 
-```c++
+```cpp
 #include <vector> 
 using std::vector;
 ```
@@ -329,14 +329,14 @@ if (s.begin() != s.end()) { // make sure s is not empty
 
 元素移动
 
-```c++
+```cpp
 for (auto it = s.begin(); it != s.end() && !isspace(*it); ++it)
     *it = toupper(*it); // capitalize the current character
 ```
 
 迭代器类型
 
-```c++
+```cpp
 vector<int>::iterator it; //读写vector<int>中元素
 string::iterator it2; //读写string中的字符
 
@@ -355,7 +355,7 @@ auto it2 = cv.begin(); // it2类型vector<int>::const_iterator
 
 为了便于专门得到const_iterator类型，C++11引入新函数cbegin和cend
 
-```c++
+```cpp
 auto it = v.cbegin();
 ```
 
@@ -367,7 +367,7 @@ auto it = v.cbegin();
 ```
 
 C++语言定义了**(->)运算符**，把解引用和成员访问结合在一起，`it->mem`和`(*it).mem`相同
-```c++
+```cpp
 // print each line in text up to the first blank line
 for (auto it = text.cbegin(); it != text.cend() && !it->empty(); ++it)
     cout << *it << endl;
@@ -412,7 +412,7 @@ while (mid != end && *mid != sought) {
 
 数组是复合类型，数组中的个数也是数组类型的一部分，大小固定，编译时的维度应该是已知的，维度尽量是一个常量表达式。
 
-```c++
+```cpp
 unsigned cnt = 42;          // not a constant expression
 constexpr unsigned sz = 42; // constant expression
 
@@ -424,7 +424,7 @@ string strs[get_size()]; // ok if get_size is constexpr, error otherwise
 
 显式初始化
 
-```c++
+```cpp
 const unsigned sz = 3;
 int ia1[sz] = {0,1,2};        // array of three ints with values 0, 1, 2
 int a2[] = {0, 1, 2};         // an array of dimension 3
@@ -444,7 +444,7 @@ const char a4[6] = "Daniel";       // error: no space for the null!
 
 不能将数组的内容copy给其他数组，也不能为其它数组赋值：
 
-```c++
+```cpp
 int a[] = {0, 1, 2}; 
 int a2[] = a;        // error: cannot initialize one array with another
 a2 = a;              // error: cannot assign one array to another
@@ -452,7 +452,7 @@ a2 = a;              // error: cannot assign one array to another
 
 指针、数组引用：
 
-```c++
+```cpp
 int *ptrs[10];            // 包含10个int指针的数组
 int &refs[10] = /* ? */;  //  error: no arrays of references
 
@@ -462,7 +462,7 @@ int (&arrRef)[10] = arr;  //  arrRef refers to an array of ten ints
 ```
 #### 5.2 数组元素的访问
 
-```c++
+```cpp
 // count the number of grades by clusters of ten: 0--9, 10--19, ... 90--99, 100
 unsigned scores[11] = {}; // 11 buckets, all value initialized to 0
 unsigned grade;
@@ -480,17 +480,17 @@ cout << endl;
 
 一般使用取址符获取指向对象的指针，对数组索引获取到指定位置的元素，对数组的元素使用取址符得到指向改元素的指针。
 
-```c++
+```cpp
 string nums[] = {"one", "two", "three"};  // array of strings
 string *p = &nums[0];   // p points to the first element in nums
 ```
 在很多使用数组名称的地方，编译器会自动将其替换为一个指向数组首元素的指针：
 
-```c++
+```cpp
 string *p2 = nums;      // 等价于 p2 = &nums[0]
 ```
 大多数时候，使用数组类型的对象其实是使用一个指向该数组首元素的指针：
-```c++
+```cpp
 int ia[] = {0,1,2,3,4,5,6,7,8,9}; 
 auto ia2(ia); // ia2是一个int*，指向ia的第一个元素
 ia2 = 42;     // error: ia2 is a pointer, and we can't assign an int to a pointer
@@ -498,13 +498,13 @@ ia2 = 42;     // error: ia2 is a pointer, and we can't assign an int to a pointe
 
 上述代码当使用ia作为初始值时，编译器实际执行的初始化是下面的形式：
 
-```c++
+```cpp
 auto ia2(&ia[0]);
 ```
 
 但是如果使用decltype时，上述转换不会发生，`decltype(ia)`是一个int数组：
 
-```c++
+```cpp
 decltype(ia) ia3 = {0,1,2,3,4,5,6,7,8,9};
 ia3 = p;    // error: can't assign an int* to an array
 ia3[4] = i; // ok: assigns the value of i to an element in ia3
@@ -512,7 +512,7 @@ ia3[4] = i; // ok: assigns the value of i to an element in ia3
 
 迭代器支持的功能，数组指针也全部支持。迭代遍历，可通过尾元素下一位指针判断：
 
-```c++
+```cpp
 int arr[] = {0,1,2,3,4,5,6,7,8,9};
 int *p = arr; // 指向arr第一个元素
 ++p;          //指向arr[1]
@@ -524,7 +524,7 @@ for (int *b = arr; b != e; ++b)
 
 迭代计算尾指针容易出错，通过C++11引入的begin和end函数。
 
-```c++
+```cpp
 int ia[] = {0,1,2,3,4,5,6,7,8,9}; 
 int *beg = std::begin(ia); // 指向首元素的指针
 int *last = std::end(ia);  // 指向尾元素的下一位指针
@@ -537,7 +537,7 @@ while (pbeg != pend && *pbeg >= 0)
 
 指针运算
 
-```c++
+```cpp
 constexpr size_t sz = 5;
 int arr[sz] = {1,2,3,4,5};
 int *ip = arr;     // int *ip = &arr[0]
@@ -549,13 +549,13 @@ int *p2 = arr + 10; // error: arr has only 5 elements; p2 has undefined value
 
 两个指针相减结果类型为定义在cstddef头文件中的ptrdiff_t类型，带符号类型。
 
-```c++
+```cpp
 auto n = end(arr) - begin(arr); // n=5,元素的数量
 ```
 
 两个指针指向同一个元素时，数组遍历可通过指针比较
 
-```c++
+```cpp
 int *b = arr, *e = arr + sz;
 while (b < e) {
     // use *b
@@ -565,7 +565,7 @@ while (b < e) {
 
 指针运算与解引用：
 
-```c++
+```cpp
 int ia[] = {0,2,4,6,8};
 int last = *(ia + 4); // ok: initializes last to 8, the value of ia[4]
 
@@ -574,7 +574,7 @@ last = *ia + 4;  // ok: last = 4, equivalent to ia[0] + 4
 
 下标(Subscripts)和指针
 
-```c++
+```cpp
 int ia[] = {0,2,4,6,8};
 
 int i = ia[2];  // ia[2]得到(ia + 2)指针指向的元素
@@ -619,7 +619,7 @@ if (strcmp(ca1, ca2) < 0) // same effect as string comparison s1 < s2
 
 连接和copy字符串C风格与标准库也不同，
 
-```c++
+```cpp
 // largeStr 初始化为 s1, a space, 与 s2
 string largeStr = s1 + " " + s2;
 
@@ -656,7 +656,7 @@ vector<int> subVec(int_arr + 1, int_arr + 4);
 
 ### 6. 多维数组
 
-```c++
+```cpp
 int ia[3][4]; // array of size 3; each element is an array of ints of size 4
 // array of size 10; each element is a 20-element array whose elements are arrays of 30 ints
 int arr[10][20][30] = {0}; // initialize all elements to 0
@@ -664,7 +664,7 @@ int arr[10][20][30] = {0}; // initialize all elements to 0
 
 Initializing the Elements of a Multidimensional Array
 
-```c++
+```cpp
 int ia[3][4] = {    // three elements; each element is an array of size 4
     {0, 1, 2, 3},   // initializers for the row indexed by 0
     {4, 5, 6, 7},   // initializers for the row indexed by 1
@@ -683,13 +683,13 @@ int ix[3][4] = {0, 3, 6, 9};
 
 Subscripting a Multidimensional Array
 
-```c++
+```cpp
 // assigns the first element of arr to the last element in the last row of ia
 ia[2][3] = arr[0][0][0];
 int (&row)[4] = ia[1]; // binds row to the second four-element array in ia
 ```
 
-```c++
+```cpp
 constexpr size_t rowCnt = 3, colCnt = 4;
 int ia[rowCnt][colCnt];   // 12 uninitialized elements
 // for each row
@@ -704,7 +704,7 @@ for (size_t i = 0; i != rowCnt; ++i) {
 
 Using a Range for with Multidimensional Arrays
 
-```c++
+```cpp
 size_t cnt = 0;
 for (auto &row : ia)        // for every element in the outer array
     for (auto &col : row) { // for every element in the inner array
@@ -717,20 +717,20 @@ for (const auto &row : ia)  // for every element in the outer array
         cout << col << endl;    
 ```
 
-```c++
+```cpp
 for (auto row : ia)
     for (auto col : row)
 ```
 
 Pointers and Multidimensional Arrays
 
-```c++
+```cpp
 int ia[3][4];     // array of size 3; each element is an array of ints of size 4
 int (*p)[4] = ia; // p points to an array of four ints
 p = &ia[2];       // p now points to the last element in ia
 ```
 
-```c++
+```cpp
 // print the value of each element in ia, with each inner array on its own line
 // p points to an array of four ints
 for (auto p = ia; p != ia + 3; ++p) {
@@ -741,7 +741,7 @@ for (auto p = ia; p != ia + 3; ++p) {
 }
 ```
 
-```c++
+```cpp
 // p points to the first array in ia
    for (auto p = begin(ia); p != end(ia); ++p) {
        // q points to the first element in an inner array
@@ -751,7 +751,7 @@ for (auto p = ia; p != ia + 3; ++p) {
 }
 ```
 
-```c++
+```cpp
 using int_array = int[4]; // new style type alias declaration; see § 2.5.1 (p. 68)
 typedef int int_array[4]; // equivalent typedef declaration; § 2.5.1 (p. 67)
 // print the value of each element in ia, with each inner array on its own line

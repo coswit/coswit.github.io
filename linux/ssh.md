@@ -1,6 +1,3 @@
-[TOC]
-
-
 ### 简介
 
 SSH: Secure Shell protocol,传输加密技术，通过非对称加密来实现，使用公钥与私钥(Public and Private Key)来进行加密与解密，包含：
@@ -14,7 +11,7 @@ $ ctrl+c // stop process
 $ ctrl+d // end of file
 ```
 命令格式
-```shell
+```bash
 $ command  [-options]  parameter1  parameter2 ...
                  指令        选项        参数（1）     参数（2）
 ```
@@ -43,7 +40,7 @@ $ command  [-options]  parameter1  parameter2 ...
 
 Linux系统都会默认预设启动ssh，直接启动就是以 `SSH daemon` ，简称为 `sshd` 来启动的
 
-```shell
+```bash
 $ /etc/init.d/sshd restart
 $ netstat -tlnp | grep ssh
 tcp        0      0 0.0.0.0:22              0.0.0.0:*               LISTEN      14700/sshd
@@ -52,7 +49,7 @@ tcp6       0      0 :::22                   :::*                    LISTEN      
 
 使用systemctl时 
 
-```sh
+```bash
 $ systemctl restart sshd
 ```
 
@@ -60,7 +57,7 @@ $ systemctl restart sshd
 
 #### 直接登录
 
-```shell
+```bash
 $ ssh [-f] [-o 参数项目] [-p 端口] [账号@]IP [指令]
 选项与参数：
 -f ：需要配合后面的 [指令] ，不登入远程主机直接发送一个指令过去而已；
@@ -81,14 +78,14 @@ $ ssh [-f] [-o 参数项目] [-p 端口] [账号@]IP [指令]
 
 如：删除原有服务器的系统公钥，重新启动 ssh 让公钥更新
 
-```shell
+```bash
 $ rm  /etc/ssh/ssh_host*
 $ /etc/init.d/sshd restart
 ```
 
 在客户端进行登录：
 
-```shell
+```bash
 $ ssh root@服务器IP或地址
 ```
 
@@ -102,14 +99,14 @@ $ ssh root@服务器IP或地址
 
 ##### 客户端秘钥生成
 
-```shell
+```bash
 $ ssh-keygen [-t rsa|dsa]  <==可选rsa或dsa 
 $ ssh-keygen   <==用预设的方法建立密钥
 ```
 
 查看
 
-```shell
+```bash
 $ ls -ld ~/.ssh; ls -l ~/.ssh 
 drwx------. 2 vbirdtsai vbirdtsai 4096 2011-07-25 12:58 /home/vbirdtsai/.ssh
 
@@ -117,7 +114,7 @@ drwx------. 2 vbirdtsai vbirdtsai 4096 2011-07-25 12:58 /home/vbirdtsai/.ssh
  -rw-r--r--. 1 vbirdtsai vbirdtsai 416 2011-07-25 12:58 id_rsa.pub   <==公钥
 ```
 
-```shell
+```bash
 $ ls -ld ~/.ssh; ls -l ~/.ssh
 drwx------. 2 root root 29 Apr 11  2020 /root/.ssh
 total 4
@@ -128,7 +125,7 @@ total 4
 
 ##### 公钥上传到服务器
 
-```shell 
+```bash
 $ scp ~/.ssh/id_rsa.pub zj@zhengjing.life:~ 
 ```
 
@@ -136,7 +133,7 @@ $ scp ~/.ssh/id_rsa.pub zj@zhengjing.life:~
 
 > `/etc/ssh/sshd_config`的AuthorizedKeysFile属性用于指定公钥文件放置的位置
 
-```shell 
+```bash 
 #在~/.ssh/目录下创建authorized_keys文件
 $touch  authorized_keys 
 $chmod 644 authorized_keys
@@ -148,7 +145,7 @@ id_rsa.pub复制到远程主机对应账号下的.ssh/authorized_keys
 
 #### 配置新的连接秘钥
 
-```shell
+```bash
 $ rm /etc/ssh/ssh_host*   <==删除
 $ /etc/init.d/sshd restart   
 正在停止sshd: [ 确定 ]
@@ -169,7 +166,7 @@ Tue Feb  2 15:13:11 CST 2021
 tcp        0      0 0.0.0.0:22              0.0.0.0:*               LISTEN      3188/sshd
 ```
 
-```shell
+```bash
 $ ssh root@ip
 #使用systemctl时 
 $ systemctl restart sshd
@@ -178,7 +175,7 @@ $ exit
 
 - 公钥记录档
 
-```shell
+```bash
 # 删除掉known_hosts后，重新使用root连线到本机，且自动加上公钥记录
 $ rm ~/.ssh/known_hosts 
 $ ssh -o StrictHostKeyChecking= no root@localhost
@@ -191,12 +188,13 @@ root@localhost's password:
 
 所有的 sshd 服务器详细设定位于`/etc/ssh/sshd_config` 
 
-```shell
-$ vim /etc/ssh/sshd_config 
+```bash
+ vim /etc/ssh/sshd_config 
 ```
 
 1. 整体设定
-```shell
+
+```bash
 # Port 22 
 # SSH预设使用22这个port，也可以使用多个port，即重复使用port这个设定项目！
 # 例如想要开放sshd 在22 与443 ，则多加一行内容为：『 Port 443 』
@@ -221,14 +219,16 @@ Protocol 2
 ```
 
 2. Private Key放置的档案
-````shell
+
+```bash
 # HostKey /etc/ssh/ssh_host_key         # SSH version 1使用的私钥
 # HostKey /etc/ssh/ssh_host_rsa_key     # SSH version 2使用的RSA私钥
 # HostKey /etc/ssh/ssh_host_dsa_key     # SSH version 2使用的DSA私钥
 ```
 
 3. 关于登录档的讯息资料放置与daemon的名称！
-```shell
+
+```bash
 SyslogFacility AUTHPRIV 
 #当有人使用SSH登入系统的时候，SSH会记录资讯，这个资讯要记录在什么daemon name底下？
 #预设是以AUTH 来设定的，即是/var/log/secure 里面
@@ -239,7 +239,8 @@ SyslogFacility AUTHPRIV
 ```
 
 4. 安全设定项目
-```shell
+
+```bash
 # 4.1登入设定部分
 # PermitRootLogin yes 
 #是否允许root登入！预设是允许的，但是建议设定成no！
@@ -330,7 +331,8 @@ DenyGroups test
 ```
 
 5. 关于SFTP服务与其他的设定项目！
-```shell
+
+```bash
 Subsystem sftp /usr/lib/ssh/sftp-server 
 # UseDNS yes 
 #一般来说，为了要判断用户端来源是正常合法的，因此会使用DNS去反查用户端的主机名
@@ -341,7 +343,8 @@ Subsystem sftp /usr/lib/ssh/sftp-server
 ### sftp、scp
 
 - 文件传输
-```shell
+
+```bash
 $ sftp root@ip
 $ sftp> lls /etc/hosts    <==先看看本机有没有这个档案
 /etc/hosts
@@ -357,7 +360,8 @@ $ sftp> get .bashrc       <==下载该文件到本地
 ```
 
 - 异地复制
-```shell
+
+```bash
 # 1.将本机的/etc/hosts*全部复制到127.0.0.1上面的student家目录内
 $ scp /etc/hosts* student@127.0.0.1:~ 
 # 2.将127.0.0.1这部远端主机的/etc/bashrc复制到本机的/tmp底下

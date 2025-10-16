@@ -1,0 +1,38 @@
+:root {
+    /* Code */
+    --code-font-family                  : Inconsolata, Consolas, Menlo, Monaco, "Andale Mono WT", "Andale Mono", "Lucida Console", "DejaVu Sans Mono", "Bitstream Vera Sans Mono", "Courier New", Courier, monospace;
+    --code-font-size                    : calc(var(--font-size-m) * 0.95);
+    --code-font-weight                  : normal;
+    --code-tab-size                     : 4;
+
+    --code-block-border-radius          : var(--border-radius-m);
+    --code-block-line-height            : var(--base-line-height);
+    --code-block-margin                 : 1em 0;
+    --code-block-padding                : 1.75em 1.5em 1.5em 1.5em;
+
+    --code-inline-background            : var(--code-theme-background);
+    --code-inline-border-radius         : var(--border-radius-s);
+    --code-inline-color                 : var(--code-theme-text);
+    --code-inline-margin                : 0 0.15em;
+    --code-inline-padding               : 0.125em 0.4em;
+
+     /* 基础颜色 */
+    --code-theme-background: #2D2A2E;  /* 背景色 */
+    --code-theme-text: #FCFCFA;        /* 默认文本颜色 */
+    
+    /* Monokai Pro Material 语法高亮 */
+    --code-theme-comment: #727072;     /* 注释 */
+    --code-theme-keyword: #FF6188;     /* 关键字 (if, else, return 等) */
+    --code-theme-function: #78DCE8;    /* 函数名和方法 */
+    --code-theme-tag: #FF6188;         /* HTML/XML 标签 */
+    --code-theme-variable: #FCFCFA;    /* 变量名 */
+    --code-theme-string: #FFD866;      /* 字符串 */
+    --code-theme-number: #AB9DF2;      /* 数字 */
+    --code-theme-constant: #AB9DF2;    /* 常量 (true, false, null 等) */
+    --code-theme-operator: #78DCE8;    /* 运算符 (+,-,*,/ 等) */
+    --code-theme-punctuation: #FCFCFA; /* 标点符号 */
+    --code-theme-selector: #FF6188;    /* CSS 选择器 */
+    --code-theme-attribute: #78DCE8;   /* HTML/XML 属性 */
+    --code-theme-class: #A9DC76;       /* 类名 */
+    --code-theme-builtin: #AB9DF2;     /* 内置对象/方法 */
+}

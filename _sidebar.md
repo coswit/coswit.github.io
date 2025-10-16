@@ -69,6 +69,7 @@
   - os
     - [1000LinesOs.md](./os/1000LinesOs.md)
   - tools
+    - [Android命令行工具.md](./tools/Android命令行工具.md)
     - [Android配置.md](./tools/Android配置.md)
     - [Windows脚本使用.md](./tools/Windows脚本使用.md)
     - [cmake.md](./tools/cmake.md)

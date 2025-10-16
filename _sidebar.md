@@ -69,7 +69,7 @@
   - os
     - [1000LinesOs.md](./os/1000LinesOs.md)
   - tools
-    - [Android命令行工具.md](./tools/Android命令行工具.md)
+    - [Android配置.md](./tools/Android配置.md)
     - [Windows脚本使用.md](./tools/Windows脚本使用.md)
     - [cmake.md](./tools/cmake.md)
     - [gitbook使用.md](./tools/gitbook使用.md)
@@ -81,7 +81,6 @@
     - [perfetto使用.md](./tools/perfetto使用.md)
     - [tmux.md](./tools/tmux.md)
     - [tmux常用命令.md](./tools/tmux常用命令.md)
-    - [工具配置.md](./tools/工具配置.md)
     - [环境配置.md](./tools/环境配置.md)
   - 链接、装载与库
     - [目标文件.md](./链接、装载与库/目标文件.md)

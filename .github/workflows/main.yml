@@ -1,22 +1,40 @@
-name: Docsify Deploy
-
-on: [push]
-
+on: [push] # 在push的时候执行
 jobs:
-  sidebar:
+  add_sidebar_job:
     runs-on: ubuntu-latest
+    name: job to add _sidebar.md
     steps:
-      - uses: actions/checkout@v4
-      - uses: coswit/docsify-file-generate-slidebar@main
+      - uses: actions/checkout@v4                     # 拉取代码
+      - uses: coswit/docsify-file-generate-slidebar@main # 使用action生成_sidebar.md文件并推送到仓库内
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}   # GITHUB_TOKEN 需要有写权限
+          #include: '.*\.md$'
+# 第二个任务：部署到 GitHub Pages
+  deploy_to_pages:
+    runs-on: ubuntu-latest
+    name: Deploy to GitHub Pages
+    # 关键：此任务必须等待生成侧边栏的任务成功完成后才会执行
+    needs: add_sidebar_job
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-  deploy:
-    runs-on: ubuntu-latest
-    needs: sidebar
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/deploy-pages@v4
+      # 如果您的站点需要构建步骤（例如使用Vite、Hugo等），请在此处添加
+      # - name: Build
+      #   run: |
+      #     npm install
+      #     npm run build
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./
+          # 上传整个仓库，因为 docsify 是运行时渲染
+          # 如果你有构建步骤，请指定构建输出目录（例如 'dist'）
+          path: '.'
+          
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

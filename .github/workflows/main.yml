@@ -1,11 +1,22 @@
-[push] # 在push的时候执行
+name: Docsify Deploy
+
+on: [push]
+
 jobs:
-  add_sidebar_job:
+  sidebar:
     runs-on: ubuntu-latest
-    name: job to add _sidebar.md
     steps:
-      - uses: actions/checkout@v4                     # 拉取代码
-      - uses: coswit/docsify-file-generate-slidebar@main # 使用action生成_sidebar.md文件并推送到仓库内
+      - uses: actions/checkout@v4
+      - uses: coswit/docsify-file-generate-slidebar@main
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}   # GITHUB_TOKEN 需要有写权限
-          #include: '.*\.md$'
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: sidebar
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/deploy-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./

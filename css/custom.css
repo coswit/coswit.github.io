@@ -10,9 +10,9 @@
     --code-block-margin                 : 1em 0;
     --code-block-padding                : 1.75em 1.5em 1.5em 1.5em;
 
-    --code-inline-background            : var(--code-theme-background);
+    --code-inline-background            : #FCFCFA;
     --code-inline-border-radius         : var(--border-radius-s);
-    --code-inline-color                 : var(--code-theme-text);
+    --code-inline-color                 : #CB4B16;
     --code-inline-margin                : 0 0.15em;
     --code-inline-padding               : 0.125em 0.4em;
 
@@ -21,7 +21,7 @@
     --code-theme-text: #FCFCFA;        /* 默认文本颜色 */
     
     /* Monokai Pro Material 语法高亮 */
-    --code-theme-comment: #727072;     /* 注释 */
+    --code-theme-comment: #FFD866;     /* 注释 */
     --code-theme-keyword: #FF6188;     /* 关键字 (if, else, return 等) */
     --code-theme-function: #78DCE8;    /* 函数名和方法 */
     --code-theme-tag: #FF6188;         /* HTML/XML 标签 */

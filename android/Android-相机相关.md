@@ -1,12 +1,4 @@
-
-
-
-
-
-
 ### YUV图
-
-##### 参考
 
 [图文详解YUV420数据格式](https://www.cnblogs.com/azraelly/archive/2013/01/01/2841269.html)
 
@@ -21,8 +13,6 @@
    安装角度：手机自然状态下的上方向与摄像头的上方向的夹角，方向是从摄像头的上方向逆时针旋转到手机的上方向
 
 2. 手机会横竖屏切换，导致手机屏幕的上方向和手机物理的上方向也有一个角度(rotation)。
-
-
 
 官方方法
 
@@ -48,8 +38,6 @@
 ```java
 rotation = (sensorOrientationDegrees - deviceOrientationDegrees * sign + 360) % 360
 ```
-
-##### 参考
 
 [Android相机开发 - 预览画面的旋转](https://zhuanlan.zhihu.com/p/110944780)
 

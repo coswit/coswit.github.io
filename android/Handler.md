@@ -1,4 +1,4 @@
-###  Handler
+##  Handler
 
 官网说明：
 
@@ -12,7 +12,7 @@
 
 Handler通过ThreadLocal实现线程封闭性，保证线程安全，将任务执行限制在关联线程执行。主要通过Hander创建时所在线程和Looper/MessageQueue强关联。
 
-#### 主线程中使用
+### 主线程中使用
 
 Hander主要通过发送消息，用于延迟执行任务和切换到线程执行任务。
 
@@ -103,7 +103,7 @@ public final void runOnUiThread(Runnable action) {
 } 
 ```
 
-#### 子线程中使用
+### 子线程中使用
 
 主线程中可以直接创建Handler对象，而在子线程中需要先调用Looper.prepare()才能创建Handler对象。
 
@@ -180,9 +180,9 @@ private boolean enqueueMessage(MessageQueue queue, Message msg, long uptimeMilli
 } 
 ```
 
-#### 内存泄漏
+### 内存泄漏
 
-##### 原因
+#### 原因
 
 1. Handler 隐式持有外部类引用
    - 若 Handler 声明为 **非静态内部类**（如匿名内部类或内部类），会默认持有外部类（如 Activity）的强引用。
@@ -191,7 +191,7 @@ private boolean enqueueMessage(MessageQueue queue, Message msg, long uptimeMilli
 2. 生命周期不匹配
    - 后台线程（如通过 HandlerThread）持有 Handler 引用，若线程未及时终止，会导致 Handler 关联的 Activity 泄漏。
 
-##### 解决方法
+#### 解决方法
 
 1. 根据生命周期，在 onDestroy() 中清理资源
 
@@ -225,7 +225,7 @@ private boolean enqueueMessage(MessageQueue queue, Message msg, long uptimeMilli
    }
    ```
 
-### Looper
+## Looper
 
 Looper无法直接new对像，只能通过Looper.myLooper()方法获取Looper对象
 
@@ -312,7 +312,7 @@ Looper的loop方法，从MessageQueue取出messsage，通过Handler的dispatchMe
     }
 ```
 
-### Message相关
+## Message相关
 
 相关的一些参数：
 
@@ -355,7 +355,7 @@ new Thread(new Runnable() {
 }).start();  
 ```
 
-### MessageQueue
+## MessageQueue
 
 MessageQueue使用队列来保存Message，用mMessages表示当前待处理的消息。入队是按照当前Message的uptimeMillis放入队列对应位置。入队时，如果当前没有message，则nativeWake将当前休眠状态唤醒。出队则通过next方法取出。
 

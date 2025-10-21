@@ -1,12 +1,3 @@
----
-title:  Android Application Launch
-date:   2017/10/23
-categories:
-- Android
-- Android源码分析
-tags:
--  Android
----
 
 
 

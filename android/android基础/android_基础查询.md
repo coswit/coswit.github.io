@@ -1,23 +1,16 @@
----
-title:  Android开发备忘
-date:   2015/4/10
-categories:
-- Android基础
-tags:
--   Android
----
+### 占位符
 
-
-
-#### 占位符
+```bash
 %1$d 
 
 %s 
 int类 d
 string s
 double f
-#### TextView
-- textView中的属性
+```
+
+### TextView：textView中的属性
+
 ```xml
 android:textScaleX="0.9f"  字间距
 android:ellipsize="end" 末尾省略号
@@ -25,26 +18,28 @@ android:ellipsize="marquee"  跑马灯
 android:lineSpacingExtra   设置行间距，如”3dp”
 android:lineSpacingMultiplier   设置行间距的倍数，如”1.2″
 ```
-#### 字符转义
+### 字符转义
+
 ```
  `&#160`;表示全角空格
 ```
-<!-- more -->
+### 字体格式：
 
-- 字体格式：
 ```java
 TextView shopname = (TextView) view.findViewById(R.id.tv_set_myPackets_coupou_shopname);
 Typeface fromAsset = Typeface.createFromAsset(getAssets(),"fonts/hwjt.TTF");
 shopname.setTypeface(fromAsset);
 ```
-#### 返回桌面
+### 返回桌面
+
 ```java
 Intent intent = new Intent();
 intent.setAction( "android.intent.action.MAIN");
 intent.addCategory("android.intent.category.HOME" );
 startActivity(intent);
 ```
-#### 读取assets下的文件
+### 读取assets下的文件
+
 ```java
 InputStream inputStream = null;
   try {   
@@ -61,7 +56,8 @@ InputStream inputStream = null;
         }
 
 ```
-#### shape 代码设置
+### shape 代码设置
+
 ```java
 int strokeWidth = 5; // 5px not dp
 int roundRadius = 15; // 15px not dp
@@ -74,8 +70,8 @@ gd.setCornerRadius(roundRadius);
 gd.setStroke(strokeWidth, strokeColor);
 ```
 
-#### divider
-divider.xml
+### divider
+
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <inset xmlns:android="http://schemas.android.com/apk/res/android"
@@ -97,7 +93,8 @@ divider.xml
             android:showDividers="middle">
 ```
 
-#### editText背景
+### editText背景
+
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
@@ -118,6 +115,7 @@ divider.xml
 ```
 
 ### 状态栏隐藏
+
 ```java
  private void hideStatusBar() {
         if (Build.VERSION.SDK_INT < 16) {
@@ -156,9 +154,10 @@ setLayerType(LAYER_TYPE_SOFTWARE,null);
 ```
 
 ### 全屏
+
 ```java
 requestWindowFeature(Window.FEATURE_NO_TITLE);
-        getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
+getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
             WindowManager.LayoutParams.FLAG_FULLSCREEN);
 ```
 

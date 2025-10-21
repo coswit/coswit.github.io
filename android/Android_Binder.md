@@ -1,12 +1,3 @@
----
-title: Binder
-date: 2018/8/20
-categories:
-- 读书笔记
--  Android
-tags:
--  Android开发艺术探索
----
 
 
 
@@ -20,8 +11,6 @@ Inter-Process Communication
   - 有些模块由于特殊原因需要运行在单独的进程中。 
   - 通过多进程来获取多份内存空间。
   - 当前应用需要向其他应用获取数据。
-
-<!-- more -->
 
 #### Android中的多进程模式
  - 开启多进程模式: 给四大组件在Manifest中指定 android:process 属性
@@ -37,7 +26,7 @@ Android为每个进程都分配了一个独立的虚拟机，不同虚拟机在�
 3. SharedPreferences的可靠性下降。SharedPreferences底层是 通过读/写XML文件实现的，并发读/写会导致一定几率的数据丢失。
 4. Application会多次创建。
     由于系统创建新的进程的同时分配独立虚拟机，其实这就是启动一个应用的过程。
-在多进程模式中，不同进程的组件拥有独立的虚拟机、Application以及内存空间。 实现跨进程的方式有很多:
+    在多进程模式中，不同进程的组件拥有独立的虚拟机、Application以及内存空间。 实现跨进程的方式有很多:
     1. Intent传递数据。
     2. 共享文件和SharedPreferences。 
     3. 基于Binder的Messenger和AIDL。 
@@ -281,9 +270,9 @@ public interface IBookManager extends android.os.IInterface {
 2. **asInterface(android.os.IBinderobj)** ：将服务端的Binder对象转换为客户端所需的AIDL接口类型的对象，如果C/S位于同一进 程，此方法返回就是服务端的Stub对象本身，否则返回的就是系统封装后的Stub.proxy对 象。
 3. **asBinder** ： 返回当前Binder对象。
 4. **onTransact**
-这个方法运行在服务端的Binder线程池中，由客户端发起跨进程请求时，远程请求会通过
+   这个方法运行在服务端的Binder线程池中，由客户端发起跨进程请求时，远程请求会通过
     系统底层封装后交由此方法来处理。该方法的原型是
-java public Boolean onTransact(int code,Parcelable data,Parcelable reply,int flags)
+   java public Boolean onTransact(int code,Parcelable data,Parcelable reply,int flags)
     -  i. 服务端通过code确定客户端请求的目标方法是什么，
     -  ii. 接着从data取出目标方法所需的参数，然后执行目标方法。
     - iii. 执行完毕后向reply写入返回值(如果有返回值)。

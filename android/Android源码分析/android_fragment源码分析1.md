@@ -1,23 +1,3 @@
----
-
-
-
-title:  fragment源码分析(一)
-date:   2017/5/2
-categories:
-- Android
-- Android源码分析
-tags:
--  Android
--  fragment
-
----
-
-
-基本使用
-```java
-activity.getSupportFragmentManager().beginTransaction().add(fragment,tag).commit();
-```
 
 ###  FragmentManager的获取
 

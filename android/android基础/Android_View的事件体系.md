@@ -1,19 +1,8 @@
----
-title: View的事件体系
-date: 2018/11/9
-categories:
-- 读书笔记
--  Android
-tags:
--  Android开发艺术探索
----
 
 
+## 基础
 
-
-### 基础
-
-#### 位置参数
+### 位置参数
 ![](http://blog-open.oss-cn-beijing.aliyuncs.com/image/android/an1.png)
 高度、宽度计算
 ```
@@ -38,17 +27,15 @@ y=top+translationY
 ```
 需要注意的是，View在平移的过程中，top和left表示的是原始左上角的位置信息，其值并不会发生改变，此时发生改变的是x、y、translationX和translationY这四个参数。
 
-<!-- more -->
+### MotionEvent和TouchSlop
 
-#### MotionEvent和TouchSlop
-
-#####  MotionEvent
+####  MotionEvent
 通过MotionEvent对象我们可以得到点击事件发生的x和y坐标。
 
 - getX/getY ：返回的是相对于当前View左上角的x和y坐标
 - getRawX/getRawY：返回的是相对于手机屏幕左上角的x和y坐标。
 
-#####  TouchSlop
+####  TouchSlop
 
 TouchSlop是系统所能识别出的被认为是滑动的最小距离，获取:
 ```java
@@ -61,9 +48,9 @@ ViewConfiguration. get(getContext()).getScaledTouchSlop()
     <dimen name="config_viewConfigurationTouchSlop">8dp</dimen>
 ```
 
-#### VelocityTracker、GestureDetector和Scroller
+### VelocityTracker、GestureDetector和Scroller
 
-##### VelocityTracker
+#### VelocityTracker
 追踪手指在滑动过程中的速度，包括水平和竖直方向的速度.
 
 - 首先，在View的onTouchEvent方法中追踪当前单击事件的速度：
@@ -89,13 +76,12 @@ computeCurrentVelocity这个方法的参数表示的是一个时间单元或者�
 ```
 - 当不需要使用它的时候，需要调用clear方法来重置并回收内存：
 
-  
 ```
     velocityTracker.clear();
     velocityTracker.recycle();
 ```
 
-#### GestureDetector
+### GestureDetector
 手势检测，用于辅助检测用户的单击、滑动、长按、双击等行为.
 
 ```java
@@ -138,11 +124,9 @@ GestureDetector detector = new GestureDetector(new  GestureDetector.OnGestureLis
 
 ![](http://blog-open.oss-cn-beijing.aliyuncs.com/image/android/an2.png)
 
+## View的滑动
 
-
-### View的滑动
-
-#### 使用scrollTo/scrollBy
+### 使用scrollTo/scrollBy
 
 view下源码
 
@@ -178,7 +162,7 @@ mScrollX和mScrollY，可以通过getScrollX和getScrollY方法分别得到，�
 
 使用scrollTo和scrollBy来实现View的滑动，只能将View的内容进行移动，并不能将View本身进行移动
 
-#### overScrollBy
+### overScrollBy
 ```java
     protected boolean overScrollBy(int deltaX, int deltaY, int scrollX, int scrollY,int scrollRangeX, int scrollRangeY,int maxOverScrollX, int maxOverScrollY,boolean isTouchEvent) {
             
@@ -245,7 +229,7 @@ mScrollX和mScrollY，可以通过getScrollX和getScrollY方法分别得到，�
 |maxOverScrollX	int:| Number of pixels to overscroll by in either direction along the X axis.允许超过滚动范围的最大值，x方向的滚动范围就是0~maxOverScrollX |
 |isTouchEvent boolean:| true if this scroll operation is the result of a touch event. 是否在onTouchEvent中调用的这个函数。所以，当你在computeScroll中调用这个函数时，就可以传入false。|
 
-#### onOverScrolled
+### onOverScrolled
 ```java
 protected void onOverScrolled (int scrollX, 
                 int scrollY, 
@@ -261,12 +245,12 @@ protected void onOverScrolled (int scrollX,
 |clampedX | boolean: True if scrollX was clamped to an over-scroll boundary , 表示是否到达超出滚动范围的最大值。如果为true，就需要调用OverScroll的springBack函数来让视图回复原来位置。|
 
 
-#### 使用动画
+### 使用动画
 ```java
 ObjectAnimator.ofFloat(targetView,"translationX",0,100).setDuration
      (100).start();
 ```
-#### 改变布局参数
+### 改变布局参数
 
 ```java
  MarginLayoutParams params = (MarginLayoutParams)mButton1.getLayoutParams();
@@ -276,7 +260,8 @@ ObjectAnimator.ofFloat(targetView,"translationX",0,100).setDuration
     //或者mButton1.setLayoutParams(params);
 ```
 
-### 弹性滑Scroller
+## 弹性滑Scroller
+
 弹性滑动对象，用于实现View的弹性滑动
 
 ```java
@@ -441,7 +426,7 @@ private static final int MESSAGE_SCROLL_TO = 1;
     };                                
 ```
 
-### 事件分发
+## 事件分发
 
 activity事件分发
 
@@ -468,9 +453,9 @@ PhoneWindow中的分发,最终会到ViewGroup中
 
 ```
 
-### 滑动冲突
+## 滑动冲突
 
-#### 外部拦截法
+### 外部拦截法
 重写父容器的onInterceptTouchEvent方法，在内部做相应的拦截
 ```java
     public boolean onInterceptTouchEvent(MotionEvent event) {
@@ -504,7 +489,7 @@ PhoneWindow中的分发,最终会到ViewGroup中
     }
 ```
 
-#### 内部拦截法
+### 内部拦截法
 
 ```java
     public boolean dispatchTouchEvent(MotionEvent event) {

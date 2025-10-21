@@ -1,13 +1,13 @@
-### AudioTrack
+## AudioTrack
 
 ```java
 AudioTrack(int streamType, int sampleRateInHz, int channelConfig, int audioFormat,
             int bufferSizeInBytes, int mode)
 ```
 
-#### 参数
+### 参数
 
-##### streamType：音频流类型
+#### streamType：音频流类型
 
 - `AudioManager.STREAM_MUSIC`: 用于音乐播放、播客、游戏音效等。这是最常用的类型。
 - `AudioManager.STREAM_ALARM`: 用于闹钟。
@@ -16,7 +16,7 @@ AudioTrack(int streamType, int sampleRateInHz, int channelConfig, int audioForma
 - `AudioManager.STREAM_SYSTEM`: 用于系统声音（如锁屏音、低电量提示音）。
 - `AudioManager.STREAM_VOICE_CALL`: 用于通话语音。
 
-##### sampleRateInHz：采样率
+#### sampleRateInHz：采样率
 
 定义每秒从连续信号中提取并组成离散信号的采样次数。单位为赫兹 (Hz)。采样率越高，音频的保真度（高频响应）越好，但数据量也越大。
 
@@ -27,7 +27,7 @@ AudioTrack(int streamType, int sampleRateInHz, int channelConfig, int audioForma
 - `22050 Hz` (22.05 kHz) / `16000 Hz` (16 kHz): 常用于语音通话、低质量音频，数据量较小
 
 
-##### channelConfig：声道配置
+#### channelConfig：声道配置
 
 定义音频的通道数（单声道、立体声等）以及每个通道在音频缓冲区中的排列顺序。
 
@@ -37,7 +37,7 @@ AudioTrack(int streamType, int sampleRateInHz, int channelConfig, int audioForma
 - `AudioFormat.CHANNEL_OUT_STEREO`: 立体声（左、右双声道）。绝大多数设备都支持。
 - `AudioFormat.CHANNEL_OUT_5POINT1`, `CHANNEL_OUT_7POINT1`: 用于环绕声，需要设备硬件支持。
 
-##### audioFormat：音频格式/采样位数
+#### audioFormat：音频格式/采样位数
 
 定义每个采样点的数据精度（位数）和编码格式。位数越高，动态范围和信噪比越好。
 
@@ -48,7 +48,7 @@ AudioTrack(int streamType, int sampleRateInHz, int channelConfig, int audioForma
 - `AudioFormat.ENCODING_PCM_FLOAT`: 每个采样点用 32 位浮点数（4字节）表示。提供更高的处理精度和动态范围，适用于音频处理，但数据量更大。需要 API 21+，且并非所有设备都支持，使用前需检查。
 - `AudioFormat.ENCODING_AC3`, `ENCODING_E_AC3`: 用于压缩格式（如杜比数字），非常用。
 
-##### bufferSizeInBytes：缓冲区大小
+#### bufferSizeInBytes：缓冲区大小
 
 指定 AudioTrack 内部用于缓存音频数据的缓冲区大小。这是最关键的参数之一，直接影响音频播放的延迟和稳定性。
 
@@ -60,7 +60,7 @@ int minBufferSize = AudioTrack.getMinBufferSize(
 );
 ```
 
-##### mode：模式
+#### mode：模式
 
 控制音频数据从 Java 层传输到 native 层的方式。可选值：
 
@@ -75,7 +75,7 @@ int minBufferSize = AudioTrack.getMinBufferSize(
   - **缺点**：延迟略高于 `MODE_STATIC`。
   - **用法**：启动一个线程，循环调用 `write()`，然后 `play()`。
 
-### Frame
+## Frame
 
 音频帧包含**所有声道**在**一个采样时间点**上的数据，大小：
 
@@ -83,7 +83,7 @@ int minBufferSize = AudioTrack.getMinBufferSize(
 帧大小（字节） = 声道数 × (采样位数 / 8)
 ```
 
-### PCM
+## PCM
 
 全称是 **Pulse-Code Modulation**（脉冲编码调制）。它是一种**用数字信号表示模拟音频信号**的最基本、最常用的方法，PCM 是数字音频的“原材料”，**没有经过任何压缩算法**。因此它的文件体积很大，是几乎所有音频设备和软件都能理解和处理的“通用语言”。
 

@@ -1,15 +1,4 @@
----
-title:  Android数据存储
-date:   2015/5/15
-categories:
-- Android基础
-tags:
--   Android
----
-
-
-
-#### 1.SharedPreference
+## 1.SharedPreference
 ```java
  private static SharedPreferences sp;
     private static void init(Context context) {
@@ -36,12 +25,9 @@ tags:
 >- 弱引用（WeakReference）：一旦发现了只具有弱引用的对象，不管当前内存空间足够与否，都会回收它的内存
 >- 虚引用（PhantomReference） 虚引用主要用来跟踪对象被垃圾回收的活动。虚引用与软引用和弱引用的一个区别在于：虚引用必须和引用队列（ ReferenceQueue）联合使用。当垃圾回收器准备回收一个对象时，如果发现它还有虚引用，就会在回收对象的内存之前，把这个虚引用加入到与之关联的引用队列中。程序可以通过判断引用队列中是否已经加入了虚引用，来了解被引用的对象是否将要被垃圾回收。
 
+## 2. 文件存储
 
-<!-- more -->
-
-#### 2. 文件存储
-
-##### 2.1内部存储Internal storage:
+### 2.1内部存储Internal storage:
 >- 总是可用的
 >- 这里的文件默认只能被我们的app所访问。
 >- 当用户卸载app的时候，系统会把internal内该app相关的文件都清除干净。
@@ -79,7 +65,7 @@ public File getTempFile(Context context, String url) {
     return file;
 }
 ```
-##### 2.2外部存储external storage
+### 2.2外部存储external storage
 >- 并不总是可用的，因为用户有时会通过USB存储模式挂载外部存储器，当取下挂载的这部分后，就无法对其进行访问了。
 >- 是大家都可以访问的，因此保存在这里的文件可能被其他程序访问。
 >- 当用户卸载我们的app时，系统仅仅会删除external根目录（getExternalFilesDir()）下的相关文件。
@@ -137,9 +123,9 @@ public File getAlbumStorageDir(Context context, String albumName) {
     return file;
 }
 ```
-##### 2.3 查询剩余空间
+### 2.3 查询剩余空间
 果事先知道想要保存的文件大小，可以通过执行getFreeSpace() or getTotalSpace() 来判断是否有足够的空间来保存文件，从而避免发生IOException。那些方法提供了当前可用的空间还有存储系统的总容量。
-##### 2.4 删除文件
+### 2.4 删除文件
 ```
 myFile.delete();
 myContext.deleteFile(fileName);
@@ -149,6 +135,6 @@ myContext.deleteFile(fileName);
 所有使用getExternalFilesDir()方式保存在external storage的文件。
 然而，通常来说，我们应该手动删除所有通过 getCacheDir() 方式创建的缓存文件，以及那些不会再用到的文件。
 
-#### 3. SQLite数据库存储
-#### 4.网络存储
-#### 5.ContentProvider存储
+## 3. SQLite数据库存储
+## 4.网络存储
+## 5.ContentProvider存储

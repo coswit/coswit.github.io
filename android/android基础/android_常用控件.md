@@ -1,16 +1,8 @@
----
-title:  Android常用控件
-date:   2015/4/13
-categories:
-- Android基础
-tags:
--   Android
----
 
 
 
 
-#### 1. Notification
+## 1. Notification
 
 ```java
 Notification.Builder builder =  new Notification.Builder(context);
@@ -33,7 +25,7 @@ notificationManager.notify(1,notification);
 
 <!--- more --->
 
-#### 2.PopWindow
+## 2.PopWindow
 
 不能在activity中的oncreate方法中直接创建展示，要在生命周期完成后才能展示
 ```java
@@ -46,7 +38,7 @@ findViewById(R.id.main_page_layout).post(new Runnable() {
 ```
 
 popwindow不能跟随软键盘位置移动，会覆盖，可以使用dialog替代
-```
+```java
 setHeight(ViewGroup.LayoutParams.WRAP_CONTENT);
 setWidth(ViewGroup.LayoutParams.WRAP_CONTENT);
 showAtLocation(((Activity)context).getWindow().getDecorView(), Gravity.CENTER, 0, 0);
@@ -58,8 +50,8 @@ setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
 setBackgroundDrawable(new BitmapDrawable());
 update();
 ```
-#### 3.AlertDialog
-```
+## 3.AlertDialog
+```java
 View dialogView = getLayoutInflater().inflate(R.layout.dialog_sign_out, null);
 AlertDialog.Builder builder = new AlertDialog.Builder(this);
 mAlertDialog = builder.setView(dialogView).create();
@@ -68,7 +60,7 @@ WindowManager.LayoutParams params = mAlertDialog.getWindow().getAttributes();
 params.height=(int) UiUtil.Dp2Pixel(130,mContext);
 params.width =(int) UiUtil.Dp2Pixel(330,mContext);
 ```
-```
+```java
 WindowManager.LayoutParams params = alertDialog.getWindow().getAttributes();
 alertDialog.show();
 WindowManager manager = ((Activity) context).getWindowManager();
@@ -98,10 +90,10 @@ setCancelable(false);调用这个方法时，按对话框以外的地方不起�
 ```
 
 设置背景透明
-```
+```java
 alertDialog.getWindow().setBackgroundDrawable(new ColorDrawable(ContextCompat.getColor(context,R.color.dialog_translate)));
 ```
-##### dialogFrament中使用时：
+### dialogFrament中使用时：
 ```java
  @Nullable
     @Override
@@ -147,14 +139,14 @@ alertDialog.getWindow().setBackgroundDrawable(new ColorDrawable(ContextCompat.ge
     </style>
 ```
 设置style
-```
+```java
 public static RecommendDialog newInstance(){
         RecommendDialog dialog = new RecommendDialog();
         dialog.setStyle(STYLE_NORMAL, R.style.FullScreenDialogStyle);
         return dialog;
     }
 ```
-```
+```java
 Window window = dialog.getWindow();
 int width = ViewGroup.LayoutParams.MATCH_PARENT;
 int height = ViewGroup.LayoutParams.MATCH_PARENT;
@@ -175,27 +167,28 @@ window.setLayout(width,height);
 //去掉遮罩层
  window.setDimAmount(0f);
 ```
-#### 4.EditText
-##### 焦点获取
+## 4.EditText
+### 焦点获取
 一般控件中的获取焦点，自动弹出软键盘，默认就是，或者添加：
-```
+```xml
 android:focusable="true"
 android:focusableInTouchMode="true"
 ```
 取消默认，不获取：
 在父控件中添加
-```java
+
+```xml
 android:fitsSystemWindows="true"
 android:focusableInTouchMode="true"
 android:focusable="true"
 ```
-```
+```xml
 <EditText...>
     <requestFocus />
 </EditText>
 ```
 在dialog 中，弹出软键盘
-```
+```java
 alertDialog.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE);
 ```
 弹出软键盘的设置：
@@ -205,14 +198,14 @@ InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_MET
 imm.showSoftInput(yourEditText, InputMethodManager.SHOW_IMPLICIT);
 ```
 在activity中弹出软键盘，在AndroidManifest中的相应activity下添加：
-```
+```xml
 android:windowSoftInputMode="adjustResize"
 
 //强制弹出
 android:windowSoftInputMode="stateAlwaysVisible"
 ```
 隐藏软键盘：
-```
+```java
 InputMethodManager imm = (InputMethodManager) activity.getSystemService(Activity.INPUT_METHOD_SERVICE);
     //Find the currently focused view, so we can grab the correct window token from it.
     View view = activity.getCurrentFocus();
@@ -220,37 +213,37 @@ InputMethodManager imm = (InputMethodManager) activity.getSystemService(Activity
     if (view == null) {
         view = new View(activity);
     }
-    imm.hideSoftInputFromWindow(view.getWindowToken(), 0);
+imm.hideSoftInputFromWindow(view.getWindowToken(), 0);
 ```
-##### 设置输入字符长度
-```
+### 设置输入字符长度
+```java
 EditText editText = new EditText(context);
 editText.setBackground(context.getDrawable(R.drawable.verification_edit_bg_focus));
 InputFilter[] array = new InputFilter[1];
 array[0] = new InputFilter.LengthFilter(1);
 editText.setFilters(array);
 ```
-##### 背景修改
+### 背景修改
 去下划线：
-```
+```xml
  android:background="@null" 再加自己的drawableBottom
 ```
 禁止换行输入
-```
+```xml
 android:inputType="text"
 android:maxLines="1"
 ```
-#### 5. window
+## 5. window
 获取windowManager
-```
+```java
 WindowManager windowManager = (WindowManager) context.getSystemService(Context.WINDOW_SERVICE);
 ```
 获取window，通过获取activity相关的context获取：
-```
+```java
  Activity activity = (Activity) getContext();
 Window window = activity.getWindow();
 ```
-#### 6.webview
+## 6.webview
 ```java
 /*总共有三种类型：
 NORMAL：正常显示，没有渲染变化。
@@ -276,5 +269,4 @@ webView.setInitialScale(35);//设置缩放比例
 webView.setScrollBarStyle(View.SCROLLBARS_OUTSIDE_OVERLAY);//设置滚动条隐藏
 webView.getSettings().setGeolocationEnabled(true);//启用地理定位
 webView.getSettings().setRenderPriority(RenderPriority.HIGH);//设置渲染优先级
-
 ```

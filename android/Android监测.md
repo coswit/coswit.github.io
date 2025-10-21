@@ -1,29 +1,18 @@
----
-title:  Android APP监测
-date:   2021/3/4
-
-categories:
-- Android
-tags:
--  Android
-
----
 
 
+## 崩溃监测
 
-### 崩溃监测
+### Java崩溃
 
-#### Java崩溃
-
-##### CheckedException 
+#### CheckedException 
 
 编译时异常，在编译阶段就可以检测到异常
 
-##### UnCheckedException
+#### UnCheckedException
 
 RuntimeException及其子类的异常，在程序运行阶段的异常，导致程序出现崩溃。
 
-```sh
+```bash
 --------- beginning of crash
     AndroidRuntime: FATAL EXCEPTION: main
     Process: com.android.developer.crashsample, PID: 3686
@@ -40,10 +29,6 @@ RuntimeException及其子类的异常，在程序运行阶段的异常，导致�
     at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:746)
     --------- beginning of system
 ```
-
-
-
-<!--- more --->
 
 堆栈轨迹包含两条重要的信息：
 
@@ -62,7 +47,7 @@ RuntimeException及其子类的异常，在程序运行阶段的异常，导致�
 
 
 
-##### 异常采集
+#### 异常采集
 
 ```java
 public class CrashHandler implements UncaughtExceptionHandler {
@@ -220,23 +205,19 @@ public class MyApplication extends Application{
 
 崩溃时会输出到logcat
 
+## ANR
 
-
-### ANR
-
-#### 概述
+### 概述
 
 Android 应用的界面线程处于阻塞状态的时间过长，会触发“应用无响应”(ANR Application Not Responding) 错误。
 
-##### 触发情况：
+#### 触发情况：
 
 - Activity位于前台，应用在 5 秒钟内未响应输入事件（Input Event）
 - Service,前台进程20s，后台进程200s
 - Broadcast，前台10s，后台60s
 
-
-
-#####  诊断 ANR
+####  诊断 ANR
 
 诊断 ANR 时需要考虑以下几种常见模式：
 
@@ -246,11 +227,7 @@ Android 应用的界面线程处于阻塞状态的时间过长，会触发“应
 4. 主线程处于阻塞状态，为发生在另一个线程上的长操作等待同步的块。
 5. 主线程在进程中或通过 binder 调用与另一个线程之间发生死锁。主线程不只是在等待长操作执行完毕，而且处于死锁状态。
 
-
-
-##### TraceView
-
-
+#### TraceView
 
 TraceView 是 Android SDK 中内置的一个工具，它可以加载 **trace** 文件，用图形的形式展示**代码的执行时间、次数及调用栈**，便于我们分析
 
@@ -269,15 +246,12 @@ TraceView 是 Android SDK 中内置的一个工具，它可以加载 **trace** �
 
 3. DDMS 即 Dalvik Debug Monitor Server  生成
 
-   
-
-   
 
 [官网参考](https://developer.android.com/studio/profile/traceview?hl=zh-cn)
 
-#### 监测方案
+### 监测方案
 
-#####  [BlockCanary](https://github.com/markzhai/AndroidPerformanceMonitor)
+####  [BlockCanary](https://github.com/markzhai/AndroidPerformanceMonitor)
 
 [相关原理](http://blog.zhaiyifan.cn/2016/01/16/BlockCanaryTransparentPerformanceMonitor/)
 
@@ -332,7 +306,7 @@ Looper.getMainLooper().setMessageLogging(mainLooperPrinter);
 
 
 
-#####  ANR-WatchDog
+####  ANR-WatchDog
 
 ANR-WatchDog 是参考 Android WatchDog 机制（com.android.server.WatchDog.java）起个单独线程向主线程发送一个变量 +1 操作，自我休眠自定义 ANR 的阈值，休眠过后判断变量是否 +1 完成，如果未完成则告警。
 
@@ -347,13 +321,11 @@ ANR-WatchDog 是参考 Android WatchDog 机制（com.android.server.WatchDog.jav
 
 #### SafeLooper
 
+## 内存泄漏
 
+### 常见的内存泄漏
 
-### 内存泄漏
-
-#### 常见的内存泄漏
-
-##### 单例造成
+#### 单例造成
 
 ```java
 private static ScrollHelper mInstance;    
@@ -405,7 +377,7 @@ private static ScrollHelper mInstance;
  }
 ```
 
-##### 匿名内部类
+#### 匿名内部类
 
 在Java中，非静态内部类 和 匿名类 都会潜在的引用它们所属的外部类，但是，静态内部类却不会。如果这个非静态内部类实例做了一些耗时的操作，就会造成外围对象不会被回收，从而导致内存泄漏。
 
@@ -435,8 +407,6 @@ public class LeakAct extends Activity {
  }
 ```
 
-
-
 解决方法：
 
 - 将内部类变成静态内部类;
@@ -444,8 +414,6 @@ public class LeakAct extends Activity {
 - 如果有强引用Activity中的属性，则将该属性的引用方式改为弱引用;
 
 - 在业务允许的情况下，当Activity执行onDestory时，结束这些耗时任务;
-
-
 
 ```java
 public class LeakAct extends Activity {  
@@ -473,9 +441,7 @@ public class LeakAct extends Activity {
  }
 ```
 
-
-
-##### Activity Context 的不正确使用
+#### Activity Context 的不正确使用
 
 ```java
  private static Drawable sBackground;
@@ -514,9 +480,7 @@ private static Drawable sBackground;
 
 ```
 
-
-
-##### Handler引起的内存泄漏
+#### Handler引起的内存泄漏
 
 当Handler中有延迟的的任务或是等待执行的任务队列过长，由于消息持有对Handler的引用，而Handler又持有对其外部类的潜在引用，这条引用关系会一直保持到消息得到处理，而导致了Activity无法被垃圾回收器回收，而导致了内存泄露。
 
@@ -539,7 +503,7 @@ private static Drawable sBackground;
 
 
 
-##### 注册监听器的泄漏
+#### 注册监听器的泄漏
 
 系统服务可以通过Context.getSystemService 获取，它们负责执行某些后台任务，或者为硬件访问提供接口。如果Context 对象想要在服务内部的事件发生时被通知，那就需要把自己注册到服务的监听器中。然而，这会让服务持有Activity 的引用，如果在Activity onDestory时没有释放掉引用就会内存泄漏。
 
@@ -556,13 +520,9 @@ InputMethodManager imm = (InputMethodManager) context.getApplicationContext().ge
 - 使用ApplicationContext代替ActivityContext
 - 在Activity执行onDestory时，调用反注册;
 
-
-
 ```java
 mSensorManager = (SensorManager) getApplicationContext().getSystemService(Context.SENSOR_SERVICE);
 ```
-
-
 
 ```java
 protected void onDetachedFromWindow() {        
@@ -579,13 +539,9 @@ protected void onDetachedFromWindow() {
  }
 ```
 
-
-
-##### Cursor，Stream没有close，View没有recyle
+#### Cursor，Stream没有close，View没有recyle
 
 资源性对象比如(Cursor，File文件等)往往都用了一些缓冲，我们在不使用的时候，应该及时关闭它们，以便它们的缓冲及时回收内存。它们的缓冲不仅存在于 java虚拟机内，还存在于java虚拟机外。如果我们仅仅是把它的引用设置为null,而不关闭它们，往往会造成内存泄漏。因为有些资源性对象，比如SQLiteCursor(在析构函数finalize(),如果我们没有关闭它，它自己会调close()关闭)，如果我们没有关闭它，系统在回收它时也会关闭它，但是这样的效率太低了。因此对于资源性对象在不使用的时候，应该调用它的close()函数，将其关闭掉，然后才置为null. 在我们的程序退出时一定要确保我们的资源性对象已经关闭。
-
-
 
 解决方法：调用onRecycled()
 
@@ -620,17 +576,13 @@ public void reset() {
 
 
 
-##### WebView造成的泄露
+#### WebView造成的泄露
 
 当我们不要使用WebView对象时，应该调用它的destory()函数来销毁它，并释放其占用的内存，否则其占用的内存长期也不能被回收，从而造成内存泄露。
 
 为webView开启另外一个进程，通过AIDL与主线程进行通信，WebView所在的进程可以根据业务的需要选择合适的时机进行销毁，从而达到内存的完整释放。
 
-
-
-
-
-#### 内存泄漏检测
+### 内存泄漏检测
 
 ##### LeakCanary 
 
@@ -690,12 +642,6 @@ void ensureGone(KeyedWeakReference reference, long watchStartNanoTime) {
     }
 }
 ```
-
-
-
-
-
-
 
 参考：
 

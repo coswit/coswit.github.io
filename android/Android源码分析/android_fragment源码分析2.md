@@ -1,15 +1,3 @@
----
-title:  fragment源码分析(二)
-date:   2017/5/6
-categories:
-- Android
-- Android源码分析
-tags:
--  Android
--  fragment
-
----
-
 
 
 
@@ -31,7 +19,7 @@ public class Fragment{
 }
 ```
 
-<!--- more --->
+
 
 ```java
 public static Fragment instantiate(Context context, String fname) {

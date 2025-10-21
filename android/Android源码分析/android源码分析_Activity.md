@@ -1,13 +1,4 @@
----
-title:  Activity源码分析
-date:   2018/10/4
-categories:
-- Android
-- Android源码分析
-tags:
--  Android
 
----
 
 
 ```mermaid

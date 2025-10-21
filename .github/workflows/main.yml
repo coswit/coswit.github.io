@@ -13,13 +13,20 @@ jobs:
   deploy_to_pages:
     runs-on: ubuntu-latest
     name: Deploy to GitHub Pages
-    # 关键：此任务必须等待生成侧边栏的任务成功完成后才会执行
-    needs: add_sidebar_job
+    needs: add_sidebar_job # 确保在侧边栏生成完成后执行
+    permissions: # 关键配置：为此任务设置权限
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      # 如果您的站点需要构建步骤（例如使用Vite、Hugo等），请在此处添加
+      # 对于 Docsify 这类无需构建步骤的SSG，可以跳过构建，直接上传源码。
+      # 如果你有构建步骤（例如使用Vite、Webpack等），请在此处添加。
       # - name: Build
       #   run: |
       #     npm install
@@ -31,10 +38,10 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          # 上传整个仓库，因为 docsify 是运行时渲染
-          # 如果你有构建步骤，请指定构建输出目录（例如 'dist'）
+          # 对于无需构建的Docsify项目，上传整个仓库。
+          # 如果你有构建步骤，请将 path 指向构建输出目录（例如 'dist'）
           path: '.'
-          
+
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4

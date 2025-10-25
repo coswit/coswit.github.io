@@ -4,10 +4,12 @@
 
 status
 
-```shell
-  #简洁状态信息
-  $ git status -s 
-  $ git status --short 
+```bash
+  # 简洁状态信息
+  git status -s 
+  git status --short 
+  # --untracked-files
+  git status -u
 ```
 
 diff

@@ -42,7 +42,6 @@
     - [shell系列二.md](./Linux基础/shell系列二.md)
     - [shell脚本示例.md](./Linux基础/shell脚本示例.md)
     - [ssh.md](./Linux基础/ssh.md)
-    - [vim.md](./Linux基础/vim.md)
     - [正则表达式.md](./Linux基础/正则表达式.md)
   - OperatorSystem
     - [1000LinesOs.md](./OperatorSystem/1000LinesOs.md)
@@ -76,6 +75,8 @@
     - [nodejs.md](./tools/nodejs.md)
     - [tmux常用命令.md](./tools/tmux常用命令.md)
     - [环境配置.md](./tools/环境配置.md)
+  - vim
+    - [vim.md](./vim/vim.md)
   - 博客相关
     - [docsify使用.md](./博客相关/docsify使用.md)
     - [hexo搭建博客.md](./博客相关/hexo搭建博客.md)

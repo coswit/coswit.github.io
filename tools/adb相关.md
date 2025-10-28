@@ -1,29 +1,42 @@
 
 
-
 ## adb
 
-```bash
-$ adb help
-$ adb root
+Android Debug Bridge：启动`adb`时，会检查是否已在运行，没有，则会启动server进程，与本地TCP端口5037绑定：
 
-# 查看包名
-$ adb shell pm list packages | egrep "magic"
+```bash
+# 启动
+adb start-server 
+# kill
+adb kill-server
+```
+devices
+
+```shell
+adb usb
+adb devices   //show devices attached
+adb devices -l # 包含product/mode
+adb connect ip_address_of_device
+
+adb -d #连到usb设备上
+adb -e #连到模拟器上
+```
+
+```bash
+adb help
+adb root
 
 #指定设备执行command
-$ adb -s <deviceName> <command> 
+adb -s <deviceName> <command> 
 
-$ adb push [source] [destination]   
-$ adb pull [device file] [local] 
+adb push [source] [destination]   
+adb pull [device file] [local] 
 
 # 显示点击指针，关闭为0
 adb shell settings put system show_touches 1
 
-# Adb Server
-$ adb kill-server
-$ adb start-server 
-
-$ adb shell input text 'content'
+# 输入
+adb shell input text 'content'
 ```
 
 ```bash
@@ -34,21 +47,21 @@ run-as <package> cat <file>
 run-as com.example.app cat /data/data/com.example.app/databases/app.db
 ```
 
-### am(Activity Manager)
+### am
 
 ```shell
 # -n指定组件名启动
 adb shell am start -n com.wt.emode/.MainActivity
 adb shell am start -n com.hihonor.lens/.settings.LensSettingsActivity
 
-$ adb shell am start -a android.intent.action.VIEW
-$ adb shell am broadcast -a 'my_action'
+adb shell am start -a android.intent.action.VIEW
+adb shell am broadcast -a 'my_action'
 
 # Make a call
-$ adb shell am start -a android.intent.action.CALL -d tel:+972527300294 
+adb shell am start -a android.intent.action.CALL -d tel:+972527300294 
 
 #Open send sms screen with phone number and the message:
-$ adb shell am start -a android.intent.action.SENDTO -d sms:+972527300294   --es  sms_body "Test --ez exit_on_sent false
+adb shell am start -a android.intent.action.SENDTO -d sms:+972527300294   --es  sms_body "Test --ez exit_on_sent false
 ```
 
 ### 截屏、录屏
@@ -66,39 +79,49 @@ $ adb shell screenrecord /sdcard/record.mp4
 
 ### pm
 
-```shell
+list
+
+```bash
 # 包名查询
-$ adb shell pm list packages | grep name
+adb shell pm list packages | grep name
+
+pm list packages -r # list package name + path to apks
+pm list packages -3 (list third party package names)
+pm list packages -s (list only system packages)
+pm list packages -u (list package names + uninstalled
+
 # 按包名查找安装位置
-$ adb shell pm path com.mypkg
+pm path com.mypkg
+# user
+pm list users
+# 功能
+list features
+```
 
-# Reset permissions
-$ adb shell pm reset-permissions -p your.app.package 
-# Grant a permission to an app. 
-$ adb shell pm grant [packageName] [ Permission]
-# Revoke a permission from an app.
-$ adb shell pm revoke [packageName] [ Permission] 
+Permission
 
-adb shell list packages (list package names)
-adb shell list packages -r (list package name + path to apks)
-adb shell list packages -3 (list third party package names)
-adb shell list packages -s (list only system packages)
-adb shell list packages -u (list package names + uninstalled
+```shell
+# 授权 
+pm grant [packageName] [ Permission]
+# 撤消应用的指定权限
+pm revoke [packageName] [ Permission] 
+# 重置
+pm reset-permissions -p your.app.package 
+```
+
+```bash
+# 清空缓存
+pm clear pkgName
+
+# 删除数据，cmd 是一个特殊的 Shell 命令入口，用于访问 Android 系统提供的 隐藏 API 或系统服务
+adb shell cmd package clear pkgName
+# 或者直接删除目录
+adb shell rm -rf /data/data/pkgname
 ```
 
 参考：[Google官方参考文档](https://developer.android.com/tools/adb?hl=zh-cn#pm)
 
-### devices
 
-```shell
-$ adb usb
-$ adb devices   //show devices attached
-$ adb devices -l #包含product/mode
-$ adb connect ip_address_of_device
-
-$ adb -d #连到usb设备上
-$ adb -e #连到模拟器上
-```
 
 ### logcat
 

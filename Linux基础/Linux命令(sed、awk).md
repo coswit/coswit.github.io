@@ -1,6 +1,6 @@
 
 
-### sed
+## sed
 
 stream editor，不同于交互式文本编辑（如vim），流编辑器会在处理数据前会基于预先提供的规则来编辑数据流。
 
@@ -10,11 +10,11 @@ stream editor，不同于交互式文本编辑（如vim），流编辑器会在�
 |  -f file  | 指定文件                                 |
 |    -n     | 使用print完成输出                        |
 
-#### 行命令
+### 行命令
 
 单行next命令(n)会使sed移动下一行文本到工作空间，多行next命令(N)会将下一文本行添加到**模式空间(pattern space)**已有文本后。
 
-#### 空间命令
+### 空间命令
 
 **保持空间(hold space)**，用来临时保存一些行。
 
@@ -42,7 +42,7 @@ This is first line.  # g将保持空间内容放回到模式空间，p打印
 $ sed -n '{1!G; h; $p}' data1.txt
 ```
 
-#### 替换s
+### 替换s
 
 格式：s/pattern/replacement/flags
 
@@ -96,7 +96,7 @@ User's group meeting will be held.
 All Desktop Users should attend.
 ```
 
-#### 删除d
+### 删除d
 
 ```shell
 # 删除1-2行
@@ -124,7 +124,7 @@ $ sed 'N; /System\nAdministrator/d' data2.txt
 $ sed 'N; /System\nAdministrator/d' data2.txt
 ```
 
-#### 插入i、增加a、修改c
+### 插入i、增加a、修改c
 
 不会修改原文件，格式：
 
@@ -148,7 +148,7 @@ $ sed 'a\this is new line' data.txt
 $ sed '3c\this is new line' data.txt 
 ```
 
-#### 转换y
+### 转换y
 
 transform格式：
 
@@ -161,7 +161,7 @@ sed '[address]y/inchars/outchars'
 $ sed 'y/12/89/' data.txt
 ```
 
-#### 处理文件w/r
+### 处理文件w/r
 
 格式：
 
@@ -180,7 +180,7 @@ $ sed '1w data2.txt' data.txt
 $ sed '2r data2.txt' data.txt
 ```
 
-#### 打印p
+### 打印p
 
 ```shell
 # 多行打印p和P，与删除相同
@@ -188,13 +188,13 @@ $  sed -n 'N; /System\nAdministrator/p' data2.txt
 $  sed -n 'N; /System\nAdministrator/P' data2.txt
 ```
 
-#### 排除命令!
+### 排除命令!
 
 ```Shell
 sed -n '/header/!p' data1.txt
 ```
 
-#### 分支b
+### 分支b
 
 格式：`[address]b [label]`
 
@@ -210,7 +210,7 @@ $ sed '{2,3b; s/line/num/; s/\./?/}' data1.txt
 $ echo "This, is, a, test, to, remove, commas." | sed -n '{:start s/,//1p; /,/b start}'
 ```
 
-#### 测试t
+### 测试t
 
 格式：`[address]t [label]`
 
@@ -235,7 +235,7 @@ No match on the second line.
 No match on the end line.
 ```
 
-#### 模式替换
+### 模式替换
 
 `&`用来代表替换命令中的匹配的模式
 
@@ -257,7 +257,7 @@ $ echo "test1234567" | sed '{:start s/\(.*[0-9]\)\([0-9]\{3\}\)/\1,\2/; t start}
 test1,234,567
 ```
 
-### awk
+## awk
 
 **gawk**是awk的GNU版本，基本格式：
 
@@ -276,7 +276,7 @@ $ gawk options program file
 |    -mr N     | 指定数据中的最大数据行数                                  |
 |  -W keyword  | 指定兼容模式或警告等级                                    |
 
-#### 变量
+### 变量
 
 |    变量     | 描述           |
 | :---------: | -------------- |

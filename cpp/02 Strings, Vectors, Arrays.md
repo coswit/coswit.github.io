@@ -1,4 +1,4 @@
-### 1. using声明
+## 1. using声明
 头文件中不应该包含声明，格式：
 ```cpp
 using namespace::name;
@@ -15,7 +15,7 @@ int main() {
     return 0;
 }
 ```
-### 2. string标准库
+## 2. string标准库
 
 导入：
 
@@ -23,7 +23,7 @@ int main() {
 #include <string> 
 using std::string;
 ```
-#### 2.1 定义及初始化
+### 2.1 定义及初始化
 用=初始化一个变量，执行的是**复制初始化(copy initialization)**，编译器把=右侧的值复制到左侧新建的对象中。不使用等号，则执行**直接初始化(direct initialization)**。
 
 ```c
@@ -39,7 +39,7 @@ string temp(10, 'c'); // temp is cccccccccc
 string s8 = temp; // copy temp into s8
 ```
 
-#### 2.2 字符串操作
+### 2.2 字符串操作
 
 | Operations     |                                                              |
 | -------------- | ------------------------------------------------------------ |
@@ -141,7 +141,7 @@ string s6 = s1 + ", " + "world"; // ok: each + has a string operand
 string s7 = "hello" + ", " + s2; // error: can't add string literals
 ```
 
-#### 2.3  string中的字符处理
+### 2.3  string中的字符处理
 
 标准库cctype头文件中的函数含义：
 
@@ -209,7 +209,7 @@ for (decltype(s.size()) index = 0;
     s[index] = toupper(s[index]); // capitalize the current character
     //SOME string
 ```
-### 3. 标准vector 
+## 3. 标准vector 
 
 导入：
 
@@ -221,7 +221,7 @@ using std::vector;
 vector是模板(template)，而非类型(type)，不存在包含引用的vector。
 
 
-#### 3.1. 初始化
+### 3.1. 初始化
 ```c
 vector<string> svec; //默认初始化，不包含任何元素
 vector<int> ivec2(ivec);    //copy element ivec into ivec2
@@ -259,7 +259,7 @@ vector<string> v6("hi"); // error: can't construct a vector from a string litera
 vector<string> v7{10}; // 有10个默认初始化的元素，提供的值不能用来列表初始化
 vector<string> v8{10, "hi"}; // 10个值为hi的元素
 ```
-#### 3.2. vector支持的基本操作
+### 3.2. vector支持的基本操作
 
 | 表3.5:vector支持的操作 |                                                              |
 | ---------------------- | ------------------------------------------------------------ |
@@ -307,7 +307,7 @@ while (cin >> grade) { // read the grades
 }
 ```
 
-### 4.迭代器
+## 4.迭代器
 | 运算符         | 含义                                                         |
 | -------------- | ------------------------------------------------------------ |
 | *iter          | 返回迭代器iter所指元素的引用                                 |
@@ -316,7 +316,7 @@ while (cin >> grade) { // read the grades
 | --iter         | 令iter指示容器中的上一个元素                                 |
 | iterl==  iter2 | 判断两个迭代器是否相等(不相等)，如果两个迭代器指示的是同一个元素或者它们是同一个容器的尾后迭代器，则相等；反之，不相等 |
 | iterl!= iter2  |                                                              |
-#### 4.1. 使用
+### 4.1. 使用
 
 ```c
 string s("some string");
@@ -373,7 +373,7 @@ for (auto it = text.cbegin(); it != text.cend() && !it->empty(); ++it)
     cout << *it << endl;
 ```
 
-#### 4.2. 迭代器运算
+### 4.2. 迭代器运算
 
 | 运算            | 含义                                                         |
 | --------------- | ------------------------------------------------------------ |
@@ -406,9 +406,9 @@ while (mid != end && *mid != sought) {
 }
 ```
 
-### 5. 数组
+## 5. 数组
 
-#### 5.1. 定义及初始化
+### 5.1. 定义及初始化
 
 数组是复合类型，数组中的个数也是数组类型的一部分，大小固定，编译时的维度应该是已知的，维度尽量是一个常量表达式。
 
@@ -460,7 +460,7 @@ int arr[10];
 int (*Parray)[10] = &arr; //  Parray points to an array of ten ints
 int (&arrRef)[10] = arr;  //  arrRef refers to an array of ten ints
 ```
-#### 5.2 数组元素的访问
+### 5.2 数组元素的访问
 
 ```cpp
 // count the number of grades by clusters of ten: 0--9, 10--19, ... 90--99, 100
@@ -476,7 +476,7 @@ for (auto i : scores)      // for each counter in scores
 cout << endl;
 ```
 
-#### 5.3. 指针和数组
+### 5.3. 指针和数组
 
 一般使用取址符获取指向对象的指针，对数组索引获取到指定位置的元素，对数组的元素使用取址符得到指向改元素的指针。
 
@@ -586,7 +586,7 @@ int j = p[1];     // p[1]等价于*(p + 1),或者ia[3]
 int k = p[-2];    // p[-2] 表示ia[0]
 ```
 
-#### 5.4. C风格字符
+### 5.4. C风格字符
 
 | C风格字符函数  | 函数                                                |
 | -------------- | --------------------------------------------------- |
@@ -631,7 +631,7 @@ strcat(largeStr, ca2);     // concatenates ca2 onto largeStr
 
 如果是C风格字符相加变成指针相加，是非法的。
 
-#### 5.5. 与C风格字符串兼容
+### 5.5. 与C风格字符串兼容
 
 ```c
 
@@ -654,7 +654,7 @@ vector<int> ivec(begin(int_arr), end(int_arr));
 vector<int> subVec(int_arr + 1, int_arr + 4);
 ```
 
-### 6. 多维数组
+## 6. 多维数组
 
 ```cpp
 int ia[3][4]; // array of size 3; each element is an array of ints of size 4

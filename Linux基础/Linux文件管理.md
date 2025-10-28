@@ -1,12 +1,6 @@
----
-title: Linux文件管理
----
+## 文件属性
 
-
-
-### 文件属性
-
-<img src="./images/linux文件权限.png" alt="img" style="zoom:60%;" />
+<img src="./Linux基础/images/linux文件权限.png" alt="img" style="zoom:60%;" />
 
 - 第一个字符代表这个文件是“目录、文件或链接文件等等”:
 
@@ -34,9 +28,9 @@ rwx = 4+2+1 = 7
 --- = 0+0+0 = 0
 ```
 
-###  目录配置
+##  目录配置
 
-<img src="./images/linux-catalog.png" alt="image" style="zoom:40%;" />
+<img src="./Linux基础/images/linux-catalog.png" alt="image" style="zoom:40%;" />
 
 Filesystem Hierarchy Standard (FHS):FSH依据文件系统使用的频繁与否与是否允许使用者随意更动， 而将目录定义成为四种交互作用的形态
 
@@ -47,9 +41,9 @@ Filesystem Hierarchy Standard (FHS):FSH依据文件系统使用的频繁与否�
 | 可变动的(variable) | /var/mail (使用者邮件信箱) | /var/run (程序相关)     |
 |                    | /var/spool/news (新闻组)   | /var/lock (程序相关)    |
 
-### 编辑
+## 编辑
 
-##### mkdir
+### mkdir
 
 创建一个新的目录
 
@@ -61,7 +55,7 @@ $ mkdir -p test1/test2/test3/test4
 $ mkdir -m 711 test2 
 ```
 
-##### touch 
+### touch 
 
  修改文件时间或新建
 
@@ -84,7 +78,7 @@ $ touch -d "2 days ago" bashrc
 $ touch -t 0709150202 bashrc
 ```
 
-##### rmdir
+### rmdir
 
 删除一个空的目录
 
@@ -93,7 +87,7 @@ $ touch -t 0709150202 bashrc
 rmdir -p test1/test2/test3/test4
 ```
 
-##### ls 
+### ls 
 
 |     命令      | 解释                                                         |
 | :-----------: | :----------------------------------------------------------- |
@@ -118,7 +112,7 @@ $ ls -alF --color=never  ~
 $ ls -al --full-time  ~
 ```
 
-##### cp 复制  
+### cp 复制  
 
 cp 源(source)  目标(destination)
 
@@ -148,7 +142,7 @@ $ cp -d bashrc_slink bashrc_slink_2
 $ cp ~/.bashrc ~/.bash_history /tmp
 ```
 
-##### rm 移除
+### rm 移除
 
 ```shell 
 #互动模式
@@ -164,7 +158,7 @@ $ rm -r /tmp/etc
 $ \rm -r /tmp/etc
 ```
 
-##### mv
+### mv
 
 源(source)  目标(destination)
 
@@ -172,9 +166,9 @@ $ \rm -r /tmp/etc
 > -i  ：交互模式
 > -u  ：update，文件有更新才移动
 
-### 查询
+## 查询
 
-##### cat  
+### cat  
 
 由第一行开始显示文件内容
 
@@ -190,11 +184,11 @@ $ cat -n /etc/issue
 $ cat -A /etc/xinetd.conf
 ```
 
-##### tac 
+### tac 
 
  从最后一行开始显示， tac 是 cat 的倒写
 
-##### more 
+### more 
 
 一页一页的显示文件内容
 
@@ -207,11 +201,11 @@ q ：退出
 b 或 [ctrl]-b ：回翻页
 ```
 
-##### less 
+### less 
 
 与 more 类似，但是比 more 更好的是，他可以往前翻页！
 
-##### head 
+### head 
 
 只看头几行
 
@@ -220,24 +214,24 @@ b 或 [ctrl]-b ：回翻页
 $ head -n 20 /etc/man.config
 ```
 
-##### tail 
+### tail 
 
 ```shell
 # 默认最后10行 -n 指定最后几行； -n +k 从k行开始输出
 adb devices | tail -n +2
 ```
 
-##### od   
+### od   
 
 以二进位的方式读取文件内容，非存文本文件
 
-##### file
+### file
 
 查看文件类型
 
 ### 搜索
 
-#### whereis (寻找特定文件)
+### whereis (寻找特定文件)
 
 ```shell
 -b    :只找 binary 格式的文件
@@ -246,7 +240,7 @@ adb devices | tail -n +2
 -u    :搜寻不在上述三个项目当中的其他特殊文件
 ```
 
-#### locate
+### locate
 
 ```shell
 -i  ：忽略大小写的差异；
@@ -256,9 +250,9 @@ adb devices | tail -n +2
 $  locate passwd
 ```
 
-### 排序
+## 排序
 
-#### sort
+### sort
 
 ```shell
 #按照数字顺序排序
@@ -271,16 +265,16 @@ $ sort -m sorted1 sorted2
 $ sort file1.txt file2.txt | uniq
 ```
 
-### 字符串替换tr
+## 字符串替换tr
 
 ```shell
 $ echo "HELLO WHO IS THIS" | tr 'A-Z' 'a-z' 
 hello who is this
 ```
 
-### 磁盘管理
+## 磁盘管理
 
-#### mount/umount
+### mount/umount
 
 磁盘挂载，命令格式：
 
@@ -298,7 +292,7 @@ mount -t vfat /dev/sdb1 /media/disk
 umount /mnt/d
 ```
 
-#### df
+### df
 
 列出文件系统的整体磁盘使用量(report file system disk space usage)
 
@@ -313,7 +307,7 @@ Filesystem      Size  Used Avail Use% Mounted on
 /dev/user        40G  2.9G   35G   8% /
 ```
 
-#### du
+### du
 
 显示特定磁盘的使用情况(estimate file space usage)
 
@@ -329,9 +323,9 @@ $ du -sh * .* | sort -rh
 $ du -h --max-depth=1 | sort
 ```
 
-### 文件压缩与解压
+## 文件压缩与解压
 
-#### gz文件
+### gz文件
 
 ```shell
 #解压后会将原gz文件删除, decompress
@@ -349,7 +343,7 @@ $ gzip -dk file.gz
 $ gunzip -k file.gz
 ```
 
-#### tar文件
+### tar文件
 
 tar命令只归档，不压缩。起选项支持压缩
 

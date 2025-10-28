@@ -1,9 +1,4 @@
----
-
-title: Linux
----
-
-### 账号与群组
+## 账号与群组
 
 账号与身份使用者记录在`/etc/passwd`文件内，密码则是记录在`/etc/shadow`，组名都纪录在`/etc/group`。
 
@@ -35,7 +30,7 @@ zhengjing:$6$:19667:0:99999:7:::
 2. 核对口令表，入 `/etc/shadow` 里面找出对应的账号与 UID，然后核对一下你刚刚输入的口令与里面的口令是否相符
 3. 一切相符则进入shell管控
 
-### 文件权限
+## 文件权限
 
 `chgrp`:改变文件所属群组，-R : 递归(recursive)变更
 
@@ -69,7 +64,7 @@ $ chmod  a+w  file
 $ chmod  o+r file
 ```
 
-### 默认权限
+## 默认权限
 
 umask ：显示创建文件时的默认权限。第一位表示粘着位(sticky bit)，后面3位表示文件或目录对应的八进制位。umask的值是指**”默认值需要减掉的权限“**。
 
@@ -104,7 +99,7 @@ u=rwx,g=rx,o=rx
 $ umask 002
 ```
 
-### 隐藏权限
+## 隐藏权限
 
 chattr:设置文件的隐藏数学
 
@@ -129,7 +124,7 @@ $ lsattr -a
 ----i--------e-- ./attrtest
 ```
 
-### 文件特殊权限
+## 文件特殊权限
 
 ```shell
 $ ls -l /usr/bin/passwd
@@ -171,9 +166,9 @@ $ ls -l /usr/bin/passwd
   -rwsr-xr-x 1 root root 0 Sep 29 03:06 test
   ```
 
-### 账号管理
+## 账号管理
 
-#### 账号添加
+### 账号添加
 
 ```shell
 -s 指定shell，默认/bin/bash
@@ -189,14 +184,14 @@ $ useradd username
 - 在 /etc/group 里面加入一个与账号名称一模一样的组名；
 - 在 /home 底下创建一个与账号同名的目录作为用户家目录，且权限为 700
 
-#### 删除
+### 删除
 
 ```shell
  #-r 连同home目录一并删除
  $ userdel -r username
 ```
 
-#### 修改
+### 修改
 
 - passwd
 
@@ -229,7 +224,7 @@ $ id usrname
 uid=1001(usrname) gid=1001(usrname) groups=1001(usrname)
 ```
 
-#### 身份切换
+### 身份切换
 
 - su：switch user
 

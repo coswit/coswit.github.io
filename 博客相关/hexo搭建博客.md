@@ -1,7 +1,4 @@
-
-![img](./images/hexo.png)
-
-
+<img src="./博客相关/images/hexo.png" alt="img" style="zoom:100%;" />
 
 ### 本地hexo的安装
 

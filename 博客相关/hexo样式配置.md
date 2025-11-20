@@ -1,7 +1,3 @@
----
-title: hexo
----
-
 ###   Front-matter
 
 ```yaml

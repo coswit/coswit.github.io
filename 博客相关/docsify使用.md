@@ -1,6 +1,9 @@
 ### 初始化
 
 ```bash
+# 安装
+npm i docsify-cli -g
+# 初始化
 docsify init ./docs
 ```
 
@@ -15,7 +18,7 @@ docsify init ./docs
 
 #### 主题
 
-默认自带主题，可选择`vue buble dark pure dolphin`：
+默认自带主题，可选择`vue buble dark pure dolphin`：<u></u>
 
 ```css
 <link rel="stylesheet" href="//cdn.jsdelivr.net/npm/docsify/lib/themes/vue.css">

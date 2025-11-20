@@ -289,6 +289,15 @@ run '~/.tmux/plugins/tpm/tpm'
 # -----------------------------------------------------------------------------
 ```
 
+```bash
+setw -g mode-keys vi
+set -g mouse on
+
+# nvim使用
+set -sg escape-time 10
+set -g default-terminal "tmux-256color"
+```
+
 在tmux中进行command切换文件夹后会自动自动重名窗口，解决方法：
 
 ```shell

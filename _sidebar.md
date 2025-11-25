@@ -1,3 +1,33 @@
+  - Android
+    - _Android
+      - [Android-相机相关.md](./Android/_Android/Android-相机相关.md)
+      - [Android_Binder.md](./Android/_Android/Android_Binder.md)
+      - [Android监测.md](./Android/_Android/Android监测.md)
+      - [Handler.md](./Android/_Android/Handler.md)
+      - [View阴影拖动导致layer泄漏分析.md](./Android/_Android/View阴影拖动导致layer泄漏分析.md)
+      - [perfetto使用.md](./Android/_Android/perfetto使用.md)
+      - Android_Wifi
+        - [IP路由.md](./Android/_Android/Android_Wifi/IP路由.md)
+        - [WIFI信道.md](./Android/_Android/Android_Wifi/WIFI信道.md)
+        - [Wifi基础.md](./Android/_Android/Android_Wifi/Wifi基础.md)
+        - [netd.md](./Android/_Android/Android_Wifi/netd.md)
+      - Android基础
+        - [Android_Drawable.md](./Android/_Android/Android基础/Android_Drawable.md)
+        - [Android_View的事件体系.md](./Android/_Android/Android基础/Android_View的事件体系.md)
+        - [Android计时器.md](./Android/_Android/Android基础/Android计时器.md)
+        - [android_动画.md](./Android/_Android/Android基础/android_动画.md)
+        - [android_基础查询.md](./Android/_Android/Android基础/android_基础查询.md)
+        - [android_常用控件.md](./Android/_Android/Android基础/android_常用控件.md)
+        - [android_数据存储.md](./Android/_Android/Android基础/android_数据存储.md)
+      - Android源码分析
+        - [android_RecyclerView源码分析.md](./Android/_Android/Android源码分析/android_RecyclerView源码分析.md)
+        - [android_fragment源码分析1.md](./Android/_Android/Android源码分析/android_fragment源码分析1.md)
+        - [android_fragment源码分析2.md](./Android/_Android/Android源码分析/android_fragment源码分析2.md)
+        - [android源码分析_Activity.md](./Android/_Android/Android源码分析/android源码分析_Activity.md)
+        - [android源码分析_Android Application Launch.md](./Android/_Android/Android源码分析/android源码分析_Android%20Application%20Launch.md)
+        - [android源码分析_数据结构.md](./Android/_Android/Android源码分析/android源码分析_数据结构.md)
+      - Android音频
+        - [AudioTrack.md](./Android/_Android/Android音频/AudioTrack.md)
   - Effective Java
     - [1.对像的创建和销毁.md](./Effective%20Java/1.对像的创建和销毁.md)
     - [2.对像的通用方法.md](./Effective%20Java/2.对像的通用方法.md)
@@ -21,35 +51,6 @@
     - [2.Java二.md](./QA/2.Java二.md)
     - [3.Java三.md](./QA/3.Java三.md)
     - [Android一.md](./QA/Android一.md)
-  - _Android
-    - [Android-相机相关.md](./_Android/Android-相机相关.md)
-    - [Android_Binder.md](./_Android/Android_Binder.md)
-    - [Android监测.md](./_Android/Android监测.md)
-    - [Handler.md](./_Android/Handler.md)
-    - [View阴影拖动导致layer泄漏分析.md](./_Android/View阴影拖动导致layer泄漏分析.md)
-    - [perfetto使用.md](./_Android/perfetto使用.md)
-    - Android_Wifi
-      - [IP路由.md](./_Android/Android_Wifi/IP路由.md)
-      - [WIFI信道.md](./_Android/Android_Wifi/WIFI信道.md)
-      - [Wifi基础.md](./_Android/Android_Wifi/Wifi基础.md)
-      - [netd.md](./_Android/Android_Wifi/netd.md)
-    - Android基础
-      - [Android_Drawable.md](./_Android/Android基础/Android_Drawable.md)
-      - [Android_View的事件体系.md](./_Android/Android基础/Android_View的事件体系.md)
-      - [Android计时器.md](./_Android/Android基础/Android计时器.md)
-      - [android_动画.md](./_Android/Android基础/android_动画.md)
-      - [android_基础查询.md](./_Android/Android基础/android_基础查询.md)
-      - [android_常用控件.md](./_Android/Android基础/android_常用控件.md)
-      - [android_数据存储.md](./_Android/Android基础/android_数据存储.md)
-    - Android源码分析
-      - [android_RecyclerView源码分析.md](./_Android/Android源码分析/android_RecyclerView源码分析.md)
-      - [android_fragment源码分析1.md](./_Android/Android源码分析/android_fragment源码分析1.md)
-      - [android_fragment源码分析2.md](./_Android/Android源码分析/android_fragment源码分析2.md)
-      - [android源码分析_Activity.md](./_Android/Android源码分析/android源码分析_Activity.md)
-      - [android源码分析_Android Application Launch.md](./_Android/Android源码分析/android源码分析_Android%20Application%20Launch.md)
-      - [android源码分析_数据结构.md](./_Android/Android源码分析/android源码分析_数据结构.md)
-    - Android音频
-      - [AudioTrack.md](./_Android/Android音频/AudioTrack.md)
   - c
     - [01 A Tutorial Introduction.md](./c/01%20A%20Tutorial%20Introduction.md)
     - [02 ypes, Operators and Expressions.md](./c/02%20ypes,%20Operators%20and%20Expressions.md)

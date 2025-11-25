@@ -9,12 +9,23 @@ AudioTrack(int streamType, int sampleRateInHz, int channelConfig, int audioForma
 
 #### streamType：音频流类型
 
-- `AudioManager.STREAM_MUSIC`: 用于音乐播放、播客、游戏音效等。这是最常用的类型。
-- `AudioManager.STREAM_ALARM`: 用于闹钟。
-- `AudioManager.STREAM_RING`: 用于电话铃声。
-- `AudioManager.STREAM_NOTIFICATION`: 用于通知音。
-- `AudioManager.STREAM_SYSTEM`: 用于系统声音（如锁屏音、低电量提示音）。
-- `AudioManager.STREAM_VOICE_CALL`: 用于通话语音。
+能过不同的音频类型来控制音量，API 26之前使用，之后Google引入了`AudioAttributes`来替代streamType，
+
+|       AudioManager       | 值   | AudioAttributes                        | 值   | 作用                                                         |
+| :----------------------: | ---- | -------------------------------------- | ---- | ------------------------------------------------------------ |
+|   `STREAM_VOICE_CALL`    | 0    | `USAGE_VOICE_COMMUNICATION`            | 2    | 用于通话语音                                                 |
+|     `STREAM_SYSTEM`      | 1    | `USAGE_ASSISTANCE_SONIFICATION`        | 13   | 系统提示音（非通知类），触摸反馈音、锁屏声、低电量警告、按键音 |
+|      `STREAM_RING`       | 2    | `USAGE_NOTIFICATION_RINGTONE`          | 6    | 电话铃声                                                     |
+|      `STREAM_MUSIC`      | 3    | `USAGE_MEDIA`                          | 1    | 音乐媒体、播客、游戏音效                                     |
+|      `STREAM_ALARM`      | 4    | `USAGE_ALARM`                          | 4    | 用于闹钟                                                     |
+|  `STREAM_NOTIFICATION`   | 5    | `USAGE_NOTIFICATION`                   | 5    | 通知音                                                       |
+|  `STREAM_BLUETOOTH_SCO`  | 6    | `USAGE_VOICE_COMMUNICATION`            | 2    | 蓝牙通话                                                     |
+| `STREAM_SYSTEM_ENFORCED` | 7    | `USAGE_ASSISTANCE_SONIFICATION`        | 13   | 系统强制型提示音，低电量强制警告、系统安全错误提示、锁屏强制提示导航语音、翻译 APP 朗读、电子书语音播报、 accessibility 朗读 |
+|      `STREAM_DTMF`       | 8    | `USAGE_VOICE_COMMUNICATION_SIGNALLING` | 3    | 电话拨号音                                                   |
+|       `STREAM_TTS`       | 9    | `USAGE_UNKNOWN`                        | -1   | 文本转语音（TTS）专用音频流                                  |
+|  `STREAM_ACCESSIBILITY`  | 10   | `USAGE_ASSISTANCE_ACCESSIBILITY`       | 11   | 辅助功能音频，无障碍屏幕阅读                                 |
+|    `STREAM_ASSISTANT`    | 11   | `USAGE_ASSISTANT`                      | 16   | 智能助手类音频Google Assistant 回应、小爱同学语音、语音助手指令反馈 |
+
 
 #### sampleRateInHz：采样率
 

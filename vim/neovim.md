@@ -62,6 +62,8 @@ tmux source-file ~/.tmux.conf
 
 ### 基本操作
 
+`<leader>`键一般为空格键
+
 | 快捷键               | 描述                                |
 | :------------------- | ----------------------------------- |
 | `<leader><leader>`   | 搜索                                |
@@ -70,7 +72,7 @@ tmux source-file ~/.tmux.conf
 | `ctrl /`             | 打开` / `隐藏` `terminal            |
 | `ctrl ww`            | 焦点在各窗口之间切换                |
 | `ctrl w` + `h/j/k/l` | 焦点移动到 ⬅️/⬇️/⬆️/➡️ 侧窗口           |
-| `hift h`             | 移动到 ⬅️ 侧 buffer 标签             |
+| `shift h`            | 移动到 ⬅️ 侧 buffer 标签             |
 | `shift l`            | 移动到 ➡️ 侧 buffer 标签             |
 | `shift k`            | 浮窗显示函数文档                    |
 | `<leader>qq`         | 退出 nvim (quit all)                |
@@ -95,6 +97,19 @@ tmux source-file ~/.tmux.conf
 | `d`                  | `delete` 删除文件 / 目录        |
 | `shift v` 选中后 `y` | 多选文件 / 目录                 |
 | `shift h`            | 显示隐藏文件                    |
+
+### 窗口
+
+| 键位        | 描述         | 模式 |
+| ----------- | ------------ | ---- |
+| `<C-h>`     | 跳至左侧窗口 | n, t |
+| `<C-j>`     | 跳至下方窗口 | n, t |
+| `<C-k>`     | 跳至上方窗口 | n, t |
+| `<C-l>`     | 跳至右侧窗口 | n, t |
+| `<C-Up>`    | 增加窗口高度 | n    |
+| `<C-Down>`  | 减少窗口高度 | n    |
+| `<C-Left>`  | 减少窗口宽度 | n    |
+| `<C-Right>` | 增加窗口宽度 | n    |
 
 ### jetbrains 对照
 

@@ -44,7 +44,21 @@ nvim
 :checkhealth
 ```
 
-`tmux`兼容异常处理
+nvim文件夹的结构如下：
+
+```
+📂 ~/.config/nvim
+├── 📂 lua/**config files**
+└── 🌑 init.lua
+```
+
+`init.lua` 是 nvim 的入口文件，类似于 vim 的 `.vimrc` 文件。
+
+`init.lua` 中可以使用 `require(module_name)` 包含其他的配置脚本，那么 nvim 会去找到 `./lua/module_name.lua` 并逐行解释运行。
+
+
+
+#### `tmux`兼容异常处理
 
 ```bash
 # ERROR: escape-time (500) is higher than 300ms

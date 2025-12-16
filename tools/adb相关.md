@@ -75,6 +75,11 @@ $ adb shell screencap -p | sed 's/\r$//' > screen.png
 
 # (press Control + C to stop)
 $ adb shell screenrecord /sdcard/record.mp4
+
+# 同时录视频和音频
+adb shell cmd media projection start -f 1 --audio-source 1 -d "ADB录屏-含系统音频"
+adb shell cmd media projection stop
+adb shell cmd media_projection start -f 1 --audio-source 1 -d "ADB录屏-含系统音频"
 ```
 
 ### pm
@@ -193,6 +198,14 @@ $ adb install -r yourApp.apk
 $ adb install –k <.apk file path on computer> 
 ```
 
+### event
+
+```bash
+# 发送点击事件
+adb shell input tap 100 200
+# 发送按键
+adb shell input keyevent KEYCODE_MEDIA_NEXT
+```
 
 ### wm
 

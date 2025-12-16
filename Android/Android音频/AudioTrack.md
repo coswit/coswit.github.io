@@ -5,6 +5,29 @@ AudioTrack(int streamType, int sampleRateInHz, int channelConfig, int audioForma
             int bufferSizeInBytes, int mode)
 ```
 
+新方法
+
+```java
+AudioAttributes attr = new AudioAttributes.Builder()
+        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+        .setUsage(AudioAttributes.USAGE_MEDIA).build();
+AudioFormat audioFormat = new AudioFormat.Builder()
+        .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+        .setSampleRate(48000) // 默认采样率
+        .setChannelMask(AudioFormat.CHANNEL_OUT_STEREO)
+        .build();
+
+int bufferSize = AudioTrack.getMinBufferSize(48000,
+        AudioFormat.CHANNEL_IN_STEREO, AudioFormat.ENCODING_PCM_16BIT);
+
+AudioTrack audioTrack = new AudioTrack.Builder().setAudioAttributes(attr)
+        .setAudioFormat(audioFormat)
+        .setTransferMode(AudioTrack.MODE_STREAM)
+        .setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY)
+        .setBufferSizeInBytes(bufferSize)
+        .build();
+```
+
 ### 参数
 
 #### streamType：音频流类型
@@ -17,6 +40,7 @@ AudioTrack(int streamType, int sampleRateInHz, int channelConfig, int audioForma
 |     `STREAM_SYSTEM`      | 1    | `USAGE_ASSISTANCE_SONIFICATION`        | 13   | 系统提示音（非通知类），触摸反馈音、锁屏声、低电量警告、按键音 |
 |      `STREAM_RING`       | 2    | `USAGE_NOTIFICATION_RINGTONE`          | 6    | 电话铃声                                                     |
 |      `STREAM_MUSIC`      | 3    | `USAGE_MEDIA`                          | 1    | 音乐媒体、播客、游戏音效                                     |
+|      `STREAM_MUSIC`      | 3    | `USAGE_ASSISTANCE_NAVIGATION_GUIDANCE` | 12   | 导航                                                         |
 |      `STREAM_ALARM`      | 4    | `USAGE_ALARM`                          | 4    | 用于闹钟                                                     |
 |  `STREAM_NOTIFICATION`   | 5    | `USAGE_NOTIFICATION`                   | 5    | 通知音                                                       |
 |  `STREAM_BLUETOOTH_SCO`  | 6    | `USAGE_VOICE_COMMUNICATION`            | 2    | 蓝牙通话                                                     |

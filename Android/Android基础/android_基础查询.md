@@ -1,3 +1,17 @@
+### 注解
+
+```java
+@StringDef({LinkType.HICAR, LinkType.CARLINK, LinkType.HONOR, LinkType.WUTONG, LinkType.UNKNOWN})
+@Retention(RetentionPolicy.SOURCE)
+public @interface LinkType {
+    String HICAR = "hicar";
+    String CARLINK = "carlink";
+    String HONOR = "hihonor";
+    String WUTONG = "wutong"; 
+    String UNKNOWN = "unknown";
+}
+```
+
 ### 占位符
 
 ```bash

@@ -88,21 +88,23 @@ tmux source-file ~/.tmux.conf
 | `shift l`            | 移动到 ➡️ 侧 buffer 标签             |
 | `shift k`            | 浮窗显示函数文档                    |
 | `<leader>qq`         | 退出 nvim (quit all)                |
-| `s` + 任意字符串     | 快速搜索定位，类似 vimium 的搜索    |
 | `<leader>cd`         | 在 lsp 警告提示上执行可以看完整信息 |
 | `<leader>xx`         | 可以在窗口中查看所有 lint 提示信息  |
 | `<leader>cs`         | 显示函数/类大纲                     |
 | `<leader>n`          | 查看 notify （通知消息） 历史       |
 | `<leader>l`          | 打开 `lazy.vim` 窗口                |
+| `<leader>fp`         | 快速切找项目                        |
 
 ### 搜索
 
-| 快捷键             | 描述             |
-| :----------------- | ---------------- |
-| `<leader><leader>` | 搜索             |
-| `<leader>ff`       | 快速查找文件     |
-| `<leader>sg`       | 在项目中搜索内容 |
-| `<leader>fr`       | 打开最近文件     |
+| 快捷键             | 描述                       |
+| :----------------- | -------------------------- |
+| `<leader><leader>` | 搜索                       |
+| `<leader>ff`       | 快速查找文件               |
+| `<leader>sg`       | 在项目中搜索内容           |
+| `<leader>sb`       | 在当前buffer中搜索         |
+| `<leader>fr`       | 打开最近文件               |
+| `s` + 任意字符串   | 快速搜索定位，当前可见界面 |
 
 ### 文件管理器
 

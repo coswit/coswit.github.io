@@ -272,3 +272,11 @@ $ adb shell dumpsys package com.huawei.dmsdpdevice | grep versionName
 ```
 parent_tms=1719212453068
 ```
+
+## setting
+
+```bash
+settings put global KEY_STEER_FINISH_ACTIVITY 0
+settings get global KEY_STEER_FINISH_ACTIVITY
+```
+

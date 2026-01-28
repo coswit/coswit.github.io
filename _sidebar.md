@@ -70,6 +70,7 @@
     - [05 类.md](./cpp/05%20类.md)
   - tools
     - [Android配置.md](./tools/Android配置.md)
+    - [Chrome快捷键.md](./tools/Chrome快捷键.md)
     - [Windows脚本使用.md](./tools/Windows脚本使用.md)
     - [adb相关.md](./tools/adb相关.md)
     - [cmake.md](./tools/cmake.md)

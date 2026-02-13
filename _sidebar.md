@@ -32,6 +32,8 @@
   - Effective Java
     - [1.对像的创建和销毁.md](./Effective%20Java/1.对像的创建和销毁.md)
     - [2.对像的通用方法.md](./Effective%20Java/2.对像的通用方法.md)
+  - Kotlin
+    - [01基础语法.md](./Kotlin/01基础语法.md)
   - Linux内核分析
     - [01.图解分析汇编代码以理解计算机.md](./Linux内核分析/01.图解分析汇编代码以理解计算机.md)
   - Linux基础
@@ -79,6 +81,7 @@
     - [tmux常用命令.md](./tools/tmux常用命令.md)
     - [环境配置.md](./tools/环境配置.md)
   - vim
+    - [Lazyvim快捷键.md](./vim/Lazyvim快捷键.md)
     - [neovim.md](./vim/neovim.md)
     - [vim.md](./vim/vim.md)
   - 博客相关

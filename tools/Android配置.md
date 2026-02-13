@@ -1,10 +1,57 @@
-### Android命令行工具
+## Android命令行工具
+
+配置结构：
+
+```bash
+Android/SDK/
+└── cmdline-tools/
+    └── latest/
+        ├── bin/
+        ├── lib/
+        └── ...
+```
 
 Linux下载最新的命令行工具：
 
-```shell
-$ weget https://dl.google.com/android/repository/commandlinetools-linux-10406996_latest.zip
+```bash
+mkdir -p ~/Android/SDK/cmdline-tools
+cd ~/Android/SDK/cmdline-tools
+# 下载
+wget https://dl.google.com/android/repository/commandlinetools-linux-14742923_latest.zip
+uzip commandlinetools-linux-*.zip
+mv cmdline-tools latest
 ```
+
+### Android环境变量
+
+配置
+
+```shell
+export ANDROID_HOME=~/Android/SDK
+export PATH=$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH
+
+#或者
+export ANDROID_HOME=/usr/lib/android-sdk
+export PATH=$ANDROID_HOME/platform-tools:$ANDROID_HOME/tools:$ANDROID_HOME/tools/bin:$PATH
+```
+参考链接：[环境变量  | Android Studio  | Android Developers](https://developer.android.com/tools/variables?hl=zh-cn)
+
+### sdkmangager命令
+
+```shell
+sdkmanager --no_https --proxy=http --proxy_host=proxy.*.com --proxy_port=8080 --list
+sdkmanager --no_https --proxy=http --proxy_host=proxy.*.com --proxy_port=8080 --install  "ndk;25.2.9519653"
+```
+
+安装：
+
+```bash
+sdkmanager --install "build-tools;34.0.0"
+sdkmanager --install "platforms;android-35"
+```
+
+### 旧版配置
+
 在java11使用sdkmanager会报错：
 
 ```cmd
@@ -16,7 +63,6 @@ Error: LinkageError occurred while loading main class com.android.sdklib.tool.sd
 
 ```shell
 $ wget https://dl.google.com/android/repository/commandlinetools-linux-8512546_latest.zip
-
 ```
 
 解决方案2：切换高版本jdk
@@ -35,28 +81,7 @@ $ mkdir latest
 $ mv bin/ lib/ NOTICE.txt source.properties latest/
 ```
 
-sdkmangager命令
-
-```shell
-$sdkmanager --no_https --proxy=http --proxy_host=proxy.*.com --proxy_port=8080 --list
-$ sdkmanager --no_https --proxy=http --proxy_host=proxy.*.com --proxy_port=8080 --install  "ndk;25.2.9519653"
-```
-
-### Android环境变量
-
-Linux：
-
-```shell
-export ANDROID_HOME=/usr/lib/android-sdk
-export PATH=$ANDROID_HOME/platform-tools:$ANDROID_HOME/tools:$ANDROID_HOME/tools/bin:$PATH
-
-#或者
-export ANDROID_HOME=~/android-sdk
-export PATH=$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH
-```
-参考链接：[环境变量  | Android Studio  | Android Developers](https://developer.android.com/tools/variables?hl=zh-cn)
-
-### maven
+## maven
 
 maven下载：[Download Apache Maven – Maven](https://maven.apache.org/download.cgi)。
 
@@ -73,7 +98,7 @@ mvn -v
 ```
 
 
-#### 本地maven配置
+### 本地maven配置
 
 要使用本地Maven库时，可指定本地路径，方便项目中替换调试本地aar包。
 
@@ -117,9 +142,9 @@ task cacheToMavenLocal(type: Copy) {
 }
 ```
 
-### gradle
+## gradle
 
-#### 指定镜像
+### 指定镜像
 
 gradle配置镜像，[阿里云](https://developer.aliyun.com/mirror/)：
 
@@ -131,7 +156,7 @@ distributionUrl=https\://mirrors.aliyun.com/gradle/distributions/v7.4.0/gradle-7
 distributionUrl=https://mirrors.cloud.tencent.com/gradle/gradle-8.7-bin.zip
 ```
 
-#### gradle本地配置
+### gradle本地配置
 
 如果不配置gradle路径，默认会放置在`${user.home}/.gradle`，可以手动配置环境变量`GRADLE_USER_HOME`，如Windows下可将值设为`D:\gradle\gradle_user_home`，就会使用手动设置的路径。
 
@@ -153,7 +178,7 @@ allprojects {
 }
 ```
 
-#### Java版本问题
+### Java版本问题
 
 如果需要更换当前项目中的Java版本，可以在`gradle.properties`中增加配置，不必更改系统中的Java版本：
 

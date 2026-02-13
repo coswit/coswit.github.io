@@ -22,9 +22,6 @@ NotificationManager notificationManager = (NotificationManager)getSystemService(
 notificationManager.notify(1,notification);
 ```
 
-
-<!--- more --->
-
 ## 2.PopWindow
 
 不能在activity中的oncreate方法中直接创建展示，要在生命周期完成后才能展示

@@ -35,7 +35,7 @@
   - Kotlin
     - [01基础语法.md](./Kotlin/01基础语法.md)
     - [02类.md](./Kotlin/02类.md)
-    - [03Kotlin中的Lambda表达式.md](./Kotlin/03Kotlin中的Lambda表达式.md)
+    - [03Lambda表达式.md](./Kotlin/03Lambda表达式.md)
   - Linux内核分析
     - [01.图解分析汇编代码以理解计算机.md](./Linux内核分析/01.图解分析汇编代码以理解计算机.md)
   - Linux基础

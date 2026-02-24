@@ -428,13 +428,7 @@ fun alphabet(): String {
         this.toString()
     }
 }
-
-fun main(args: Array<String>) {
-    println(alphabet())
-}
 ```
-with看起来像是一种特殊的语法结构，实际上是一个接收两个参数的函数，上述示例中分别是`StringBuilder`与一个lambda。这里是把lambda放到了括号外，使得调用起来看起来像是内建的。可以写成：`with(stringBuilder, { ... })`，可读性会变差。
-
 使用 `with` 与表达式函数体 `expression body` 来进一步简化：
 
 ```kotlin
@@ -445,19 +439,52 @@ fun alphabet() = with(StringBuilder()) {
     append("\nNow I know the alphabet!")
     toString()
 }
-
-fun main(args: Array<String>) {
-    println(alphabet())
-}
 ```
 
 假设alphabet是OuterClass的一个方法，可以用`this@OuterClass.toString`来指向需要调用的方法。
 
+with函数的定义：
+
+```kotlin
+@kotlin.internal.InlineOnly
+public inline fun <T, R> with(receiver: T, block: T.() -> R): R {
+    contract {
+        callsInPlace(block, InvocationKind.EXACTLY_ONCE)
+    }
+    return receiver.block()
+}
+```
+
+`inline` 是内联函数，编译时会将 Lambda 块的代码直接插入到调用处；T为传入对像类型，R为Lambda返回值的类型；
+
+`T.() -> R`：带接收者的Lambda，是在T对像上定义的扩展函数，在Lambda内部可以直接访问。
+
+`receiver.block()`：将 `block` 作为 `receiver` 的扩展函数来调用，这样 `block` 内部的 `this` 就自然绑定到了 `receiver`。本质上等价于：
+
+```kotlin
+return block.invoke(receiver)
+```
+
+`contract`：告诉编译器，block会被恰好编译一次。
+
 ### apply函数
+
+函数定义：
+
+```kotlin
+@kotlin.internal.InlineOnly
+public inline fun <T> T.apply(block: T.() -> Unit): T {
+    contract {
+        callsInPlace(block, InvocationKind.EXACTLY_ONCE)
+    }
+    block()
+    return this
+}
+```
 
 与with基本一样，区别在于apply始终返回作为参数传递时的对象(对象接收者)
 
->  The apply function works almost exactly the same as `with`; the only difference is that `apply` always returns the object passed to it as an argument (in other words, the receiver object).
+>   `apply` always returns the object passed to it as an argument (in other words, the receiver object).
 
 ```kotlin
 fun alphabet() = StringBuilder().apply {
@@ -491,9 +518,5 @@ fun alphabet() = buildString {
         append(letter)
     }
     append("\nNow I know the alphabet!")
-}
-
-fun main(args: Array<String>) {
-    println(alphabet())
 }
 ```

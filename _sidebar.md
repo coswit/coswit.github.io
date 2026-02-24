@@ -36,6 +36,8 @@
     - [01基础语法.md](./Kotlin/01基础语法.md)
     - [02类.md](./Kotlin/02类.md)
     - [03Lambda表达式.md](./Kotlin/03Lambda表达式.md)
+    - [04类型系统.md](./Kotlin/04类型系统.md)
+    - [05函数扩展.md](./Kotlin/05函数扩展.md)
   - Linux内核分析
     - [01.图解分析汇编代码以理解计算机.md](./Linux内核分析/01.图解分析汇编代码以理解计算机.md)
   - Linux基础

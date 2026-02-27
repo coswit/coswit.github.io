@@ -267,6 +267,15 @@ $ adb shell dumpsys package com.huawei.dmsdpdevice | grep versionName
 
 参考：[dumpsys命令用法](http://gityuan.com/2016/05/14/dumpsys-command/)
 
+## scrcpy
+
+```bash
+# 指定屏幕投屏
+scrcpy --display-id 1
+# 指定录屏
+scrcpy --record file.mp4 --display-id 1
+```
+
 ## trace
 
 ```

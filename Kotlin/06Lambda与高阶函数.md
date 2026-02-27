@@ -1,4 +1,4 @@
-## 高级函数
+## 高级函数(Higher-order functions)
 
 ### 高阶函数的声明
 
@@ -56,7 +56,7 @@ fun main(args: Array<String>) {
 ```kotlin
    <-接收者类型->     	  <--参数名称-->   <--------------参数为函数类型-------------->
 fun   String     .filter(   predicate:     (Char)          ->         Boolean           ): String
-									<--函数入参类型-->		<--函数结果返回类型-->
+                                        <--函数入参类型-->        <--函数结果返回类型-->
 ```
 
 ### 在Java中使用
@@ -106,10 +106,10 @@ fun <T> Collection<T>.joinToString(
     separator: String = ", ",
     prefix: String = "",
     postfix: String = "",
+    // 声明一个带默认值的lambda函数参数
     transform: (T) -> String = { it.toString() }
 ): String {
     val result = StringBuilder(prefix)
-
     for ((index, element) in this.withIndex()) {
         if (index > 0) result.append(separator)
         result.append(transform(element))
@@ -123,7 +123,13 @@ fun main(args: Array<String>) {
     val letters = listOf("Alpha", "Beta")
     println(letters.joinToString())
     println(letters.joinToString { it.lowercase() })
-    println(letters.joinToString(separator = "! ", postfix = "! ", transform = { it.uppercase() }))
+    println(
+        letters.joinToString(
+            separator = "! ",
+            postfix = "! ",
+            transform = { it.uppercase() }
+        )
+    )
 }
 //Alpha, Beta
 //alpha, beta
@@ -153,6 +159,8 @@ fun <T> Collection<T>.joinToString(
 
 ###  将函数作为参数返回
 
+通过函数返回一个新函数：
+
 ```kotlin
 enum class Delivery { STANDARD, EXPEDITED }
 class Order(val itemCount: Int)
@@ -171,7 +179,7 @@ fun main(args: Array<String>) {
 // Shipping costs 12.3
 ```
 
-
+定义返回类型为函数：
 
 ```kotlin
 data class Person(val firstName: String, val lastName: String, val phoneNumber: String?)
@@ -184,8 +192,10 @@ class ContactListFilters {
             p.firstName.startsWith(prefix) || p.lastName.startsWith(prefix)
         }
         if (!onlyWithPhoneNumber) {
+            // 变量为函数
             return startsWithPrefix
         }
+        // lambda函数
         return { startsWithPrefix(it) && it.phoneNumber != null }
     }
 }
@@ -226,7 +236,8 @@ val log = listOf(
 1. 通过硬编码(hardcoded filters)来实现相应功能：
 
 ```kotlin
-val averageWindowsDuration = log.filter { it.os == OS.WINDOWS }.map(SiteVisit::duration).average()
+val averageWindowsDuration = log.filter { it.os == OS.WINDOWS }
+    .map(SiteVisit::duration).average()
 
 fun main(args: Array<String>) {
     println(averageWindowsDuration)
@@ -237,7 +248,9 @@ fun main(args: Array<String>) {
 将相应代码提取到扩展函数中：
 
 ```kotlin
-fun List<SiteVisit>.averageDurationFor(os: OS) = filter { it.os == os }.map(SiteVisit::duration).average()
+fun List<SiteVisit>.averageDurationFor(os: OS) = filter { it.os == os }
+    .map(SiteVisit::duration).average()
+
 
 fun main(args: Array<String>) {
     println(log.averageDurationFor(OS.WINDOWS))
@@ -248,7 +261,8 @@ fun main(args: Array<String>) {
 2. 硬编码(hardcoded filters)来实现复杂功能
 
 ```kotlin
-val averageMobileDuration = log.filter { it.os in setOf(OS.IOS, OS.ANDROID) }.map(SiteVisit::duration).average()
+val averageMobileDuration = log.filter { it.os in setOf(OS.IOS, OS.ANDROID) }
+    .map(SiteVisit::duration).average()
 
 fun main(args: Array<String>) {
     println(averageMobileDuration)
@@ -266,19 +280,13 @@ fun main(args: Array<String>) {
     println(log.averageDurationFor { it.os == OS.IOS && it.path == "/signup" }) // 8.0
 }
 ```
-## 内联函数
+## 内联函数(inline function)
 
-### 2. inline functions: removing the overhead of lambdas
+lambda函数通常会被编译成匿名类，每调用一次就会创建一个类，运行时会带来额外的开销，可通过`inline`标记为内联函数，使函数调用时编译器不会生成函数调用的代码，而是使用真实代码替换每一次的函数调用。
 
-You’ve probably noticed that the shorthand syntax for passing a lambda as an argument to a function in Kotlin looks similar to the syntax of regular statements such as **if** and **for**. 
+### 调用过程
 
-lambdas are normally compiled to anonymous classes. But that means every time you use a lambda expression, an extra class is created; and if the lambda captures some variables, then a new object is created on every invocation. This introduces runtime overhead, causing an implementation that uses a lambda to be less efficient than a function that executes the same code directly.
-
-Could it be possible to tell the compiler to generate code that’s as efficient as a Java statement and yet lets you extract the repeated logic into a library function? Indeed, the Kotlin compiler allows you to do that. If you mark a function with the inline modifier, the compiler won’t generate a function call when this function is used and instead will replace every call to the function with the actual code implementing the function. Let’s explore how that works in detail and look at specific examples.
-
-#### 2.1. How inlining works
-
--  Defining an inline function
+定义一个内联函数：
 
 ```kotlin
 inline fun <T> synchronized(lock: Lock, action: () -> T): T {
@@ -290,12 +298,9 @@ inline fun <T> synchronized(lock: Lock, action: () -> T): T {
         lock.unlock()
     }
 }
-
-val l = Lock()
-synchronized(l) {
-    // ...
-}
 ```
+
+调用：
 
 
 ```kotlin
@@ -307,128 +312,102 @@ fun foo(l: Lock) {
     println("After sync")
 }
 ```
-![](http://blog-open.oss-cn-beijing.aliyuncs.com/image/kotlin/41.jpg)
+编译后会被解析为：
 
-
-![](http://blog-open.oss-cn-beijing.aliyuncs.com/image/kotlin/42.jpg)
-
-In this case, the lambda’s code isn’t available at the site where the inline function is called, and therefore it isn’t inlined. Only the body of the synchronized function is inlined; the lambda is called as usual. The runUnderLock function will be compiled to bytecode similar to the following function:
-
-![](http://blog-open.oss-cn-beijing.aliyuncs.com/image/kotlin/44.jpg)
-
-#### 2.2. Restrictions on inline functions
-
-Due to the way inlining is performed, not every function that uses lambdas can be inlined. When the function is inlined, the body of the lambda expression that’s passed as an argument is substituted directly into the resulting code. That restricts the possible uses of the corresponding parameter in the function body. If this parameter is called, such code can be easily inlined. But if the parameter is stored somewhere for further use, the code of the lambda expression can’t be inlined, because there must be an object that contains this code.
-
-#### 2.3. Inlining collection operations
-
-- Filtering a collection using a lambda
 ```kotlin
-data class Person(val name: String, val age: Int)
-
-val people = listOf(Person("Alice", 29), Person("Bob", 31))
-
-fun main(args: Array<String>) {
-    println(people.filter { it.age < 30 })
-}
-//[Person(name=Alice, age=29)]
-```
-
--  Filtering a collection manually
-```kotlin
-data class Person(val name: String, val age: Int)
-
-val people = listOf(Person("Alice", 29), Person("Bob", 31))
-
-fun main(args: Array<String>) {
-    println(people.filter { it.age > 30 }
-                  .map(Person::name))
+fun foo(l: Lock) {
+    println("Before sync")
+    l.lock()
+    try {
+        println("Action")
+    }
+    finally {
+        l.unlock()
+    }
+    println("After sync")
 }
 ```
 
-#### 2.4. Deciding when to declare functions as inline
+### 内联函数的限制
 
-Now that you’ve learned about the benefits of the inline keyword, you might want to start using inline throughout your codebase, trying to make it run faster. As it turns out, this isn’t a good idea. Using the inline keyword is likely to improve performance only with functions that take lambdas as arguments; all other cases require additional measuring and investigation.
+内联函数中的lambda参数不能作为参数传递给其他非内联函数：
 
-#### 2.5. Using inlined lambdas for resource management
+```kotlin
+fun execute(action: () -> Unit) {  // 普通函数，需要 Lambda 对象
+    action()
+}
 
-One common pattern where lambdas can remove duplicate code is resource management: acquiring a resource before an operation and releasing it afterward. Resource here can mean many different things: a file, a lock, a database transaction, and so on. The standard way to implement such a pattern is to use a `try/finally` statement in which the resource is acquired before the try block and released in the `finally` block.
+inline fun process(action: () -> Unit) {
+    execute(action)  // ❌ 编译错误
+                     // action 被内联展开，不再是对象，无法传递
+}
 
-The Kotlin standard library defines another function called `withLock`, which has a more idiomatic API for the same task: it’s an extension function on the Lock interface. 
+// ✅ 解决方案：用 noinline 保留 Lambda 对象
+inline fun process(noinline action: () -> Unit) {
+    execute(action)  // ✅ noinline 保留了对象形式
+}
+```
 
-![](http://blog-open.oss-cn-beijing.aliyuncs.com/image/kotlin/38.jpg)
+同样也不能存储lambda引用：
 
+```kotlin
+val savedActions = mutableListOf<() -> Unit>()
 
-```java
-static String readFirstLineFromFile(String path) throws IOException {
-    try (BufferedReader br =
-                   new BufferedReader(new FileReader(path))) {
-        return br.readLine();
+inline fun register(action: () -> Unit) {
+    savedActions.add(action)  // ❌ 编译错误，action 已展开，不是对象
+    // ✅ 解决方案：noinline
+}
+
+inline fun register(noinline action: () -> Unit) {
+    savedActions.add(action)  // ✅
+}
+```
+
+## 高阶函数中的控制流(control flow)
+
+### 非局部返回(non-local return)
+
+在内联的lambda中，return会跨越lambda边界，直接退出外层函数，这种称为**非局部返回(non-local return)**：
+
+```kotlin
+inline fun forEach(list: List<Int>, action: (Int) -> Unit) {
+    for (item in list) action(item)
+}
+
+fun findFirst(): String {
+    forEach(listOf(1, 2, 3, 4, 5)) {
+        if (it == 3) return "找到了"  // 直接从 findFirst() 返回！
+        println(it)
+    }
+    return "没找到"
+}
+
+fun main(args: Array<String>) {
+    println(findFirst())
+}
+// 1 2 找到了
+```
+
+非内联lambda函数不允许非局部返回：
+
+```kotlin
+fun forEach(list: List<Int>, action: (Int) -> Unit) {
+    for (item in list) action(item)
+}
+
+fun test() {
+    forEach(listOf(1, 2, 3)) {
+        if (it == 2) return  // ❌ 编译错误，非内联函数的 Lambda 不允许非局部返回
     }
 }
 ```
 
-```kotlin
-fun readFirstLineFromFile(path: String): String {
-    BufferedReader(FileReader(path)).use { br ->
-        return br.readLine()
-    }
-}
-```
+### 局部返回(Local  Return)
 
-### 3. control flow in higher-order functions
+通过标签实现局部返回：
 
 ```kotlin
 data class Person(val name: String, val age: Int)
-
-val people = listOf(Person("Alice", 29), Person("Bob", 31))
-
-fun lookForAlice(people: List<Person>) {
-    for (person in people) {
-        if (person.name == "Alice") {
-            println("Found!")
-            return
-        }
-    }
-    println("Alice is not found")
-}
-
-fun main(args: Array<String>) {
-    lookForAlice(people)
-}
-
-```
-
-```kotlin
-data class Person(val name: String, val age: Int)
-
-val people = listOf(Person("Alice", 29), Person("Bob", 31))
-
-fun lookForAlice(people: List<Person>) {
-    people.forEach {
-        if (it.name == "Alice") {
-            println("Found!")
-            return
-        }
-    }
-    println("Alice is not found")
-}
-
-fun main(args: Array<String>) {
-    lookForAlice(people)
-}
-// Found!
-```
-If you use the return keyword in a lambda, it returns from the function in which you called the lambda, not just from the lambda itself. Such a return statement is called a non-local return, because it returns from a larger block than the block containing the return statement.
-
-#### 3.2. Returning from lambdas: return with a label
-To distinguish a local return from a non-local one, you use labels. You can label a lambda expression from which you want to return, and then refer to this label after the return keyword.
-
-- Using a local return with a label
-
-```kotlin
-data class Person(val name: String, val age: Int)
-
 val people = listOf(Person("Alice", 29), Person("Bob", 31))
 
 fun lookForAlice(people: List<Person>) {
@@ -441,24 +420,21 @@ fun lookForAlice(people: List<Person>) {
 fun main(args: Array<String>) {
     lookForAlice(people)
 }
+// Alice might be somewhere
 ```
 
+也可以用函数名作为返回标签：
+
 ```kotlin
-data class Person(val name: String, val age: Int)
-
-val people = listOf(Person("Alice", 29), Person("Bob", 31))
-
 fun lookForAlice(people: List<Person>) {
     people.forEach {
         if (it.name == "Alice") return@forEach
     }
     println("Alice might be somewhere")
 }
-
-fun main(args: Array<String>) {
-    lookForAlice(people)
-}
 ```
+
+带标签的this表达式：
 
 ```kotlin
 fun main(args: Array<String>) {
@@ -471,15 +447,15 @@ fun main(args: Array<String>) {
 // [1, 2, 3]
 ```
 
-#### 3.3. Anonymous functions: local returns by default
+在匿名函数中使用局部返回：
+
 ```kotlin
 data class Person(val name: String, val age: Int)
-
 val people = listOf(Person("Alice", 29), Person("Bob", 31))
 
 fun lookForAlice(people: List<Person>) {
     people.forEach(fun (person) {
-        if (person.name == "Alice") return
+        if (person.name == "Alice") return // return指向匿名函数
         println("${person.name} is not Alice")
     })
 }
@@ -487,6 +463,5 @@ fun lookForAlice(people: List<Person>) {
 fun main(args: Array<String>) {
     lookForAlice(people)
 }
+// Bob is not Alice
 ```
-
-![](http://blog-open.oss-cn-beijing.aliyuncs.com/image/kotlin/43.jpg)

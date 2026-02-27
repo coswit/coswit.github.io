@@ -53,6 +53,12 @@
         theme: 'forest',
         flowchart: { useMaxWidth: true }
     },
+	
+	copyCode: {
+      buttonText: '复制',
+      errorText:  '错误',
+      successText: '已复制'
+    },
     
     plugins: [
       function(hook, vm) {
@@ -125,12 +131,13 @@
 
   <!-- plugins 侧边栏样式  -->
   <script src="//cdn.jsdelivr.net/npm/docsify-sidebar-collapse/dist/docsify-sidebar-collapse.min.js"></script>
+  
+  <!-- 代码复制 -->
+  <script src="https://cdn.jsdelivr.net/npm/docsify-copy-code@2/dist/docsify-copy-code.min.js"></script>
 
   <!-- 代码高亮 -->
   <script src="https://cdn.jsdelivr.net/npm/prismjs@1.30.0/plugins/autoloader/prism-autoloader.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/prismjs@1.30.0/plugins/autoloader/prism-java.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/prismjs@1.30.0/plugins/autoloader/prism-cpp.min.js"></script>
-  
-
 </body>
 </html>

@@ -4,8 +4,6 @@
 
 | 快捷键               | 描述                                |
 | :------------------- | ----------------------------------- |
-| `<leader>ft`         | 打开`terminal`                      |
-| `ctrl /`             | 打开` / `隐藏` `terminal            |
 | `ctrl ww`            | 焦点在各窗口之间切换                |
 | `ctrl w` + `h/j/k/l` | 焦点移动到 ⬅️/⬇️/⬆️/➡️ 侧窗口           |
 | `shift h`            | 移动到 ⬅️ 侧 buffer 标签             |
@@ -18,6 +16,24 @@
 | `<leader>n`          | 查看 notify （通知消息） 历史       |
 | `<leader>l`          | 打开 `lazy.vim` 窗口                |
 | `<leader>fp`         | 快速切找项目                        |
+
+## terminal
+
+| 快捷键        | 描述                     |
+| ------------- | ------------------------ |
+| `<leader>ft`  | 打开`terminal`           |
+| `ctrl /`      | 打开` / `隐藏` `terminal |
+| `ESC`连按两次 | 进入normal模式           |
+
+## 设置
+
+关闭自动格式化：
+
+```bash
+<leader>uf
+# 或在 ~/.config/nvim/lua/config/options.lua 修改为
+vim.g.autoformat = false
+```
 
 ## 搜索
 

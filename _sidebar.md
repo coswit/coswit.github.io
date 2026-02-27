@@ -38,6 +38,10 @@
     - [03Lambda表达式.md](./Kotlin/03Lambda表达式.md)
     - [04类型系统.md](./Kotlin/04类型系统.md)
     - [05函数扩展.md](./Kotlin/05函数扩展.md)
+    - [06Lambda与高阶函数.md](./Kotlin/06Lambda与高阶函数.md)
+    - [07泛型.md](./Kotlin/07泛型.md)
+    - [08并发与协程.md](./Kotlin/08并发与协程.md)
+    - [09Flow流.md](./Kotlin/09Flow流.md)
   - Linux内核分析
     - [01.图解分析汇编代码以理解计算机.md](./Linux内核分析/01.图解分析汇编代码以理解计算机.md)
   - Linux基础

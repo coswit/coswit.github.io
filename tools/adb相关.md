@@ -126,8 +126,6 @@ adb shell rm -rf /data/data/pkgname
 
 参考：[Google官方参考文档](https://developer.android.com/tools/adb?hl=zh-cn#pm)
 
-
-
 ### logcat
 
 ```shell
@@ -263,6 +261,9 @@ $ adb shell dumpsys activity services com.wt.phonelink
 
 # 查看对应包名信息
 $ adb shell dumpsys package com.huawei.dmsdpdevice | grep versionName
+
+# 查看系统广播
+adb shell dumpsys activity broadcasts | egrep "FLY_SCREEN"
 ```
 
 参考：[dumpsys命令用法](http://gityuan.com/2016/05/14/dumpsys-command/)

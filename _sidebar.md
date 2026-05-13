@@ -79,6 +79,7 @@
     - [04 函数.md](./cpp/04%20函数.md)
     - [05 类.md](./cpp/05%20类.md)
   - tools
+    - [AI工具使用.md](./tools/AI工具使用.md)
     - [Android配置.md](./tools/Android配置.md)
     - [Chrome快捷键.md](./tools/Chrome快捷键.md)
     - [Windows脚本使用.md](./tools/Windows脚本使用.md)
@@ -101,6 +102,10 @@
     - [离散数学(一).md](./数学/离散数学(一).md)
     - [离散数学(二).md](./数学/离散数学(二).md)
     - [组合数学.md](./数学/组合数学.md)
+  - 计算机网络
+    - [Linux命令.md](./计算机网络/Linux命令.md)
+    - [Windows命令.md](./计算机网络/Windows命令.md)
+    - [Wireshark使用.md](./计算机网络/Wireshark使用.md)
   - 设计模式
     - [设计模式-Dagger2.md](./设计模式/设计模式-Dagger2.md)
     - [设计模式-Ioc.md](./设计模式/设计模式-Ioc.md)

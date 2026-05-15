@@ -26,11 +26,14 @@ npm install opencode-antigravity-auth
 
 #### 使用
 
+leader键：ctrl+x
+
 | 命令             | 功能       |
 | ---------------- | ---------- |
 | `/undo`  `/redo` | 撤销、重做 |
-|                  |            |
-|                  |            |
+| leader + b       | 侧边栏控制 |
+| leader + t       | 主题切换   |
+| leader + l       | 会话查看   |
 
 ## Claude Code
 

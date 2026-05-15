@@ -219,7 +219,7 @@ tcpdump [选项] [表达式]
 tcpdump -i any -w traffic.pcap
 ```
 
-## nllookup
+## nllookup/dig
 
 需要安装**`dnsutils`** 软件包：
 
@@ -229,7 +229,107 @@ sudo apt install dnsutils
 
 命令：
 
-```
+```bash
 nllookup google.com
 ```
+
+### dig命令：
+
+DNS lookup utility
+
+```
+dig [@DNS服务器] [域名] [查询类型] [选项]
+```
+
+- **@DNS服务器**: 可选。指定用哪个 DNS 代理查询（如 `@8.8.8.8`）。
+- **查询类型**: 如 `A` (默认), `MX`, `NS`, `TXT`, `AAAA`, `CNAME`, `ANY` 等。
+- **选项**: 控制输出的精简程度和行为（如 `+short`, `+trace`）。
+
+输出结果，如`dig google.com`解释：
+
+1. **HEADER (头部)**: 显示查询的状态（如 `status: NOERROR` 表示解析成功）。
+2. **QUESTION SECTION (问题部分)**: 确认你查询的内容。
+3. **ANSWER SECTION (回答部分)**: **这是最重要的部分**，显示域名对应的 IP 地址及 TTL（缓存存活时间）。
+4. **AUTHORITY SECTION (权威部分)**: 显示负责该域名的名称服务器。
+5. **ADDITIONAL SECTION (附加部分)**: 显示这些名称服务器的 IP 等信息。
+6. **统计信息**: 耗时、时间戳、响应服务器地址和数据包大小。
+
+具体命令：
+
+```bash
+# 只需要IP
+dig baidu.com +short
+
+# 查看详细解析路径 (排查 DNS 污染)
+dig google.com +trace
+
+# 反向查询
+dig -x 8.8.8.8 +short
+
+#
+dig @8.8.8.8 google.com
+```
+
+`dig @8.8.8.8 google.com`，验证代理劫持，如果配置了透明代理，返回的 IP 延迟极低或属于代理服务器的伪装 IP，说明请求被成功拦截。
+
+开启TUN模式时：
+
+```bash
+; <<>> DiG 9.18.39-0ubuntu0.24.04.3-Ubuntu <<>> @8.8.8.8 google.com
+; (1 server found)
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 63287
+;; flags: qr aa rd ra ad; QUERY: 1, ANSWER: 1, AUTHORITY: 0, ADDITIONAL: 1
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags:; MBZ: 0x0001, udp: 1232
+; COOKIE: 35d86bb6b2bedbac (echoed)
+;; QUESTION SECTION:
+;google.com.                    IN      A
+
+;; ANSWER SECTION:
+google.com.             1       IN      A       198.18.0.4
+
+;; Query time: 0 msec
+;; SERVER: 8.8.8.8#53(8.8.8.8) (UDP)
+;; WHEN: Thu May 14 10:52:48 CST 2026
+;; MSG SIZE  rcvd: 67
+```
+
+不开启时：
+
+```bash
+; <<>> DiG 9.18.39-0ubuntu0.24.04.3-Ubuntu <<>> @8.8.8.8 google.com
+; (1 server found)
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 38886
+;; flags: qr rd ra; QUERY: 1, ANSWER: 1, AUTHORITY: 0, ADDITIONAL: 1
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags:; udp: 512
+;; QUESTION SECTION:
+;google.com.                    IN      A
+
+;; ANSWER SECTION:
+google.com.             300     IN      A       142.251.45.142
+
+;; Query time: 79 msec
+;; SERVER: 8.8.8.8#53(8.8.8.8) (UDP)
+;; WHEN: Thu May 14 10:58:26 CST 2026
+;; MSG SIZE  rcvd: 55
+```
+
+解释：
+
+1. DiG 9.18.39-0ubuntu0.24.04.3-Ubuntu <<>> @8.8.8.8 google.com：DIG版本及指定的DNS服务器8.8.8.8，查询目标为google.com。
+2.  global options: +cmd：启用相关输出。
+3. 头部信息（HEADER）
+   - `opcode: QUERY` —— 执行操作，当前为查询。IQUERY反向查询，STATUS查询服务器状态，UPDATE动态更新DNS。
+   - `status: NOERROR` —— 查询结果状态：成功。NXDOMAIN域名不存在，SERVFAIL-DNS 服务器错误，REFUSED被拒绝，FORMERR格式错误。
+   - flags: qr aa rd ra ad：qr(response)响应报文，aa(Authoritative Answer)响应服务器是权威服务器，非正常情况，代理伪造。rd(recursion desired)递归期望（客户端要求递归）。ra(recursion available)递归可用（服务器支持递归）。ad验证数据（DNSSEC 相关)。
+4. QUESTION SECTION：google.com. IN A —— 查询 google.com 的 A 记录。A：IPv4。AAAA：IPv6。
+5. 回答段（ANSWER SECTION）：google.com. 1 IN A 198.18.0.4，TTL为1秒，解析到的IP
+6. 附加段（ADDITIONAL）：OPT PSEUDOSECTION显示 EDNS（Extension DNS） 扩展。
 

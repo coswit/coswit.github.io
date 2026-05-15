@@ -106,6 +106,7 @@
     - [Linux命令.md](./计算机网络/Linux命令.md)
     - [Windows命令.md](./计算机网络/Windows命令.md)
     - [Wireshark使用.md](./计算机网络/Wireshark使用.md)
+    - [curl与wget.md](./计算机网络/curl与wget.md)
   - 设计模式
     - [设计模式-Dagger2.md](./设计模式/设计模式-Dagger2.md)
     - [设计模式-Ioc.md](./设计模式/设计模式-Ioc.md)

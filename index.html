@@ -11,10 +11,11 @@
 
   <!-- docsify-themeable 主题 theme-simple theme-simple-dark -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/docsify-themeable@0/dist/css/theme-simple.css">
-  <link rel="stylesheet" href="./css/custom.css">
-  
+
   <!-- 侧边栏文档样式 sidebar-folder.min 箭头 sidebar.min-->
   <link rel="stylesheet" href="//cdn.jsdelivr.net/npm/docsify-sidebar-collapse/dist/sidebar-folder.min.css"/>
+
+  <link rel="stylesheet" href="./css/custom.css">
 
   <!-- KaTeX 核心 CSS 和 JS -->
   <!-- <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@latest/dist/katex.min.css"> -->
@@ -101,6 +102,54 @@
             // 在下一个事件循环中执行，确保 DOM 已完全更新
             setTimeout(Prism.highlightAll, 0);
           }
+        });
+    },
+
+    function(hook, vm) {
+        hook.doneEach(function() {
+            setTimeout(function() {
+                var content = document.querySelector('.content');
+                var sidebarToc = document.querySelector('.sidebar .app-sub-sidebar');
+                if (!content || !sidebarToc) return;
+
+                var existing = content.querySelector('.toc-panel');
+                if (existing) existing.remove();
+
+                var panel = document.createElement('div');
+                panel.className = 'toc-panel';
+                panel.appendChild(sidebarToc.cloneNode(true));
+                content.appendChild(panel);
+
+                var tocLinks = panel.querySelectorAll('a');
+                var lastActive = '';
+
+                function syncTocActive() {
+                    var headings = document.querySelectorAll('.markdown-section > h1, .markdown-section > h2, .markdown-section > h3, .markdown-section > h4, .markdown-section > h5');
+                    var scrollTop = window.scrollY || document.documentElement.scrollTop;
+                    var current = '';
+                    for (var i = headings.length - 1; i >= 0; i--) {
+                        if (headings[i].getBoundingClientRect().top <= 150) {
+                            current = headings[i].id || '';
+                            break;
+                        }
+                    }
+                    if (current === lastActive) return;
+                    lastActive = current;
+                    tocLinks.forEach(function(link) {
+                        var li = link.parentElement;
+                        var href = link.getAttribute('href') || '';
+                        var targetId = decodeURIComponent((href.match(/[?&]id=([^&]+)/) || [,''])[1]);
+                        if (targetId === current) {
+                            li.classList.add('active');
+                        } else {
+                            li.classList.remove('active');
+                        }
+                    });
+                }
+
+                window.addEventListener('scroll', syncTocActive, {passive: true});
+                syncTocActive();
+            }, 200);
         });
     }
     ]

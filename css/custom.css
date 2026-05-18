@@ -17,22 +17,198 @@
     --code-inline-padding               : 0.125em 0.4em;
 
      /* 基础颜色 */
-    --code-theme-background: #2D2A2E;  /* 背景色 */
-    --code-theme-text: #FCFCFA;        /* 默认文本颜色 */
-    
+    --code-theme-background: #2D2A2E;
+    --code-theme-text: #FCFCFA;
+
     /* Monokai Pro Material 语法高亮 */
-    --code-theme-comment: #FFD866;     /* 注释 */
-    --code-theme-keyword: #FF6188;     /* 关键字 (if, else, return 等) */
-    --code-theme-function: #78DCE8;    /* 函数名和方法 */
-    --code-theme-tag: #FF6188;         /* HTML/XML 标签 */
-    --code-theme-variable: #FCFCFA;    /* 变量名 */
-    --code-theme-string: #FFD866;      /* 字符串 */
-    --code-theme-number: #AB9DF2;      /* 数字 */
-    --code-theme-constant: #AB9DF2;    /* 常量 (true, false, null 等) */
-    --code-theme-operator: #78DCE8;    /* 运算符 (+,-,*,/ 等) */
-    --code-theme-punctuation: #FCFCFA; /* 标点符号 */
-    --code-theme-selector: #FF6188;    /* CSS 选择器 */
-    --code-theme-attribute: #78DCE8;   /* HTML/XML 属性 */
-    --code-theme-class: #A9DC76;       /* 类名 */
-    --code-theme-builtin: #AB9DF2;     /* 内置对象/方法 */
+    --code-theme-comment: #FFD866;
+    --code-theme-keyword: #FF6188;
+    --code-theme-function: #78DCE8;
+    --code-theme-tag: #FF6188;
+    --code-theme-variable: #FCFCFA;
+    --code-theme-string: #FFD866;
+    --code-theme-number: #AB9DF2;
+    --code-theme-constant: #AB9DF2;
+    --code-theme-operator: #78DCE8;
+    --code-theme-punctuation: #FCFCFA;
+    --code-theme-selector: #FF6188;
+    --code-theme-attribute: #78DCE8;
+    --code-theme-class: #A9DC76;
+    --code-theme-builtin: #AB9DF2;
+
+    --sidebar-width: 380px;
+    --sidebar-background: #f7f9fb;
+    --toc-width: 350px;
+    --content-max-width: 75em;
+}
+
+/*============================================
+ * Sidebar — 整体
+ *============================================*/
+.sidebar {
+    background: var(--sidebar-background);
+    border-right: 1px solid #e2e8f0;
+}
+
+.sidebar-nav {
+    padding: 16px 0 32px 0;
+}
+
+.sidebar-nav ul {
+    list-style: none;
+    padding-left: 0;
+}
+
+.sidebar-nav a {
+    display: block;
+    text-decoration: none;
+    border-left: 3px solid transparent;
+    transition: color 0.15s, background 0.15s, border-color 0.15s;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/*============================================
+ * Sidebar — 悬停
+ *============================================*/
+.sidebar-nav a:hover {
+    color: #2b6cb0;
+    background: #edf2f7;
+}
+
+/*============================================
+ * Sidebar — 去掉左侧文章链接前的展开收缩箭头
+ * (theme-simple 的 --sidebar-nav-pagelink-background 小三角)
+ *============================================*/
+.sidebar-nav li > a[href^="/"]:not([href*="?id="]),
+.sidebar-nav li > a[href^="#/"]:not([href*="?id="]) {
+    background: none !important;
+    padding-left: 0 !important;
+}
+
+/*============================================
+ * Sidebar — 隐藏左侧标题目录 (仅保留文章目录)
+ *============================================*/
+.sidebar .app-sub-sidebar {
+    display: none !important;
+}
+
+/*============================================
+ * Sidebar — 当前激活页
+ *============================================*/
+.sidebar-nav li.active > a {
+    color: #2b6cb0;
+    background: #ebf4ff;
+    border-left-color: #3182ce;
+    font-weight: 600;
+}
+
+/*============================================
+ * 右侧 — 文章标题目录
+ *============================================*/
+.toc-panel {
+    position: fixed;
+    right: 20px;
+    top: 80px;
+    width: var(--toc-width);
+    max-height: calc(100vh - 120px);
+    overflow-y: auto;
+    z-index: 20;
+}
+
+.toc-panel ul.app-sub-sidebar {
+    display: block !important;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    margin: 0;
+    padding: 10px 0;
+    list-style: none;
+}
+
+.toc-panel ul.app-sub-sidebar li {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.toc-panel ul.app-sub-sidebar a {
+    display: block;
+    padding: 0.25em 0 0.25em 16px;
+    font-size: calc(var(--base-font-size, 16px) * 0.9);
+    color: var(--base-color, #4a5568);
+    text-decoration: none;
+    border-left: 2px solid transparent;
+    transition: color 0.15s, background 0.15s, border-color 0.15s;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.toc-panel ul.app-sub-sidebar a:hover {
+    color: #2b6cb0;
+    background: #f0f4f8;
+}
+
+.toc-panel ul.app-sub-sidebar li.active > a {
+    color: #2b6cb0;
+    border-left-color: #3182ce;
+    font-weight: 600;
+    background: #ebf4ff;
+}
+
+.toc-panel ul.app-sub-sidebar ul {
+    padding-left: 1em !important;
+    list-style: none;
+}
+
+.toc-panel ul.app-sub-sidebar ul li > a {
+    padding-left: 24px;
+}
+
+.toc-panel ul.app-sub-sidebar ul ul li > a {
+    padding-left: 38px;
+}
+
+.toc-panel ul.app-sub-sidebar ul ul ul li > a {
+    padding-left: 52px;
+}
+
+/*============================================
+ * 内容区 — 代码块
+ *============================================*/
+.markdown-section pre {
+    border-radius: var(--code-block-border-radius);
+    margin: var(--code-block-margin);
+    padding: var(--code-block-padding);
+    line-height: var(--code-block-line-height);
+    background: var(--code-theme-background);
+}
+
+.markdown-section pre code {
+    background: transparent;
+    color: var(--code-theme-text);
+    font-family: var(--code-font-family);
+    font-size: var(--code-font-size);
+    tab-size: var(--code-tab-size);
+    padding: 0;
+}
+
+/*============================================
+ * 桌面端 — 内容区右侧为 TOC 预留空间
+ *============================================*/
+@media screen and (min-width: 769px) {
+    .content {
+        margin-right: calc(var(--toc-width) + 40px);
+    }
+}
+
+/*============================================
+ * 移动端适配
+ *============================================*/
+@media screen and (max-width: 768px) {
+    .toc-panel {
+        display: none;
+    }
 }

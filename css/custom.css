@@ -36,18 +36,27 @@
     --code-theme-class: #A9DC76;
     --code-theme-builtin: #AB9DF2;
 
-    --sidebar-width: 380px;
+    /* VitePress 配色 */
+    --vp-c-brand: #3451b2;
+    --vp-c-text-1: #3c3c43;
+    --vp-c-text-2: #67676c;
+    --vp-c-divider: #e2e2e3;
+    --vp-sidebar-bg: #f6f6f7;
+
+
+	--sidebar-width: 380px;
     --sidebar-background: #f7f9fb;
-    --toc-width: 350px;
-    --content-max-width: 75em;
+    --toc-width: 300px;
+    --content-max-width: 68em;
+
 }
 
 /*============================================
  * Sidebar — 整体
  *============================================*/
 .sidebar {
-    background: var(--sidebar-background);
-    border-right: 1px solid #e2e8f0;
+    background: var(--vp-sidebar-bg);
+    border-right: 1px solid var(--vp-c-divider);
 }
 
 .sidebar-nav {
@@ -70,61 +79,95 @@
 }
 
 /*============================================
- * Sidebar — 悬停
- *============================================*/
-.sidebar-nav a:hover {
-    color: #2b6cb0;
-    background: #edf2f7;
-}
-
-/*============================================
- * Sidebar — 去掉左侧文章链接前的展开收缩箭头
- * (theme-simple 的 --sidebar-nav-pagelink-background 小三角)
- *============================================*/
-.sidebar-nav li > a[href^="/"]:not([href*="?id="]),
-.sidebar-nav li > a[href^="#/"]:not([href*="?id="]) {
-    background: none !important;
-    padding-left: 0 !important;
-}
-
-/*============================================
- * Sidebar — 隐藏左侧标题目录 (仅保留文章目录)
+ * Sidebar — 隐藏标题目录 + 去箭头
  *============================================*/
 .sidebar .app-sub-sidebar {
     display: none !important;
+}
+
+.sidebar-nav li > a[href^="/"]:not([href*="?id="]),
+.sidebar-nav li > a[href^="#/"]:not([href*="?id="]) {
+    background: none !important;
+}
+
+/*============================================
+ * Sidebar — 悬停
+ *============================================*/
+.sidebar-nav a:hover {
+    color: var(--vp-c-brand);
+    background: none;
 }
 
 /*============================================
  * Sidebar — 当前激活页
  *============================================*/
 .sidebar-nav li.active > a {
-    color: #2b6cb0;
-    background: #ebf4ff;
-    border-left-color: #3182ce;
+    color: var(--vp-c-brand);
+    background: none;
+    border-left-color: var(--vp-c-brand);
     font-weight: 600;
 }
 
 /*============================================
- * 右侧 — 文章标题目录
+ * 右侧 — VitePress 风格 TOC
  *============================================*/
 .toc-panel {
     position: fixed;
-    right: 20px;
-    top: 80px;
+    top: 0;
+    right: 0;
     width: var(--toc-width);
-    max-height: calc(100vh - 120px);
+    height: 100vh;
+    padding-top: 112px;
+    overflow-x: hidden;
     overflow-y: auto;
+    scrollbar-width: none;
     z-index: 20;
+}
+
+.toc-panel::-webkit-scrollbar {
+    display: none;
+}
+
+.toc-panel .toc-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--vp-c-text-1);
+    line-height: 32px;
+    margin-bottom: 4px;
+}
+
+.toc-panel .toc-content {
+    position: relative;
+    border-left: 1px solid var(--vp-c-divider);
+    padding-left: 16px;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.toc-panel .toc-marker {
+    position: absolute;
+    left: -1px;
+    top: 32px;
+    width: 2px;
+    height: 18px;
+    border-radius: 2px;
+    background-color: var(--vp-c-brand);
+    opacity: 0;
+    transition: top .25s cubic-bezier(0,1,.5,1), opacity .25s;
+}
+
+.toc-panel .toc-marker.visible {
+    opacity: 1;
 }
 
 .toc-panel ul.app-sub-sidebar {
     display: block !important;
-    background: #ffffff;
-    border: 1px solid #e2e8f0;
-    border-radius: 6px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    background: none;
+    border: none;
+    box-shadow: none;
+    border-radius: 0;
     margin: 0;
-    padding: 10px 0;
+    padding: 0;
     list-style: none;
 }
 
@@ -136,43 +179,32 @@
 
 .toc-panel ul.app-sub-sidebar a {
     display: block;
-    padding: 0.25em 0 0.25em 16px;
-    font-size: calc(var(--base-font-size, 16px) * 0.9);
-    color: var(--base-color, #4a5568);
+    padding: 0;
+    font-size: 14px;
+    font-weight: 400;
+    color: var(--vp-c-text-2);
+    line-height: 32px;
     text-decoration: none;
-    border-left: 2px solid transparent;
-    transition: color 0.15s, background 0.15s, border-color 0.15s;
     overflow: hidden;
     text-overflow: ellipsis;
+    white-space: nowrap;
+    transition: color .25s;
+    border: none;
+    background: none;
 }
 
 .toc-panel ul.app-sub-sidebar a:hover {
-    color: #2b6cb0;
-    background: #f0f4f8;
+    color: var(--vp-c-text-1);
 }
 
 .toc-panel ul.app-sub-sidebar li.active > a {
-    color: #2b6cb0;
-    border-left-color: #3182ce;
+    color: var(--vp-c-text-1);
     font-weight: 600;
-    background: #ebf4ff;
 }
 
 .toc-panel ul.app-sub-sidebar ul {
-    padding-left: 1em !important;
+    padding-left: 13px !important;
     list-style: none;
-}
-
-.toc-panel ul.app-sub-sidebar ul li > a {
-    padding-left: 24px;
-}
-
-.toc-panel ul.app-sub-sidebar ul ul li > a {
-    padding-left: 38px;
-}
-
-.toc-panel ul.app-sub-sidebar ul ul ul li > a {
-    padding-left: 52px;
 }
 
 /*============================================
@@ -200,7 +232,7 @@
  *============================================*/
 @media screen and (min-width: 769px) {
     .content {
-        margin-right: calc(var(--toc-width) + 40px);
+        margin-right: calc(var(--toc-width) + 32px);
     }
 }
 

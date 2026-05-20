@@ -12,7 +12,7 @@
   <!-- docsify-themeable 主题 theme-simple theme-simple-dark -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/docsify-themeable@0/dist/css/theme-simple.css">
 
-  <!-- 侧边栏文档样式 sidebar-folder.min 箭头 sidebar.min-->
+  <!-- 侧边栏文档样式 -->
   <link rel="stylesheet" href="//cdn.jsdelivr.net/npm/docsify-sidebar-collapse/dist/sidebar-folder.min.css"/>
 
   <link rel="stylesheet" href="./css/custom.css">
@@ -108,24 +108,39 @@
     function(hook, vm) {
         hook.doneEach(function() {
             setTimeout(function() {
-                var content = document.querySelector('.content');
+                var contentEl = document.querySelector('.content');
                 var sidebarToc = document.querySelector('.sidebar .app-sub-sidebar');
-                if (!content || !sidebarToc) return;
+                if (!contentEl || !sidebarToc) return;
 
-                var existing = content.querySelector('.toc-panel');
+                var existing = contentEl.querySelector('.toc-panel');
                 if (existing) existing.remove();
 
                 var panel = document.createElement('div');
                 panel.className = 'toc-panel';
-                panel.appendChild(sidebarToc.cloneNode(true));
-                content.appendChild(panel);
+
+                var title = document.createElement('div');
+                title.className = 'toc-title';
+                title.textContent = '本页目录';
+
+                var tocContent = document.createElement('div');
+                tocContent.className = 'toc-content';
+
+                var marker = document.createElement('div');
+                marker.className = 'toc-marker';
+                tocContent.appendChild(marker);
+
+                var cloned = sidebarToc.cloneNode(true);
+                tocContent.appendChild(cloned);
+
+                panel.appendChild(title);
+                panel.appendChild(tocContent);
+                contentEl.appendChild(panel);
 
                 var tocLinks = panel.querySelectorAll('a');
                 var lastActive = '';
 
                 function syncTocActive() {
                     var headings = document.querySelectorAll('.markdown-section > h1, .markdown-section > h2, .markdown-section > h3, .markdown-section > h4, .markdown-section > h5');
-                    var scrollTop = window.scrollY || document.documentElement.scrollTop;
                     var current = '';
                     for (var i = headings.length - 1; i >= 0; i--) {
                         if (headings[i].getBoundingClientRect().top <= 150) {
@@ -135,16 +150,24 @@
                     }
                     if (current === lastActive) return;
                     lastActive = current;
+                    var activeLi = null;
                     tocLinks.forEach(function(link) {
                         var li = link.parentElement;
                         var href = link.getAttribute('href') || '';
                         var targetId = decodeURIComponent((href.match(/[?&]id=([^&]+)/) || [,''])[1]);
                         if (targetId === current) {
                             li.classList.add('active');
+                            activeLi = li;
                         } else {
                             li.classList.remove('active');
                         }
                     });
+                    if (activeLi) {
+                        marker.classList.add('visible');
+                        marker.style.top = (activeLi.offsetTop + 7) + 'px';
+                    } else {
+                        marker.classList.remove('visible');
+                    }
                 }
 
                 window.addEventListener('scroll', syncTocActive, {passive: true});

@@ -35,6 +35,26 @@ leader键：ctrl+x
 | leader + t       | 主题切换   |
 | leader + l       | 会话查看   |
 
+参考命令：
+
+```bash
+# 凭证
+opencode auth login
+opencode auth logout
+opencode auth list
+
+# 查看可用模型
+opencode models
+opencode models deepseek
+
+# 统计
+opencode stats
+# 显示消耗最高的 5 个模型
+opencode stats --models 5
+```
+
+
+
 ## Claude Code
 
 安装：
@@ -48,7 +68,7 @@ curl -fsSL https://claude.ai/install.sh | bash
 ```bash
 # wsl配置，设置-高级-配置文件目录
 \\wsl$\Ubuntu\home\你的用户名\.claude
-\\wsl$\Ubuntu\home\你的用户名\.codex
+\\wsl.localhost\Ubuntu-24.04\home\zhengjing\.claude
 ```
 
 ## Antigravity 

@@ -1,3 +1,17 @@
+  - AI
+    - [AI工具使用.md](./AI/AI工具使用.md)
+    - [OpenCode使用.md](./AI/OpenCode使用.md)
+    - oh-my-openagent
+      - [01-项目简介与核心理念.md](./AI/oh-my-openagent/01-项目简介与核心理念.md)
+      - [02-整体架构与多模型编排机制.md](./AI/oh-my-openagent/02-整体架构与多模型编排机制.md)
+      - [03-安装与环境配置.md](./AI/oh-my-openagent/03-安装与环境配置.md)
+      - [04-智能体全景详解.md](./AI/oh-my-openagent/04-智能体全景详解.md)
+      - [05-工作模式-Ultrawork-Prometheus-Atlas.md](./AI/oh-my-openagent/05-工作模式-Ultrawork-Prometheus-Atlas.md)
+      - [06-Category与Skill系统.md](./AI/oh-my-openagent/06-Category与Skill系统.md)
+      - [07-核心工具链.md](./AI/oh-my-openagent/07-核心工具链.md)
+      - [08-Hooks与MCP系统.md](./AI/oh-my-openagent/08-Hooks与MCP系统.md)
+      - [09-命令模型回退与配置参考.md](./AI/oh-my-openagent/09-命令模型回退与配置参考.md)
+      - [10-实战案例最佳实践与故障排除.md](./AI/oh-my-openagent/10-实战案例最佳实践与故障排除.md)
   - Android
     - [Android-相机相关.md](./Android/Android-相机相关.md)
     - [Android_Binder.md](./Android/Android_Binder.md)
@@ -79,7 +93,6 @@
     - [04 函数.md](./cpp/04%20函数.md)
     - [05 类.md](./cpp/05%20类.md)
   - tools
-    - [AI工具使用.md](./tools/AI工具使用.md)
     - [Android配置.md](./tools/Android配置.md)
     - [Chrome快捷键.md](./tools/Chrome快捷键.md)
     - [Windows脚本使用.md](./tools/Windows脚本使用.md)

@@ -62,6 +62,9 @@ adb shell am start -a android.intent.action.CALL -d tel:+972527300294
 
 #Open send sms screen with phone number and the message:
 adb shell am start -a android.intent.action.SENDTO -d sms:+972527300294   --es  sms_body "Test --ez exit_on_sent false
+
+# 杀死进程
+adb shell am force-stop pkg
 ```
 
 ### 截屏、录屏
@@ -244,8 +247,6 @@ adb shell settings get system HARDWARE_ID
 ```bash
 $ dumpsys activity #查询AMS服务相关信息
 $ dumpsys window #查询WMS服务相关信息
-$ dumpsys cpuinfo #查询CPU情况
-$ dumpsys meminfo #查询内存情况
 
 #查看当前运行activity
 $ dumpsys activity top | grep ACTIVITY
@@ -267,6 +268,28 @@ adb shell dumpsys activity broadcasts | egrep "FLY_SCREEN"
 ```
 
 参考：[dumpsys命令用法](http://gityuan.com/2016/05/14/dumpsys-command/)
+
+内存cpu分析
+
+```bash
+$ dumpsys cpuinfo #查询CPU情况
+$ dumpsys meminfo #查询内存情况
+
+dumpsys meminfo com.tinnove.renderserver
+dumpsys cpuinfo | grep com.tinnove.renderserver
+
+Pss Total:（Proportional Set Size - 按比例分摊内存），把应用独占的内存，加上按比例分摊的共享内存，
+如果你的应用和另一个应用共享了一个 10MB 的系统库（如 .so 动态库），
+你的应用独占 50MB。那么 PSS = 50MB + (10MB / 2) = 55MB。
+
+Private Dirty（私有脏内存）：应用独占且已被修改过的 RAM 内存。
+
+Private Clean（私有干净内存）：应用独占，但未被修改（或可以从磁盘直接恢复）的内存。
+
+Rss Total（Resident Set Size - 驻留内存大小）：进程在物理内存（RAM）中分配的总页数（忽略共享分摊）。
+只要包含了这个应用用到的内存（哪怕是跟 100 个应用共享的库），都会全额算进来。因此 RSS 往往偏大，
+不能准确反映单个应用占用了多少系统资源。
+```
 
 ## scrcpy
 

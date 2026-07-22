@@ -44,3 +44,15 @@ Antigravity权限添加：
 # antigravity-auth安装
 npm install opencode-antigravity-auth
 ```
+
+## Superpowers 
+
+Superpowers 的核心就是这 7 个步骤，按顺序执行：
+
+1. brainstorming（头脑风暴-） ↓  需求探索
+2. using-git-worktrees（创建独立工作区） ↓
+3. writing-plans（写实施计划） ↓
+4. subagent-driven-development（子代理开发） ↓
+5. [test-driven-development](https://zhida.zhihu.com/search?content_id=270380962&content_type=Article&match_order=1&q=test-driven-development&zhida_source=entity)（测试驱动开发） ↓
+6. requesting-code-review（代码审查） ↓
+7. finishing-a-development-branch（完成分支）

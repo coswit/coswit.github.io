@@ -264,3 +264,15 @@ split -t '|' file.csv
 -x		# 显示没有控制终端的进程
 ```
 
+BSD 风格:
+
+```bash
+ps aux
+```
+
+System V / 标准风格:
+
+```bash
+ps -ef
+```
+

@@ -8,6 +8,8 @@ npm install -g opencode-ai
 
 ## 配置
 
+### config
+
 OpenCode 按以下顺序加载配置，优先级从低到高（后加载的覆盖先加载的）：
 
 | 优先级    | 位置                               | 说明                                   |
@@ -50,6 +52,8 @@ OpenCode 支持三种作用域的规则，满足不同场景：
 }
 ```
 
+### Agent
+
 | Agent   | 类型     | 擅长                                           | 默认权限                                                 |
 | :------ | :------- | :--------------------------------------------- | :------------------------------------------------------- |
 | Build   | Primary  | 全能开发（默认主 Agent）                       | 全能（可读写文件、执行命令）                             |
@@ -57,11 +61,12 @@ OpenCode 支持三种作用域的规则，满足不同场景：
 | Explore | Subagent | 快速找到文件、搜索代码、回答代码库问题         | 只读（可搜索、浏览代码）                                 |
 | General | Subagent | 复杂研究、多步骤任务、不确定能否快速找到答案时 | 多任务执行（可用 Todo 工具）                             |
 
-
+### 文件配置
 
 ```bash
 ~/.config/opencode/
 ├── opencode.json       # 全局配置
+├── opencode.jsonc       
 ├── AGENTS.md           # 全局规则
 ├── agent/              # 全局 Agent
 ├── command/            # 全局命令
@@ -76,7 +81,51 @@ OpenCode 支持三种作用域的规则，满足不同场景：
     └── plugin/         # 项目插件
 ```
 
-## 使用
+### 模型配置
+
+在`opencode.jsonc`中的配置：
+
+- `permission.edit`：文件编辑权限
+  - `"allow"`：允许编辑
+  - `"deny"`：禁止编辑
+  - 也可以指定路径规则，如 `{ "*": "deny", ".opencode/plans/*.md": "allow" }`
+
+```bash
+{
+  "plugin": [
+  // "oh-my-openagent@latest"
+  ],
+  "$schema": "https://opencode.ai/config.json",
+  "agent": {
+    // Build Agent 配置
+    "build": {
+      "mode": "primary",
+      "model": "deepseek/deepseek-v4-pro",
+	  // 控制随机性（0-1），值越低越专注
+      "temperature": 0.3,
+      "permission": {
+        "edit": "allow",
+        "bash": "allow"
+      }
+    },
+    // Plan Agent 配置
+    "plan": {
+      "mode": "primary",
+      "model": "volcengine-plan/glm-5.1",
+      "temperature": 0.1,
+      "permission": {
+        "edit": {
+          "*": "deny",                    // 禁止编辑所有源代码
+          ".opencode/plans/*.md": "allow" // 只允许编辑计划文件
+        },
+        "bash": "allow"
+      }
+    }
+  }
+}
+```
+
+## 命令
 
 leader键：ctrl+x
 

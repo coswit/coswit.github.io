@@ -324,6 +324,10 @@ $ git reflog
 ```shell
 #添加每个变化前，都会要求确认，对于同一个文件的多处变化，可以实现分次提交
 git add -p
+
+# 取消add操作
+git restore --staged .
+git reset HEAD .
 ```
 
 ### 配置

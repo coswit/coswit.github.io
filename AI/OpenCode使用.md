@@ -100,8 +100,10 @@ OpenCode 支持三种作用域的规则，满足不同场景：
     // Build Agent 配置
     "build": {
       "mode": "primary",
-      "model": "deepseek/deepseek-v4-pro",
-	  // 控制随机性（0-1），值越低越专注
+      "model": "zhipuai-coding-plan/glm-5.2-highspeed[1m]:max",
+	  "model": "deepseek/deepseek-v4-pro:max",
+	  "model": "deepseek/deepseek-v4-flash:max",
+	  // 控制随机性（0-1），值越低越专注，越高越有创造性
       "temperature": 0.3,
       "permission": {
         "edit": "allow",
@@ -111,16 +113,34 @@ OpenCode 支持三种作用域的规则，满足不同场景：
     // Plan Agent 配置
     "plan": {
       "mode": "primary",
-      "model": "volcengine-plan/glm-5.1",
+      "model": "zhipuai-coding-plan/glm-5.2",	
       "temperature": 0.1,
       "permission": {
         "edit": {
-          "*": "deny",                    // 禁止编辑所有源代码
-          ".opencode/plans/*.md": "allow" // 只允许编辑计划文件
+		".opencode/plans/*.md": "allow", // 只允许编辑计划文件
+         "*": "deny"                    // 禁止编辑所有源代码 
         },
         "bash": "allow"
       }
-    }
+    },
+    "debug": {
+      "mode": "primary",
+      "model": "zhipuai-coding-plan/glm-5.2",	
+      "temperature": 0.1,
+      "permission": {
+        "edit": "allow",
+        "bash": "allow"
+      }
+    },
+    "brainstorming": {
+      "mode": "primary",
+      "model": "zhipuai-coding-plan/glm-5.2",	
+      "temperature": 0.5,
+      "permission": {
+        "edit": "allow",
+        "bash": "allow"
+      }
+    }		
   }
 }
 ```
@@ -153,4 +173,7 @@ opencode models deepseek
 opencode stats
 # 显示消耗最高的 5 个模型
 opencode stats --models 5
+
+# 刷新模型缓存
+opencode models --refresh
 ```

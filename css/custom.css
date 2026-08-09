@@ -47,6 +47,7 @@
 	--sidebar-width: 380px;
     --sidebar-background: #f7f9fb;
     --toc-width: 300px;
+    --toc-top-offset: 112px;
     --content-max-width: 68em;
 
 }
@@ -101,10 +102,11 @@
 /*============================================
  * Sidebar — 当前激活页
  *============================================*/
-.sidebar-nav li.active > a {
-    color: var(--vp-c-brand);
+.sidebar-nav li.active > a,
+.sidebar-nav li:has(> .app-sub-sidebar .active) > a {
+    color: var(--vp-c-brand) !important;
     background: none;
-    border-left-color: var(--vp-c-brand);
+    border-left-color: var(--vp-c-brand) !important;
     font-weight: 600;
 }
 
@@ -117,7 +119,7 @@
     right: 0;
     width: var(--toc-width);
     height: 100vh;
-    padding-top: 112px;
+    padding-top: var(--toc-top-offset);
     overflow-x: hidden;
     overflow-y: auto;
     scrollbar-width: none;

@@ -96,6 +96,7 @@
     - [Android配置.md](./tools/Android配置.md)
     - [Chrome快捷键.md](./tools/Chrome快捷键.md)
     - [Windows脚本使用.md](./tools/Windows脚本使用.md)
+    - [Windows配置.md](./tools/Windows配置.md)
     - [adb相关.md](./tools/adb相关.md)
     - [cmake.md](./tools/cmake.md)
     - [git常见命令.md](./tools/git常见命令.md)

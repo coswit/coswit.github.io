@@ -272,6 +272,17 @@ scoop bucket add extras
 scoop bucket add java
 ```
 
+代理：
+
+```bash
+# 配置代理
+scoop config proxy 127.0.0.1:7897
+# 查看代理
+scoop config
+# 去掉代理
+scoop config rm proxy
+```
+
 ### help
 
 ```bash

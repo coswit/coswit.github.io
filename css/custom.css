@@ -36,20 +36,77 @@
     --code-theme-class: #A9DC76;
     --code-theme-builtin: #AB9DF2;
 
-    /* VitePress 配色 */
-    --vp-c-brand: #3451b2;
-    --vp-c-text-1: #3c3c43;
-    --vp-c-text-2: #67676c;
-    --vp-c-divider: #e2e2e3;
+    /* VitePress 配色（绿色系，参考 learnopencode.com） */
+    --vp-c-brand: #18a058;            /* 主题色：白天态用更深的绿保证对比 */
+    --vp-c-brand-light: #1aa861;
+    --vp-c-brand-dark: #12804a;
+    --vp-c-text-1: rgba(60, 60, 67);
+    --vp-c-text-2: rgba(60, 60, 67, 0.6);
+    --vp-c-text-3: rgba(60, 60, 67, 0.38);
+    --vp-c-divider: rgba(60, 60, 67, 0.12);
+    --vp-c-bg: #ffffff;
+    --vp-c-bg-alt: #f6f6f7;
+    --vp-c-gutter: rgba(60, 60, 67, 0.12);
     --vp-sidebar-bg: #f6f6f7;
+    --vp-c-bg-blockquote: rgba(125, 125, 125, 0.08);
+
+    /* 表格 */
+    --vp-c-bg-table-row: #f6f6f7;
+    --vp-c-border-table: rgba(60, 60, 67, 0.12);
 
 
 	--sidebar-width: 380px;
-    --sidebar-background: #f7f9fb;
+    --sidebar-background: #f6f6f7;
     --toc-width: 300px;
     --toc-top-offset: 112px;
     --content-max-width: 68em;
 
+}
+
+/*============================================
+ * 暗色模式 — 覆盖自定义变量
+ * theme-simple-dark.css 已切换 docsify-themeable 基础变量，
+ * 这里覆盖本项目额外的 VitePress 配色 / 侧边栏 / TOC / 内联代码
+ * 对齐 learnopencode.com（VitePress 暗色）
+ *============================================*/
+html.dark {
+    /* 主题色：暗色态用高亮的 emerald 绿，保证在深色背景上的可见度 */
+    --vp-c-brand: #34d399;
+    --vp-c-brand-light: #3dd9a6;
+    --vp-c-brand-dark: #2bc28b;
+    --vp-c-text-1: rgba(223, 223, 214, 0.96);   /* 暖白正文 */
+    --vp-c-text-2: rgba(223, 223, 214, 0.6);
+    --vp-c-text-3: rgba(223, 223, 214, 0.38);
+    --vp-c-divider: rgba(46, 46, 50, 1);
+    --vp-c-bg: rgb(27, 27, 31);                 /* body 背景 */
+    --vp-c-bg-alt: rgb(22, 22, 24);             /* 侧边栏/代码块背景 */
+    --vp-c-gutter: rgba(46, 46, 50, 1);
+    --vp-sidebar-bg: rgb(22, 22, 24);
+    --vp-c-bg-blockquote: transparent;
+
+    --sidebar-background: rgb(22, 22, 24);
+
+    /* 内联代码：暗色态用绿色配色（参考 learnopencode.com） */
+    --code-inline-background: rgba(101, 117, 133, 0.16);
+    --code-inline-color: #34d399;
+
+    --vp-c-bg-table-row: rgb(32, 33, 39);
+    --vp-c-border-table: rgba(46, 46, 50, 1);
+}
+
+/* 暗色态：body 背景对齐参考站点 rgb(27,27,31)，覆盖 docsify-themeable 默认 */
+html.dark body {
+    background: var(--vp-c-bg);
+}
+
+/* 暗色态：内容区文字微暖白 */
+html.dark .markdown-section,
+html.dark .markdown-section p {
+    color: rgba(223, 223, 214, 0.96);
+}
+
+html.dark .markdown-section li {
+    color: rgba(223, 223, 214, 0.96);
 }
 
 /*============================================
@@ -93,10 +150,18 @@
 
 /*============================================
  * Sidebar — 悬停
+ * 仅变色，不显示左边框竖线（竖线只属于激活态）
  *============================================*/
 .sidebar-nav a:hover {
     color: var(--vp-c-brand);
     background: none;
+    border-left-color: transparent !important;
+}
+
+/* 激活页悬停时保留绿色竖线 */
+.sidebar-nav li.active > a:hover,
+.sidebar-nav li:has(> .app-sub-sidebar .active) > a:hover {
+    border-left-color: var(--vp-c-brand) !important;
 }
 
 /*============================================
@@ -230,6 +295,130 @@
 }
 
 /*============================================
+ * 内容区 — 标题（参考 VitePress）
+ *============================================*/
+.markdown-section h1 {
+    font-size: 2em;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    color: var(--vp-c-text-1);
+    margin: 0 0 1.5em 0;
+    line-height: 1.25;
+}
+
+.markdown-section h2 {
+    font-size: 1.5em;
+    font-weight: 600;
+    color: var(--vp-c-text-1);
+    margin: 3em 0 1em 0;
+    padding-top: 1.5em;
+    padding-bottom: 0;
+    border-top: 1px solid var(--vp-c-divider);
+    border-bottom: none;
+    line-height: 1.3;
+}
+
+.markdown-section h3 {
+    font-size: 1.25em;
+    font-weight: 600;
+    color: var(--vp-c-text-1);
+    margin: 2em 0 1em 0;
+    line-height: 1.4;
+}
+
+.markdown-section h4 {
+    font-size: 1em;
+    font-weight: 600;
+    color: var(--vp-c-text-1);
+    margin: 1.8em 0 0.8em 0;
+}
+
+/*============================================
+ * 内容区 — 链接
+ *============================================*/
+.markdown-section a {
+    color: var(--vp-c-brand);
+    font-weight: 500;
+    text-decoration: none;
+    transition: color 0.2s;
+}
+
+.markdown-section a:hover {
+    color: var(--vp-c-brand-light);
+    text-decoration: underline;
+}
+
+/*============================================
+ * 内容区 — 引用块（参考 VitePress）
+ *============================================*/
+.markdown-section blockquote {
+    border-left: 2px solid var(--vp-c-divider);
+    background: var(--vp-c-bg-blockquote);
+    color: var(--vp-c-text-2);
+    border-radius: 0;
+    padding: 0 0 0 16px;
+    margin: 1em 0;
+    font-weight: 500;
+    font-style: normal;
+}
+
+/*============================================
+ * 内容区 — 表格（参考 VitePress）
+ *============================================*/
+.markdown-section table {
+    display: block;
+    border-collapse: collapse;
+    margin: 1.25em 0;
+    overflow-x: auto;
+    border: 1px solid var(--vp-c-border-table);
+    border-radius: 8px;
+}
+
+.markdown-section thead {
+    background: var(--vp-c-bg-table-row);
+}
+
+.markdown-section th {
+    background: transparent;
+    color: var(--vp-c-text-2);
+    font-weight: 600;
+    text-align: left;
+    padding: 12px 16px;
+    border: none;
+    border-bottom: 1px solid var(--vp-c-border-table);
+    line-height: 24px;
+}
+
+.markdown-section td {
+    padding: 12px 16px;
+    border: none;
+    border-bottom: 1px solid var(--vp-c-border-table);
+    color: var(--vp-c-text-1);
+    line-height: 24px;
+}
+
+.markdown-section tr:last-child td {
+    border-bottom: none;
+}
+
+/*============================================
+ * 内容区 — 正文文字色 & 列表
+ *============================================*/
+.markdown-section,
+.markdown-section p {
+    color: var(--vp-c-text-1);
+}
+
+.markdown-section li {
+    color: var(--vp-c-text-1);
+}
+
+.markdown-section strong {
+    color: var(--vp-c-text-1);
+    font-weight: 600;
+}
+
+/*============================================
  * 桌面端 — 内容区右侧为 TOC 预留空间
  *============================================*/
 @media screen and (min-width: 769px) {
@@ -245,4 +434,60 @@
     .toc-panel {
         display: none;
     }
+}
+
+/*============================================
+ * 主题切换按钮
+ *============================================*/
+#theme-toggle {
+    position: fixed;
+    top: 16px;
+    /* 桌面端放在右侧 TOC 面板左侧，避免被 TOC 遮挡无法点击 */
+    right: calc(var(--toc-width, 300px) + 16px);
+    z-index: 100;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border: 1px solid var(--vp-c-divider, #e2e2e3);
+    border-radius: 8px;
+    background: var(--vp-sidebar-bg, #f6f6f7);
+    color: var(--vp-c-text-1, #3c3c43);
+    cursor: pointer;
+    pointer-events: auto;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    transition: color 0.2s, background 0.2s, border-color 0.2s, transform 0.15s;
+}
+
+#theme-toggle:hover {
+    color: var(--vp-c-brand);
+    border-color: var(--vp-c-brand);
+    transform: translateY(-1px);
+}
+
+#theme-toggle:active {
+    transform: translateY(0);
+}
+
+/* 移动端：TOC 隐藏，按钮回到右上角 */
+@media screen and (max-width: 768px) {
+    #theme-toggle {
+        right: 14px;
+    }
+}
+
+/* 仅显示与当前模式对应的图标 */
+#theme-toggle .icon-moon {
+    display: block;
+}
+#theme-toggle .icon-sun {
+    display: none;
+}
+#theme-toggle.is-dark .icon-moon {
+    display: none;
+}
+#theme-toggle.is-dark .icon-sun {
+    display: block;
 }

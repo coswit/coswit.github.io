@@ -171,7 +171,7 @@ html.dark .markdown-section li {
 .sidebar-nav li:has(> .app-sub-sidebar .active) > a {
     color: var(--vp-c-brand) !important;
     background: none;
-    border-left-color: var(--vp-c-brand) !important;
+    border-left: 3px solid var(--vp-c-brand) !important;
     font-weight: 600;
 }
 
@@ -335,17 +335,20 @@ html.dark .markdown-section li {
 
 /*============================================
  * 内容区 — 链接
+ * docsify-themeable JS 运行时会注入 --link-color 覆盖样式表，
+ * 故用 !important 强制使用项目主题色
  *============================================*/
 .markdown-section a {
-    color: var(--vp-c-brand);
+    color: var(--vp-c-brand) !important;
     font-weight: 500;
-    text-decoration: none;
+    text-decoration: none !important;
+    border-bottom: none !important;
     transition: color 0.2s;
 }
 
 .markdown-section a:hover {
-    color: var(--vp-c-brand-light);
-    text-decoration: underline;
+    color: var(--vp-c-brand-light) !important;
+    text-decoration: underline !important;
 }
 
 /*============================================

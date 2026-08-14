@@ -1,6 +1,4 @@
----
-title: RISC-V 101
----
+
 
 # RISC-V
 

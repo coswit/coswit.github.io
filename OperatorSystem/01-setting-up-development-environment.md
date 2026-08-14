@@ -1,7 +1,3 @@
----
-title: 入门
----
-
 # 入门
 
 本书假设你正在使用 UNIX 或类 UNIX 的操作系统，例如 macOS 或者 Ubuntu。如果你用的是 Windows，那么你需要安装 Windows Subsystem for Linux (WSL2)，然后按照 Ubuntu 的说明做。

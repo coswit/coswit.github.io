@@ -37,6 +37,7 @@
     --code-theme-builtin: #AB9DF2;
 
     /* VitePress 配色（绿色系，参考 learnopencode.com） */
+    color-scheme: light;               /* 原生控件/滚动条跟随浅色 */
     --vp-c-brand: #18a058;            /* 主题色：白天态用更深的绿保证对比 */
     --vp-c-brand-light: #1aa861;
     --vp-c-brand-dark: #12804a;
@@ -70,6 +71,7 @@
  * 对齐 learnopencode.com（VitePress 暗色）
  *============================================*/
 html.dark {
+    color-scheme: dark;                /* 原生滚动条/控件跟随深色 */
     /* 主题色：暗色态用高亮的 emerald 绿，保证在深色背景上的可见度 */
     --vp-c-brand: #34d399;
     --vp-c-brand-light: #3dd9a6;
@@ -94,19 +96,9 @@ html.dark {
     --vp-c-border-table: rgba(46, 46, 50, 1);
 }
 
-/* 暗色态：body 背景对齐参考站点 rgb(27,27,31)，覆盖 docsify-themeable 默认 */
+/* 暗色态：body 背景对齐参考站点，覆盖 docsify-themeable 默认 */
 html.dark body {
     background: var(--vp-c-bg);
-}
-
-/* 暗色态：内容区文字微暖白 */
-html.dark .markdown-section,
-html.dark .markdown-section p {
-    color: rgba(223, 223, 214, 0.96);
-}
-
-html.dark .markdown-section li {
-    color: rgba(223, 223, 214, 0.96);
 }
 
 /*============================================
@@ -370,7 +362,9 @@ html.dark .markdown-section li {
  *============================================*/
 .markdown-section table {
     display: block;
-    border-collapse: collapse;
+    /* separate 保证单元格边框在圆角/滚动容器中渲染可靠（collapse 在 overflow 容器中有边框丢失的已知问题） */
+    border-collapse: separate;
+    border-spacing: 0;
     margin: 1.25em 0;
     overflow-x: auto;
     border: 1px solid var(--vp-c-border-table);
@@ -431,15 +425,6 @@ html.dark .markdown-section li {
 }
 
 /*============================================
- * 移动端适配
- *============================================*/
-@media screen and (max-width: 768px) {
-    .toc-panel {
-        display: none;
-    }
-}
-
-/*============================================
  * 主题切换按钮
  *============================================*/
 #theme-toggle {
@@ -474,8 +459,13 @@ html.dark .markdown-section li {
     transform: translateY(0);
 }
 
-/* 移动端：TOC 隐藏，按钮回到右上角 */
+/*============================================
+ * 移动端适配：隐藏 TOC，切换按钮回到右上角
+ *============================================*/
 @media screen and (max-width: 768px) {
+    .toc-panel {
+        display: none;
+    }
     #theme-toggle {
         right: 14px;
     }

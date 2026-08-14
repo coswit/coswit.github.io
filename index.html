@@ -194,6 +194,8 @@
     },
 
     function(hook, vm) {
+        // 保存上一次的滚动监听器，导航时先移除，避免监听器随页面切换不断叠加（泄漏）
+        var tocScrollHandler = null;
         hook.doneEach(function() {
             setTimeout(function() {
                 var contentEl = document.querySelector('.content');
@@ -258,6 +260,10 @@
                     }
                 }
 
+                if (tocScrollHandler) {
+                    window.removeEventListener('scroll', tocScrollHandler);
+                }
+                tocScrollHandler = syncTocActive;
                 window.addEventListener('scroll', syncTocActive, {passive: true});
                 syncTocActive();
             }, 200);

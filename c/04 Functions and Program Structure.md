@@ -1,16 +1,3 @@
----
-title:  Functions and Program Structure
-date:   2019/10/1
-description: c语言学习系列（4）
-categories:
-- 读书笔记
--  C
-tags:
--   The C Programming Language
----
-
-
-
 ### Basics of Functions
 earching for the pattern of letters "ould'' in the set of lines
 ```

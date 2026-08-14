@@ -1,18 +1,3 @@
----
-title:  Pointers and Arrays
-date:   2019/10/3
-description: c语言学习系列（5）
-categories:
-- 读书笔记
--  C
-tags:
--   The C Programming Language
----
-
-
-
-
-
 **A pointer is a variable that contains the address of a variable**. 
 
 Pointers have been lumped with the goto statement as a marvelous way to create impossible- to-understand programs. This is certainly true when they are used carelessly, and it is easy to create pointers that point somewhere unexpected. With discipline, however, pointers can also be used to achieve clarity and simplicity. This is the aspect that we will try to illustrate.

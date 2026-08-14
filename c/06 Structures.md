@@ -1,18 +1,3 @@
----
-title:  Structures
-date:   2019/10/6
-description: c语言学习系列（6）
-categories:
-- 读书笔记
--  C
-tags:
--   The C Programming Language
----
-
-
-
-
-
 A structure is a collection of one or more variables, possibly of different types, grouped together under a single name for convenient handling. (Structures are called "records'' in some languages, notably Pascal.) Structures help to organize complicated data, particularly in large programs, because they permit a group of related variables to be treated as a unit instead of as separate entities.
 
 One traditional example of a structure is the payroll record: an employee is described by a set of attributes such as name, address, social security number, salary, etc. Some of these in turn could be structures: a name has several components, as does an address and even a salary. Another example, more typical for C, comes from graphics: a point is a pair of coordinate, a rectangle is a pair of points, and so on.

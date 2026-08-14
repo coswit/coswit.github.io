@@ -1,16 +1,3 @@
----
-title:  Types, Operators and Expressions
-date:   2019/9/18
-description: c语言学习系列（2）
-categories:
-- 读书笔记
--  C
-tags:
--   The C Programming Language
----
-
-
-
 
 
 - **Variables** and **constants** are the basic data objects manipulated in a program. 

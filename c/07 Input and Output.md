@@ -1,18 +1,3 @@
----
-title:  Input and Output
-date:   2019/10/12
-description: c语言学习系列（7）
-categories:
-- 读书笔记
--  C
-tags:
--   The C Programming Language
----
-
-
-
-
-
 ### 1.Standard Input and Output
 
 The simplest input mechanism is to read one character at a time from the standard input, normally the keyboard, with `getchar`:

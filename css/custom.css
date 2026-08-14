@@ -118,11 +118,36 @@ html.dark body {
     padding-left: 0;
 }
 
+/*============================================
+ * Sidebar — 缩进模型（树形，指示条全层级对齐）
+ * 关键：所有层级的行盒子左缘固定在同一 x，
+ * 层级缩进全部由 text-indent / padding-left 完成，
+ * 这样激活指示条能用统一偏移贴侧边栏左缘
+ *============================================*/
+/* 根 ul 贴 sidebar-nav 左缘；嵌套 ul 与逐层 li 不再累积偏移 */
+.sidebar-nav > ul { margin-left: 0 !important; }
+.sidebar-nav li { margin-left: 0 !important; }
+.sidebar-nav li ul { margin-left: 0 !important; }
+
+/* 文件链接：文字按层级缩进（a 左缘均为 x=25） */
+.sidebar-nav li > a { padding-left: 12px !important; }        /* 一级文字 x=37 */
+.sidebar-nav li li > a { padding-left: 28px !important; }     /* 二级 x=53 */
+.sidebar-nav li li li > a { padding-left: 44px !important; }  /* 三级 x=69 */
+
+/* 文件夹标题（纯文本）：text-indent 只缩进文字，不影响子 ul 位置 */
+.sidebar-nav li.folder { text-indent: 12px; }        /* 一级 x=37 */
+.sidebar-nav li li.folder { text-indent: 28px; }     /* 二级 x=53 */
+.sidebar-nav li li li.folder { text-indent: 44px; }  /* 三级 x=69 */
+
+/* 文件/文件夹图标（sidebar-collapse 插件 ::before）随层级阶梯排列 */
+.sidebar-nav ul:not(.app-sub-sidebar) > li::before { left: -4px; }        /* 一级图标 x=21 */
+.sidebar-nav ul ul:not(.app-sub-sidebar) > li::before { left: 12px; }     /* 二级 x=37，与一级文字对齐 */
+.sidebar-nav ul ul ul:not(.app-sub-sidebar) > li::before { left: 28px; }  /* 三级 x=53，与二级文字对齐 */
+
 .sidebar-nav a {
     display: block;
     text-decoration: none;
-    border-left: 3px solid transparent;
-    transition: color 0.15s, background 0.15s, border-color 0.15s;
+    transition: color 0.15s, background 0.15s;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -141,30 +166,34 @@ html.dark body {
 }
 
 /*============================================
- * Sidebar — 悬停
- * 仅变色，不显示左边框竖线（竖线只属于激活态）
+ * Sidebar — 悬停（仅变色）
  *============================================*/
 .sidebar-nav a:hover {
     color: var(--vp-c-brand);
     background: none;
-    border-left-color: transparent !important;
-}
-
-/* 激活页悬停时保留绿色竖线 */
-.sidebar-nav li.active > a:hover,
-.sidebar-nav li:has(> .app-sub-sidebar .active) > a:hover {
-    border-left-color: var(--vp-c-brand) !important;
 }
 
 /*============================================
  * Sidebar — 当前激活页
+ * 指示条贴侧边栏左缘（x=0），所有层级垂直对齐
  *============================================*/
-.sidebar-nav li.active > a,
-.sidebar-nav li:has(> .app-sub-sidebar .active) > a {
+.sidebar-nav li.active > a {
     color: var(--vp-c-brand) !important;
     background: none;
-    border-left: 3px solid var(--vp-c-brand) !important;
     font-weight: 600;
+    position: relative;
+}
+
+.sidebar-nav li.active > a::before {
+    content: '';
+    position: absolute;
+    /* 所有层级 a 左缘均为 x=25（.sidebar padding），统一拉到侧边栏左缘 x=0 */
+    left: -25px;
+    top: 4px;
+    bottom: 4px;
+    width: 3px;
+    border-radius: 2px;
+    background: var(--vp-c-brand);
 }
 
 /*============================================
@@ -422,6 +451,58 @@ html.dark body {
     .content {
         margin-right: calc(var(--toc-width) + 32px);
     }
+}
+
+/*============================================
+ * 侧边栏收起按钮（与主题切换按钮统一风格）
+ * docsify 核心控制其位置/移动动画，这里只重绘外观
+ *============================================*/
+body .sidebar-toggle {
+    width: 40px !important;
+    height: 40px !important;
+    padding: 0 !important;
+    border: 1px solid var(--vp-c-divider) !important;
+    border-radius: 8px !important;
+    background: var(--vp-sidebar-bg) !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: border-color 0.2s;
+}
+
+body .sidebar-toggle:hover {
+    border-color: var(--vp-c-brand) !important;
+}
+
+body .sidebar-toggle .sidebar-toggle-button {
+    display: flex !important;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 100% !important;
+    height: 100% !important;
+}
+
+/* 汉堡线：主题文字色，hover 变主题绿 */
+body .sidebar-toggle span {
+    display: block;
+    width: 18px !important;
+    height: 2px !important;
+    margin: 0 !important;
+    border-radius: 1px !important;
+    background-color: var(--vp-c-text-1) !important;
+    transition: background-color 0.2s, width 0.2s;
+}
+
+body .sidebar-toggle span + span {
+    margin-top: 4px !important;
+}
+
+body .sidebar-toggle:hover span {
+    background-color: var(--vp-c-brand) !important;
+    width: 14px !important;
 }
 
 /*============================================

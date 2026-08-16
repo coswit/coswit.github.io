@@ -93,9 +93,9 @@
     - [1.Java一.md](./QA/1.Java一.md)
     - [2.Java二.md](./QA/2.Java二.md)
     - [3.Java三.md](./QA/3.Java三.md)
+    - [Android一.md](./QA/Android一.md)
     - [Java泛型总结.md](./QA/Java泛型总结.md)
     - [进程线程协程总结.md](./QA/进程线程协程总结.md)
-    - [Android一.md](./QA/Android一.md)
   - c
     - [01 A Tutorial Introduction.md](./c/01%20A%20Tutorial%20Introduction.md)
     - [02 ypes, Operators and Expressions.md](./c/02%20ypes,%20Operators%20and%20Expressions.md)

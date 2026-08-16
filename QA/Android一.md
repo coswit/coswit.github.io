@@ -1,8 +1,8 @@
-### 1. <span id="android_base_1">四大组件是什么？</span>
+### 1. 四大组件是什么？
 
 四大组件：Activity、Service、BroadcastReceiver、ContentProvider。
 
-### 2. <span id="android_base_2">四大组件的生命周期和简单用法</span>
+### 2. 四大组件的生命周期和简单用法
 
 ### **Activity：**
 
@@ -18,12 +18,12 @@
 
 ![](http://upload-images.jianshu.io/upload_images/3985563-23d90471fa7f12d2.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
 
-	横竖屏切换的生命周期：onPause() --> onSaveInstanceState() --> onStop() --> onDestory() --> onCreate() --> onStart() --> onRestoreInstanceState() --> onResume() 
-	
+	横竖屏切换的生命周期：onPause() --> onSaveInstanceState() --> onStop() --> onDestory() --> onCreate() --> onStart() --> onRestoreInstanceState() --> onResume()
+
 	可以通过在AndroidManifest文件的Activity中指定如下属性：
-	
+
 	android:configChanges = "orientation| screenSize"
-	
+
 	来避免横竖屏切换时，Activity的销毁和重建，而是回调了下面的方法：
 
 ```java
@@ -158,7 +158,7 @@ Activity的Flags很多，这里介绍集中常用的，用于设定Activity的�
 
 #### Service生命周期
 
-startService() --> onCreate() --> onStartCommand() --> Service running --> onDestory() 
+startService() --> onCreate() --> onStartCommand() --> Service running --> onDestory()
 
 bindService() --> onCreate() --> onBind() --> Service running --> onUnbind() --> onDestory()
 
@@ -375,7 +375,7 @@ sendBroadcast(intent);
 * 若被注册了的广播接收者中注册时IntentFilter的action与上述匹配，则会接收此广播（即进行回调onReceiver()），如下mBroadcastReceiver则会接收上述广播：
 
   ```xml
-  <receiver 
+  <receiver
       //此广播接收者类是mBroadcastReceiver
       android:name=".mBroadcastReceiver" >
       //用于接收网络状态改变时发出的广播
@@ -457,22 +457,22 @@ sendBroadcast(intent);
 
   ```java
   //注册应用内广播接收器
-  //步骤1：实例化BroadcastReceiver子类 & IntentFilter mBroadcastReceiver 
-  mBroadcastReceiver = new mBroadcastReceiver(); 
-  IntentFilter intentFilter = new IntentFilter(); 
-  
+  //步骤1：实例化BroadcastReceiver子类 & IntentFilter mBroadcastReceiver
+  mBroadcastReceiver = new mBroadcastReceiver();
+  IntentFilter intentFilter = new IntentFilter();
+
   //步骤2：实例化LocalBroadcastManager的实例
   localBroadcastManager = LocalBroadcastManager.getInstance(this);
-  
-  //步骤3：设置接收广播的类型 
+
+  //步骤3：设置接收广播的类型
   intentFilter.addAction(android.net.conn.CONNECTIVITY_CHANGE);
-  
-  //步骤4：调用LocalBroadcastManager单一实例的registerReceiver（）方法进行动态注册 
+
+  //步骤4：调用LocalBroadcastManager单一实例的registerReceiver（）方法进行动态注册
   localBroadcastManager.registerReceiver(mBroadcastReceiver, intentFilter);
-  
+
   //取消注册应用内广播接收器
   localBroadcastManager.unregisterReceiver(mBroadcastReceiver);
-  
+
   //发送应用内广播
   Intent intent = new Intent();
   intent.setAction(BROADCAST_ACTION);
@@ -517,14 +517,14 @@ URI分为系统预置 & 自定义，分别对应系统内置的数据（如通�
 
 ```java
 // 设置URI
-Uri uri = Uri.parse("content://com.carson.provider/User/1") 
+Uri uri = Uri.parse("content://com.carson.provider/User/1")
 // 上述URI指向的资源是：名为 `com.carson.provider`的`ContentProvider` 中表名 为`User` 中的 `id`为1的数据
 
 // 特别注意：URI模式存在匹配通配符* & ＃
 
 // *：匹配任意长度的任何有效字符的字符串
 // 以下的URI 表示 匹配provider的任何内容
-content://com.example.app.provider/* 
+content://com.example.app.provider/*
 // ＃：匹配任意长度的数字字符的字符串
 // 以下的URI 表示 匹配provider中的table表的所有行
 content://com.example.app.provider/table/#
@@ -552,9 +552,9 @@ content://com.example.app.provider/table/#
 
   text/css    text/xml 等等
 
-  
 
-### 3. <span id="android_base_3">Context的理解？</span>
+
+### 3. Context的理解？
 
 Android应用模型是基于组件的应用设计模式，组件的运行要有一个完整的Android工程环境。在这个工程环境下，Activity、Service等系统组件才能够正常工作，而这些组件并不能采用普通的Java对象创建方式，new一下就能创建实例了，而是要有它们各自的上下文环境，也就是Context，Context是维持Android程序中各组件能够正常工作的一个核心功能类。
 
@@ -645,7 +645,7 @@ public class MyReceiver extends BroadcastReceiver{
 
 
 
-### 4. <span id="android_base_4">AsyncTask详解</span>
+### 4. AsyncTask详解
 
 #### Android中的线程
 
@@ -715,7 +715,7 @@ Result：异步任务执行完成后，返回的结果类型
 
 
 
-### 5. <span id="android_base_5">Android虚拟机以及编译过程</span>
+### 5. Android虚拟机以及编译过程
 
 #### 什么是Dalvik虚拟机？
 
@@ -838,7 +838,7 @@ Dalvik内存管理特点是：内存碎片化严重，当然这也是标记清�
 
 
 
-### 6.<span id="android_base_6"> 进程保活方案</span>
+### 6. 进程保活方案
 
 #### 保活的两个方案
 
@@ -911,7 +911,7 @@ Dalvik内存管理特点是：内存碎片化严重，当然这也是标记清�
 
 
 
-### 7. <span id="android_base_7">Android 消息机制</span>
+### 7. Android 消息机制
 
 #### 消息机制简介
 
@@ -984,7 +984,7 @@ threadLocal.set(true);
                 Log.i(TAG, "run: Thread#2" + threadLocal.get());
             }
         }.start();
-        
+
 输出：true、false、null
 ```
 
@@ -994,7 +994,7 @@ ThreadLocal是一个泛型类，里面有两个重要方法：get()和set()方�
 
 [https://blog.csdn.net/singwhatiwanna/article/details/48350919](https://blog.csdn.net/singwhatiwanna/article/details/48350919)
 
-### 8. <span id="android_base_8">Window、Activity、DecorView以及ViewRoot之间的关系</span>
+### 8. Window、Activity、DecorView以及ViewRoot之间的关系
 
 #### 职能简介
 
@@ -1028,7 +1028,7 @@ ViewRoot并不属于View树的一份子。从源码实现上来看，它既是�
 
 Activity就像个控制器，不负责视图部分。Window像个承载器，装着内部视图。DecorView就是个顶级视图，是所有View的最外层布局。ViewRoot像个连接器，负者沟通，通过硬件感知来通知视图，进行用户之间的交互。
 
-### 9. <span id="android_base_9">Android事件分发机制</span>
+### 9. Android事件分发机制
 
 [图解 Android 事件分发机制](https://www.jianshu.com/p/e99b5e8bd67b)
 
@@ -1050,7 +1050,7 @@ Activity就像个控制器，不负责视图部分。Window像个承载器，装
 * ViewGroup的拦截器onInterceptTouchEvent默认是不拦截的，所以return super和return false是一样的
 * View没有拦截器，为了让View可以把事件分发给自己的onTouchEvent处理，View的dispatchTouchEvent默认实现（super）就是把事件分发给自己的onTouchEvent
 
-### 10. <span id="android_base_10">dp、sp、px的理解以及相互转换</span>
+### 10. dp、sp、px的理解以及相互转换
 
 **px**
 
@@ -1123,7 +1123,7 @@ float fontScale = c.fontScale;      // 字体缩放比例
     }
 ```
 
-### 11. <span id="android_base_11">RelativeLayout和LinearLayout在实现效果同等的情况下使用哪个？为什么？</span>
+### 11. RelativeLayout和LinearLayout在实现效果同等的情况下使用哪个？为什么？
 
 [Android中RelativeLayout和LinearLayout性能分析](https://www.jianshu.com/p/8a7d059da746)
 
@@ -1167,7 +1167,7 @@ View的measure方法里对绘制过程做了一个优化，如果我们的子Vie
 * RelativeLayout的子View如果高度和RelativeLayout不同，则会引发效率问题。当子View很复杂时，这个问题会更加严重。如果可以，尽量使用padding代替margin
 * 在不影响层级深度的情况下，使用LinaerLayout和FrameLayout而不是RelativeLayout
 
-### 12. <span id="android_base_12">布局相关的 \<merge>、\<viewstub> 控件作用及实现原理</span>
+### 12. 布局相关的 \<merge>、\<viewstub> 控件作用及实现原理
 
 [从源码角度分析ViewStub 疑问与原理](https://blog.csdn.net/androiddevelop/article/details/46632323)
 
@@ -1179,7 +1179,7 @@ View的measure方法里对绘制过程做了一个优化，如果我们的子Vie
 
 
 
-### 13. <span id="android_base_13"> Fragment详解</span>
+### 13. Fragment详解
 
 #### 生命周期
 
@@ -1240,7 +1240,7 @@ Fragment依附于Activity存在，因此与Activity之间的通信可以归纳�
 
 
 
-### 14. <span id="android_base_14">Json、XML</span>
+### 14. Json、XML
 
 Json是一种轻量级的数据交换格式，具有良好的可读和便于编写的特性。XML即扩展标记语言，用来标记电子文件使其具有结构性的标记语言，可以用来标记数据。定义数据类型，是一种允许用户对自己的标记语言进行定义的源语言。
 
@@ -1248,7 +1248,7 @@ JSON在编码和解码上优于XML，并且数据体积更下，解析更快，�
 
 
 
-### 15. <span id="android_base_15">Assets目录与res目录的区别</span>
+### 15. Assets目录与res目录的区别
 
 	assets目录与res下的raw、drawable目录一样，也可用来存放资源文件，但它们三者区别如下：
 
@@ -1261,9 +1261,9 @@ JSON在编码和解码上优于XML，并且数据体积更下，解析更快，�
 res/raw和assets的区别：
 
 	res/raw中的文件会被映射到R.java文件中，访问的时候直接使用资源ID即可，assets文件夹下的文件不会被映射到R文件中，访问的时候需要AssetManager类。
-	
+
 	res/raw不可以有目录结构，而assets则可以有目录结构，也就是assets目录下可以再建立文件夹。
-	
+
 	读取res/raw下的文件资源，通过以下方式获取输入流来进行写操作：
 
 ```java
@@ -1279,7 +1279,7 @@ InputStream is = getResources().openRawResource(R.id.filename);
 
 
 
-### 16. <span id="android_base_16">View视图绘制过程原理</span>
+### 16. View视图绘制过程原理
 
 	View视图绘制需要搞清楚两个问题，一个是从哪里开始绘制，一个是怎么绘制？
 
@@ -1299,10 +1299,10 @@ InputStream is = getResources().openRawResource(R.id.filename);
 * performDraw()会调用最外层的ViewGroup的draw()方法，其中会先后调用background.draw()绘制背景，onDraw(绘制自己)，dispatchDraw(绘制子View)、onDrawScrollBars(绘制装饰)
 * MeasureSpec由两位SpecMode(UNSPECIFIED、EXACTLY(对于精确值和match_parent)、AL_MOST(对应warp_content))和三十位SpecSize组成一个int，DecorView的MeasureSpec由窗口大小和其LayoutParams决定，其他View有父View的MeasureSpec和本View的LayoutParams决定。ViewGroup中有getChildMeasureSpec()来获取子View的MeasureSpec。
 
-### 17. <span id="android_base_17">解决滑动冲突的方式？</span>
+### 17. 解决滑动冲突的方式？
 
 	在自定义View的过程中经常会遇到滑动冲突问题，一般滑动冲突的类型有三种：（1）外部View滑动方向和内部View滑动方向不一致；（2）外部View滑动方向和内部View滑动方向一致；（3）上述两种情况的嵌套
-	
+
 	一般解决滑动冲突都是利用事件分发机制，有两种方式即外部拦截法和内部拦截法：
 
 **外部拦截法：**
@@ -1315,7 +1315,7 @@ InputStream is = getResources().openRawResource(R.id.filename);
 
 
 
-### 18. <span id="android_base_18">APP Build过程</span>
+### 18. APP Build过程
 
 Android Studio点击build按钮之后，AS就会编译整个项目，并将apk安装到手机上，这个过程就是Android工程编译打包过程。主要的流程是：
 
@@ -1357,7 +1357,7 @@ Android Studio点击build按钮之后，AS就会编译整个项目，并将apk�
 
 
 
-### 19. <span id="android_base_19">Android利用scheme协议进行跳转</span>
+### 19. Android利用scheme协议进行跳转
 
 scheme是一种页面跳转协议。
 
@@ -1406,7 +1406,7 @@ String param = uri.getQueryParameter("goodsId");
 Toast.makeText(this, host + "  " + path + "  " + query + "  " + param, Toast.LENGTH_SHORT).show();
 ```
 
-### 20. <span id="android_base_20">MVC、MVP</span>
+### 20. MVC、MVP
 
 **MVC模式**
 
@@ -1448,7 +1448,7 @@ View与Model并不直接交互，而是使用Presenter作为View与Model之间�
 
 ![](http://upload-images.jianshu.io/upload_images/3985563-03352e00ce8b4083.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
 
-### 21.<span id="android_base_21"> SurfaceView</span>
+### 21. SurfaceView
 
 SurfaceView继承至View的，与View的主要区别在于：
 
@@ -1566,7 +1566,7 @@ public class DrawBoardView extends SurfaceView implements SurfaceHolder.Callback
 
 
 
-### 22. <span id="android_base_22">HandlerThread</span>
+### 22. HandlerThread
 
 HandlerThread继承了Thread，所以它本质上是一个Thread，与普通Thread的区别在于，它不仅建立了一个线程，并且创立了消息队列，有自己的looper，可以让我们在自己的线程中分发和处理消息，并对外提供自己这个Looper对象的get方法。
 
@@ -1599,7 +1599,7 @@ HandlerThread自带的Looper使它可以通过消息队列，来重复使用当�
    ```java
    //由于这里已经获取了workHandle.getLooper()，因此这个Handler是在HandlerThread线程也就是子线程中
    childHandler = new Handler(handlerThread.getLooper(), mSubCallback);
-   
+
    button.setOnClickListener(new OnClickListener() {
        @Override
        public void onClick(View v) {
@@ -1650,11 +1650,11 @@ HandlerThread自带的Looper使它可以通过消息队列，来重复使用当�
 3. 子线程中的Handler与HandlerThread的联系是通过childHandler=new Handler(handlerThread.getLooper(),mSubCallback)执行的，也就是说，childHandler获得HandlerThread线程的Looper，这样他们两个就在同一个阵营了，这也就是创建Handler作为HandlerThread线程消息执行者，必须在调用start()方法之后的原因 —— HandlerThread.start()之后，run方法才能跑起来，Looper才得以创建，handlerThread.getLooper()才不会出错。
 4. HandlerThread会将通过handleMessage传递进来的任务进行串行执行，由messageQueue的特性决定的，从而也说明了HandlerThread效率相对比较低。
 
-### 23. <span id="android_base_23">IntentService</span>
+### 23. IntentService
 
 	IntentService是继承并处理异步请求的一个类，其本质上是一个Service，因为它是继承至Service，所以开启IntentService和普通的Service一致。但是他和普通的Service不同之处在于它可以处理异步任务，在任务处理完之后会自动结束。另外，我们可以启动多次IntentService，而每一个耗时任务会以工作队列的方式在IntentService的onHandleIntent回调方法中执行，并且是串行执行。其实IntentService的内部是通过HandleThread和Handle来实现异步操作的。
 
-### 24. <span id="android_base_24">谈谈你对Application类的理解</span>
+### 24. 谈谈你对Application类的理解
 
 	首先，Application 在一个 Dalvik 虚拟机里面只会存在一个实例。为什么强调说是一个Dalvik虚拟机，而不是一个APP呢？那是因为，一个App有可能有多个Dalvik虚拟机，也就是传说中的多进程模式。在这种模式下，每一个Dalvik都会存在一个Application实例，它们之间没有关系，在A进程Application里面保存的数据不能在B进程的Application获取，因为它们根本不是一个对象。而且被隔离在两个进程里面，所以这里强调的是一个Dalvik虚拟机，而不是一个App。
 
@@ -1676,14 +1676,14 @@ Application有两个子类，一个是MultiDexApplication，如果你遇到了65
 
 
 
-### 25. <span id="android_base_25">Android为什么要设计出Bundle而不是直接使用HashMap来进行数据传递？</span>
+### 25. Android为什么要设计出Bundle而不是直接使用HashMap来进行数据传递？
 
 - Bundle内部是由ArrayMap实现的，ArrayMap的内部实现是两个数组，一个int数组是存储对象数据对应下标，一个对象数组保存key和value，内部使用二分发对key进行排序，所以在添加、删除、查找数据的时候，都会使用二分发查找，只适用于小数据量操作，如果在数据量比较大的情况下，那么它的性能将退化。而HashMap内部则是数组+链表结构，所以在数据量较小的时候，HashMap的Entry Array比ArrayMap占用更多的内存。因为使用Bundle的场景大多数为小数据量，所以相比之下，在这种情况下使用ArrayMap保存数据，在操作速度和内存占用上都具有优势。
 - 另外一个原因，则是在Android中如果使用Intent来携带数据的话，需要数据是基本类型或者是可序列化类型，HashMap使用Serializable进行序列化，而Bundle则是使用Pracelable进行序列化。而在Android平台，更推荐使用Pracelable实现序列化，虽然写法复杂，但是开销更小，所以为了更加快速的进行数据的序列化和反序列化，系统封装了Bundle类，方便我们进行数据的传输。
 
 
 
-### 26. <span id="android_base_26">SharedPreference在使用过程中有什么注意点？</span>
+### 26. SharedPreference在使用过程中有什么注意点？
 
 **commit()和apply()的区别**
 
@@ -1711,7 +1711,7 @@ Application有两个子类，一个是MultiDexApplication，如果你遇到了65
 
 
 
-### 27. <span id="android_base_27">SQLite有哪些可以优化的地方？</span>
+### 27. SQLite有哪些可以优化的地方？
 
 - 创建索引
 
@@ -1731,13 +1731,13 @@ Application有两个子类，一个是MultiDexApplication，如果你遇到了65
 
   查询时只取需要的字段和结果集，更多的结果集会消耗更多的时间以及内存，更多的字段会导致更多的内存消耗。
 
-### 28. <span id="android_base_28">嵌滑滑动机制</span>
+### 28. 嵌滑滑动机制
 
 	我们知道，Android的时间分发机制中，只要有一个控件消费了事件，其他控件就没办法在接受到这个事件了。因此，当有嵌套滑动场景时，我们需要自己动手解决事件冲突。
 
 嵌套滑动机制的基本原理可以认为是事件共享，即当子控件接受到滑动事件，准备要滑动时，会先通知父控件（startNestedScroll）；然后在滑动之前，会先询问父控件是否要滑动（dispatchNestedPreScroll）；如果父控件响应该事件进行了滑动，那么就会通知子控件它具体消耗了多少滑动距离；然后交由子控件处理剩余的滑动距离；最后子控件滑动结束后，如果滑动距离还有剩余，就会在问一下父控件是否需要在继续滑动剩下的距离（dispatchNestedScroll）
 
-###  29. <span id="android_base_29">RecyclerView 优化</span>
+### 29. RecyclerView 优化
 
 1. 尽量减少Item布局嵌套，比如使用ConstraintLayout
 
@@ -1761,19 +1761,19 @@ Application有两个子类，一个是MultiDexApplication，如果你遇到了65
 
 ## Android 部分（二）高级知识点
 
-### 1. <span id="android_advance_1">Android 系统架构</span>
+### 1. Android 系统架构
 
 - 应用层
 - 应用框架层
 - 系统运行库层
 - 硬件抽象层
-- Linux 内核层	
+- Linux 内核层
 
 ​	![](https://upload-images.jianshu.io/upload_images/8945592-b2cc038f019b9362.png?imageMogr2/auto-orient/)
 
 
 
-### 2. <span id="android_advance_2">Android 各个版本特性</span>
+### 2. Android 各个版本特性
 
 1. Android 5
 
@@ -1797,7 +1797,7 @@ Application有两个子类，一个是MultiDexApplication，如果你遇到了65
 
 参考：[Android 各版本特性](https://www.jianshu.com/p/e8db7954a895)
 
-### 3. <span id="android_advance_3">Android 系统启动流程</span>
+### 3. Android 系统启动流程
 
 1. init 进程启动过程
    1. 创建和挂载启动所需的文件目录
@@ -1819,7 +1819,7 @@ Application有两个子类，一个是MultiDexApplication，如果你遇到了65
 
 
 
-### 4. <span id="android_advance_4">应用程序进程启动过程</span>
+### 4. 应用程序进程启动过程
 
 启动过程可以分为两步：
 
@@ -1829,7 +1829,7 @@ Application有两个子类，一个是MultiDexApplication，如果你遇到了65
 
 2. Zygote 接收请求并创建应用程序进程
 
-### 5. <span id="android_advance_5">Activity 状态的保存与恢复</span>
+### 5. Activity 状态的保存与恢复
 
 其实就是 onSaveInstanceState 和 onRestoreInstanceState 方法的使用。不过需要注意的是 onRestoreInstanceState 方法时，应当先调用 super 方法，这样由系统负责保存的部分才能够恢复，比如文本输入类型控件的输入文本以及光标位置。
 
@@ -1852,59 +1852,59 @@ onRestoreInstanceState 调用时机：
 
 在 onStart() 方法之后，onResume() 之前。
 
-### 6. <span id="android_advance_6">Android 动画框架实现原理</span>
+### 6. Android 动画框架实现原理
 
-### 7. <span id="android_advance_7">requestLayout、onLayout、onDraw、drawChild 区别与联系</span>
+### 7. requestLayout、onLayout、onDraw、drawChild 区别与联系
 
-### 8. <span id="android_advance_8">requestLayout、invalidate、postInvalidate 的区别</span>
+### 8. requestLayout、invalidate、postInvalidate 的区别
 
 1. requestLayout 会回掉 onMeasure、onLayout、onDraw（ViewGroup.setWillNotDraw(fasle)情况下）方法
 2. invalidate 只会回掉 onDraw 方法
 3. postInvalidate 只会回掉 onDraw 方法（可以在非 UI 线程中调用）
 
-### 9. <span id="android_advance_9">Activity、Window、View 的区别以及联系</span>
+### 9. Activity、Window、View 的区别以及联系
 
-### 10. <span id="android_advance_10">Volley 的理解</span>
+### 10. Volley 的理解
 
-### 11. <span id="android_advance_11">如何优化自定义 View</span>
+### 11. 如何优化自定义 View
 
-### 12. <span id="android_advance_12">低版本如何实现高版本 API</span>
+### 12. 低版本如何实现高版本 API
 
-### 13. <span id="android_advance_13">描述一次网络请求的过程</span>
+### 13. 描述一次网络请求的过程
 
-### 14. <span id="android_advance_14">HttpUrlConnection 与 OkHttp 的关系</span>
+### 14. HttpUrlConnection 与 OkHttp 的关系
 
-### 15. <span id="android_advance_15">Bitmap 的理解</span>
+### 15. Bitmap 的理解
 
-### 16. <span id="android_advance_16">Looper 架构</span>
+### 16. Looper 架构
 
-### 17. <span id="android_advance_17">ActivityThread 的工作原理</span>
+### 17. ActivityThread 的工作原理
 
-### 18. <span id="android_advance_18">AMS 的工作原理</span>
+### 18. AMS 的工作原理
 
-### 19. <span id="android_advance_19">WMS 的工作原理</span>
+### 19. WMS 的工作原理
 
-### 20. <span id="android_advance_20">自定义 View 如何考虑机型适配</span>
+### 20. 自定义 View 如何考虑机型适配
 
-### 21. <span id="android_advance_21">自定义 View 的事件</span>
+### 21. 自定义 View 的事件
 
-### 22. <span id="android_advance_22">LaunchMode 应用场景</span>
+### 22. LaunchMode 应用场景
 
-### 23. <span id="android_advance_23">SpareArray 原理</span>
+### 23. SpareArray 原理
 
-### 24. <span id="android_advance_24">ContentProvider 是如何实现数据共享的</span>
+### 24. ContentProvider 是如何实现数据共享的
 
-### 25. <span id="android_advance_25">Service 与 Activity 的通信方式</span>
+### 25. Service 与 Activity 的通信方式
 
-### 26. <span id="android_advance_26">IntentService 原理与作用</span>
+### 26. IntentService 原理与作用
 
-### 27. <span id="android_advance_27">ApplicationContext 与 ActivityContext 的区别</span>
+### 27. ApplicationContext 与 ActivityContext 的区别
 
-### 28. <span id="android_advance_28">SP 是进程同步的嘛？如何做到进程同步？</span>
+### 28. SP 是进程同步的嘛？如何做到进程同步？
 
-### 29. <span id="android_advance_29">谈谈多线程在 Android 中的应用</span>
+### 29. 谈谈多线程在 Android 中的应用
 
-### 30. <span id="android_advance_30">进程和 Application 的生命周期</span>
+### 30. 进程和 Application 的生命周期
 
 
 
@@ -1987,17 +1987,17 @@ onRestoreInstanceState 调用时机：
 
 ```java
 public int getLength(Node head){
-    
+
     if(head == null){
         return 0;
     }
-    
+
     int len = 0;
     while(head != null){
         len++;
         head = head.next;
-    }  
-    return len;  
+    }
+    return len;
 }
 ```
 
@@ -2027,13 +2027,13 @@ public int getLength(Node head){
         return dummyHead.value;
     }
 
-    
+
     /** 获取节点值等于 value 的第一个元素角标 */
     public int getNodeIndex(Node head, int value) {
-    
+
             int index = -1;
             Node dummyHead = head;
-    
+
             while (dummyHead != null) {
                 index++;
                 if (dummyHead.value == value) {
@@ -2041,7 +2041,7 @@ public int getLength(Node head){
                 }
                 dummyHead = dummyHead.next;
             }
-    
+
             return -1;
     }
 ```
@@ -2054,7 +2054,7 @@ public int getLength(Node head){
 
 ## 计算机网络
 
-### 1. <span id="net_1">TCP 和 UDP 的区别</span>
+### 1. TCP 和 UDP 的区别
 
 TCP：
 
@@ -2072,7 +2072,7 @@ UPD：
 * UDP不保证数据的顺序结构，而TCP必须保证数据的顺序结构。
 * TCP面向字节流，实际上是TCP把数据看成一连串无结构的字节流；UDP是面向报文的，UDP没有阻塞控制，因此网络出现阻塞不会使源主机的发送速率降低。
 
-### 2. <span id="net_2">Http1.1和Http1.0及2.0的区别</span>
+### 2. Http1.1和Http1.0及2.0的区别
 
 **HTTP1.1与1.0的区别**
 
@@ -2121,7 +2121,7 @@ UPD：
   为了改善延迟，HTTP2.0引入了Server Push，它允许服务端推送资源给浏览器，在浏览器明确的请求之前，一个服务器经常知道一个页面需要很多附加资源，在它响应浏览器第一个请求的时候，就可以开始推送这些资源。这允许服务端充分的利用一个可能空闲的网络，改善页面加载时间。
 
 
-### 3. <span id="net_3">DNS解析过程</span>
+### 3. DNS解析过程
 
 [https://www.jianshu.com/p/7e268c559aff](https://www.jianshu.com/p/7e268c559aff)
 
@@ -2151,7 +2151,7 @@ DNS域名解析服务器。解析过程：
 
 从上面来看如果LDNS中没有查找到指定域名的对应IP，则需要很长的时间来获取解析结果。但是一旦解析结果被缓存了，下次在请求同样的域名就不会那么慢了。
 
-### 4. <span id="net_4">HTTP请求报文和响应报文</span>
+### 4. HTTP请求报文和响应报文
 
 [HTTP请求报文和响应报文](http://www.cnblogs.com/biyeymyhjob/archive/2012/07/28/2612910.html)
 
@@ -2251,7 +2251,7 @@ Content-Length: 122
 ＜/html＞
 ```
 
-### 5. <span id="net_5">简述HTTP</span>
+### 5. 简述HTTP
 
 	HTTP协议即超文本传输协议，是用于从万维网服务器传输超文本到本地浏览器的传送协议。HTTP是一个基于TCP/IP通信协议来传递数据。HTTP是一个属于应用层的面向对象的协议，由于其简单、快速的方式，适用于分布式超媒体信息系统。
 

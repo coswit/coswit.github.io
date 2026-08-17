@@ -159,4 +159,4 @@ Java 的型变靠使用处通配符（use-site variance），Kotlin 更进一步
 - **星投影**：`List<*>` 对应 Java 的 `List<?>`；
 - **具体化类型参数（reified）**：`inline fun <reified T : Any> Gson.fromJson(json)` 配合内联，运行时真的拿得到 T，不需要传 `Class<T>`，也不需要 TypeToken。
 
-详细语法见 [Kotlin 泛型](./Kotlin/07泛型.md)。
+详细语法见 [Kotlin 泛型](/Kotlin/07泛型.md)。

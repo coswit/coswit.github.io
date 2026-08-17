@@ -139,11 +139,11 @@ STA 加入一个基础结构型 BSS 的完整过程：
    - 主动扫描：逐信道广播 Probe Request，等待 AP 的 Probe Response；
 2. **认证**（Authentication）：与选定的 AP 完成身份认证（早期的 Open System / Shared Key 已被淘汰，现在由 WPA2/WPA3 的机制承担）；
 3. **关联**（Association）：交换双方能力（速率、QoS 等），获得 AID，此后才能经 AP 收发数据；
-4. **密钥协商**：WPA2-PSK 为四次握手（EAPOL-Key 帧）派生 PTK / GTK（代码级走读见 [wpa_supplicant](./Android/Android_Wifi/wpa_supplicant.md)）；
-5. **DHCP 与数据通信**：拿到 IP 后由系统完成网络配置与路由（见 [netd](./Android/Android_Wifi/netd.md)）。
+4. **密钥协商**：WPA2-PSK 为四次握手（EAPOL-Key 帧）派生 PTK / GTK（代码级走读见 [wpa_supplicant](/Android/Android_Wifi/wpa_supplicant.md)）；
+5. **DHCP 与数据通信**：拿到 IP 后由系统完成网络配置与路由（见 [netd](/Android/Android_Wifi/netd.md)）。
 
 ### 相关笔记
 
-- [WIFI信道](./Android/Android_Wifi/WIFI信道.md)：2.4G / 5G 频段与信道划分
-- [wpa_supplicant](./Android/Android_Wifi/wpa_supplicant.md)：扫描、关联与四次握手的实现
-- [netd](./Android/Android_Wifi/netd.md)：连接成功后的网络配置、路由与 DNS
+- [WIFI信道](/Android/Android_Wifi/WIFI信道.md)：2.4G / 5G 频段与信道划分
+- [wpa_supplicant](/Android/Android_Wifi/wpa_supplicant.md)：扫描、关联与四次握手的实现
+- [netd](/Android/Android_Wifi/netd.md)：连接成功后的网络配置、路由与 DNS

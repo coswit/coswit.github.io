@@ -47,6 +47,15 @@
   - Effective Java
     - [1.对像的创建和销毁.md](./Effective%20Java/1.对像的创建和销毁.md)
     - [2.对像的通用方法.md](./Effective%20Java/2.对像的通用方法.md)
+    - [3.类和接口.md](./Effective%20Java/3.类和接口.md)
+    - [4.泛型.md](./Effective%20Java/4.泛型.md)
+    - [5.枚举与注解.md](./Effective%20Java/5.枚举与注解.md)
+    - [6.Lambda与Stream.md](./Effective%20Java/6.Lambda与Stream.md)
+    - [7.方法.md](./Effective%20Java/7.方法.md)
+    - [8.通用程序设计.md](./Effective%20Java/8.通用程序设计.md)
+    - [9.异常.md](./Effective%20Java/9.异常.md)
+    - [10.并发.md](./Effective%20Java/10.并发.md)
+    - [11.序列化.md](./Effective%20Java/11.序列化.md)
   - Kotlin
     - [01基础语法.md](./Kotlin/01基础语法.md)
     - [02类.md](./Kotlin/02类.md)

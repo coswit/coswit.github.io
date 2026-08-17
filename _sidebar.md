@@ -46,6 +46,8 @@
       - [AudioTrack.md](./Android/Android音频/AudioTrack.md)
   - Effective Java
     - [1.对像的创建和销毁.md](./Effective%20Java/1.对像的创建和销毁.md)
+    - [10.并发.md](./Effective%20Java/10.并发.md)
+    - [11.序列化.md](./Effective%20Java/11.序列化.md)
     - [2.对像的通用方法.md](./Effective%20Java/2.对像的通用方法.md)
     - [3.类和接口.md](./Effective%20Java/3.类和接口.md)
     - [4.泛型.md](./Effective%20Java/4.泛型.md)
@@ -54,8 +56,10 @@
     - [7.方法.md](./Effective%20Java/7.方法.md)
     - [8.通用程序设计.md](./Effective%20Java/8.通用程序设计.md)
     - [9.异常.md](./Effective%20Java/9.异常.md)
-    - [10.并发.md](./Effective%20Java/10.并发.md)
-    - [11.序列化.md](./Effective%20Java/11.序列化.md)
+  - Java虚拟机
+    - [JVM一：内存区域与内存溢出异常.md](./Java虚拟机/JVM一：内存区域与内存溢出异常.md)
+    - [JVM二：垃圾回收器与内存分配策略.md](./Java虚拟机/JVM二：垃圾回收器与内存分配策略.md)
+    - [JVM八：Java内存模型与线程.md](./Java虚拟机/JVM八：Java内存模型与线程.md)
   - Kotlin
     - [01基础语法.md](./Kotlin/01基础语法.md)
     - [02类.md](./Kotlin/02类.md)
@@ -102,8 +106,11 @@
     - [1.Java一.md](./QA/1.Java一.md)
     - [2.Java二.md](./QA/2.Java二.md)
     - [3.Java三.md](./QA/3.Java三.md)
-    - [Android一.md](./QA/Android一.md)
+    - [Android系列1.md](./QA/Android系列1.md)
+    - [Android系列2.md](./QA/Android系列2.md)
+    - [HasMap原理.md](./QA/HasMap原理.md)
     - [Java泛型总结.md](./QA/Java泛型总结.md)
+    - [算法-排序.md](./QA/算法-排序.md)
     - [进程线程协程总结.md](./QA/进程线程协程总结.md)
   - c
     - [01 A Tutorial Introduction.md](./c/01%20A%20Tutorial%20Introduction.md)

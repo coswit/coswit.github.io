@@ -177,14 +177,16 @@ html.dark body {
  * Sidebar — 当前激活页
  * 指示条贴侧边栏左缘（x=0），所有层级垂直对齐
  *============================================*/
-.sidebar-nav li.active > a {
+.sidebar-nav li.active > a,
+.sidebar-nav a.active {
     color: var(--vp-c-brand) !important;
     background: none;
     font-weight: 600;
     position: relative;
 }
 
-.sidebar-nav li.active > a::before {
+.sidebar-nav li.active > a::before,
+.sidebar-nav a.active::before {
     content: '';
     position: absolute;
     /* 所有层级 a 左缘均为 x=25（.sidebar padding），统一拉到侧边栏左缘 x=0 */

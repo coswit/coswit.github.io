@@ -199,11 +199,18 @@
         hook.doneEach(function() {
             setTimeout(function() {
                 var contentEl = document.querySelector('.content');
-                var sidebarToc = document.querySelector('.sidebar .app-sub-sidebar');
-                if (!contentEl || !sidebarToc) return;
+                if (!contentEl) return;
 
+                // 先移除旧面板：页面无标题时也不会残留上一页的目录
                 var existing = contentEl.querySelector('.toc-panel');
                 if (existing) existing.remove();
+
+                // 直接从当前页面标题生成目录（h2~h5，与 subMaxLevel 一致）。
+                // 不再克隆侧边栏的 app-sub-sidebar：它由 docsify 异步刷新，
+                // 通过正文链接跳转后克隆时机可能早于侧边栏更新，导致目录显示成上一页的内容
+                var headings = document.querySelectorAll(
+                    '.markdown-section > h2, .markdown-section > h3, .markdown-section > h4, .markdown-section > h5');
+                if (!headings.length) return;
 
                 var panel = document.createElement('div');
                 panel.className = 'toc-panel';
@@ -219,8 +226,44 @@
                 marker.className = 'toc-marker';
                 tocContent.appendChild(marker);
 
-                var cloned = sidebarToc.cloneNode(true);
-                tocContent.appendChild(cloned);
+                // 按 heading 层级生成嵌套列表（结构与 docsify 侧边栏目录一致：li > a + ul）
+                var basePath = location.hash.split('?')[0];
+                var root = document.createElement('ul');
+                root.className = 'app-sub-sidebar';
+                var stack = [{ level: 1, li: null, ul: root }];
+                headings.forEach(function(h) {
+                    var level = parseInt(h.tagName.charAt(1), 10);
+                    while (stack.length > 1 && stack[stack.length - 1].level >= level) stack.pop();
+                    var parent = stack[stack.length - 1];
+
+                    var li = document.createElement('li');
+                    var a = document.createElement('a');
+                    a.href = basePath + '?id=' + encodeURIComponent(h.id);
+                    a.textContent = h.textContent;
+                    li.appendChild(a);
+
+                    if (parent.li && level > parent.level) {
+                        // 更深层级：挂到父标题 li 的子列表下（跳级时逐级补桥接列表）
+                        var node = parent.ul;
+                        for (var l = parent.level + 1; l < level; l++) {
+                            var bridge = document.createElement('ul');
+                            node.appendChild(bridge);
+                            node = bridge;
+                        }
+                        node.appendChild(li);
+                    } else {
+                        parent.ul.appendChild(li);
+                    }
+
+                    // 本层子标题的容器（空的最后统一清掉）
+                    var own = document.createElement('ul');
+                    li.appendChild(own);
+                    stack.push({ level: level, li: li, ul: own });
+                });
+                root.querySelectorAll('ul').forEach(function(u) {
+                    if (!u.children.length) u.remove();
+                });
+                tocContent.appendChild(root);
 
                 panel.appendChild(title);
                 panel.appendChild(tocContent);
@@ -229,27 +272,37 @@
                 var tocLinks = panel.querySelectorAll('a');
                 var lastActive = '';
 
+                // 缓存标题列表和链接目标 id：滚动回调里只做位置比较，
+                // 不再每次 scroll 都全量 querySelectorAll + 正则 + decode
+                var hs = Array.prototype.slice.call(document.querySelectorAll(
+                    '.markdown-section > h1, .markdown-section > h2, .markdown-section > h3, .markdown-section > h4, .markdown-section > h5'));
+                var linkTargets = [];
+                tocLinks.forEach(function (link) {
+                    var href = link.getAttribute('href') || '';
+                    var targetId = (href.match(/[?&]id=([^&]+)/) || [,''])[1];
+                    try { targetId = decodeURIComponent(targetId); } catch (e) {}
+                    linkTargets.push({ li: link.parentElement, id: targetId });
+                });
+
+                // 直接调用：查询已全部缓存，单个滚动事件的代价只是
+                // 遍历标题做位置比较，无需 rAF（后台标签页 rAF 会被暂停）
                 function syncTocActive() {
-                    var headings = document.querySelectorAll('.markdown-section > h1, .markdown-section > h2, .markdown-section > h3, .markdown-section > h4, .markdown-section > h5');
                     var current = '';
-                    for (var i = headings.length - 1; i >= 0; i--) {
-                        if (headings[i].getBoundingClientRect().top <= 150) {
-                            current = headings[i].id || '';
+                    for (var i = hs.length - 1; i >= 0; i--) {
+                        if (hs[i].getBoundingClientRect().top <= 150) {
+                            current = hs[i].id || '';
                             break;
                         }
                     }
                     if (current === lastActive) return;
                     lastActive = current;
                     var activeLi = null;
-                    tocLinks.forEach(function(link) {
-                        var li = link.parentElement;
-                        var href = link.getAttribute('href') || '';
-                        var targetId = decodeURIComponent((href.match(/[?&]id=([^&]+)/) || [,''])[1]);
-                        if (targetId === current) {
-                            li.classList.add('active');
-                            activeLi = li;
+                    linkTargets.forEach(function (t) {
+                        if (t.id === current) {
+                            t.li.classList.add('active');
+                            activeLi = t.li;
                         } else {
-                            li.classList.remove('active');
+                            t.li.classList.remove('active');
                         }
                     });
                     if (activeLi) {
@@ -268,6 +321,42 @@
                 syncTocActive();
             }, 200);
         });
+    },
+
+    // 侧边栏当前页高亮兜底修正：docsify 把 active 加在 <a> 上，但 sidebar-collapse
+    // 插件重写侧边栏 DOM 时会丢失（子目录显示规则 .active + ul 也依赖它），
+    // 且侧边栏按路由重新拉取/渲染是异步的，单次延时修正跑不赢。
+    // 这里用 MutationObserver 监听侧边栏重写，任何一次重写后都重新应用 active
+    function(hook, vm) {
+        var applyActive = function () {
+            // 两侧都要安全解码：hash 是百分号编码，而侧边栏 href 里含手写的 %20
+            // （如 "Effective Java" 目录），只解码一边会导致含空格的条目永远匹配不上；
+            // decode 遇到非法 % 序列会抛 URIError，需要 try/catch 兜底
+            var norm = function (p) {
+                p = p.replace(/^#/, '').split('?')[0].replace(/\/+$/, '').replace(/\.md$/i, '');
+                try { return decodeURIComponent(p); } catch (e) { return p; }
+            };
+            var cur = norm(location.hash);
+            document.querySelectorAll('.sidebar-nav a').forEach(function (a) {
+                var raw = a.getAttribute('href') || '';
+                if (raw.indexOf('?id=') !== -1) return; // 跳过页内锚点链接
+                var isCur = norm(raw) === cur;
+                a.classList.toggle('active', isCur);
+                var li = a.parentElement;
+                if (li && li.tagName === 'LI') li.classList.toggle('active', isCur);
+            });
+        };
+        var scheduled = false;
+        hook.mounted(function () {
+            var sidebar = document.querySelector('.sidebar');
+            if (!sidebar || typeof MutationObserver === 'undefined') return;
+            new MutationObserver(function () {
+                if (scheduled) return;
+                scheduled = true;
+                setTimeout(function () { scheduled = false; applyActive(); }, 50);
+            }).observe(sidebar, {childList: true, subtree: true});
+        });
+        hook.doneEach(function () { setTimeout(applyActive, 50); });
     }
     ]
   };

@@ -329,14 +329,22 @@
     // 这里用 MutationObserver 监听侧边栏重写，任何一次重写后都重新应用 active
     function(hook, vm) {
         var applyActive = function () {
+            window.__SIDEBAR_FIX__ = 'v4';   // 版本标记：控制台输入 __SIDEBAR_FIX__ 可查当前运行的修复版本（v4=自动展开文件夹）
             // 两侧都要安全解码：hash 是百分号编码，而侧边栏 href 里含手写的 %20
             // （如 "Effective Java" 目录），只解码一边会导致含空格的条目永远匹配不上；
-            // decode 遇到非法 % 序列会抛 URIError，需要 try/catch 兜底
+            // decode 遇到非法 % 序列会抛 URIError，需要 try/catch 兜底。
+            // 还要折叠 "/./" 段：workflow 生成的侧边栏是 "./dir/file.md"（渲染成 #/./dir/file），
+            // 正文链接是 "/dir/file.md"（渲染成 #/dir/file），两种路由只差这一段
             var norm = function (p) {
-                p = p.replace(/^#/, '').split('?')[0].replace(/\/+$/, '').replace(/\.md$/i, '');
+                p = p.replace(/^#/, '').split('?')[0]
+                     .replace(/\/\.\//g, '/')   // 折叠 /./（侧边栏与正文链接的形式差异）
+                     .replace(/\/+/g, '/')      // 折叠重复斜杠
+                     .replace(/\/+$/, '')
+                     .replace(/\.md$/i, '');
                 try { return decodeURIComponent(p); } catch (e) { return p; }
             };
             var cur = norm(location.hash);
+            var activeLi = null;
             document.querySelectorAll('.sidebar-nav a').forEach(function (a) {
                 var raw = a.getAttribute('href') || '';
                 if (raw.indexOf('?id=') !== -1) return; // 跳过页内锚点链接
@@ -344,7 +352,27 @@
                 a.classList.toggle('active', isCur);
                 var li = a.parentElement;
                 if (li && li.tagName === 'LI') li.classList.toggle('active', isCur);
+                if (isCur) activeLi = li;
             });
+
+            // 展开当前条目的祖先文件夹（sidebar-collapse 插件在路由切换后会按
+            // sidebarDisplayLevel 重置为折叠，当前条目虽然高亮但被藏在文件夹里看不见），
+            // 并把侧边栏滚动到该条目可见
+            if (activeLi) {
+                var node = activeLi.parentElement;
+                while (node && !node.classList.contains('sidebar-nav')) {
+                    if (node.tagName === 'UL') {
+                        var folderLi = node.parentElement;
+                        if (folderLi && folderLi.classList.contains('folder')) {
+                            folderLi.classList.remove('collapsed');
+                            folderLi.classList.add('open');
+                        }
+                    }
+                    node = node.parentElement;
+                }
+                // 滚动侧边栏让当前条目进入视野（block:nearest 只滚动必要的祖先容器）
+                try { activeLi.scrollIntoView({block: 'nearest', behavior: 'smooth'}); } catch (e) {}
+            }
         };
         var scheduled = false;
         hook.mounted(function () {

@@ -227,5 +227,10 @@
     - [设计模式之一：Creational Pattern.md](./设计模式/设计模式之一：Creational%20Pattern.md)
     - [设计模式之三：Behavioral Patterns.md](./设计模式/设计模式之三：Behavioral%20Patterns.md)
     - [设计模式之二：Structural Pattern.md](./设计模式/设计模式之二：Structural%20Pattern.md)
+    - GoF
+      - [00-导读.md](./设计模式/GoF/00-导读.md)
+      - [01-Creational-Patterns.md](./设计模式/GoF/01-Creational-Patterns.md)
+      - [02-Structural-Patterns.md](./设计模式/GoF/02-Structural-Patterns.md)
+      - [03-Behavioral-Patterns.md](./设计模式/GoF/03-Behavioral-Patterns.md)
   - 链接、装载与库
     - [目标文件.md](./链接、装载与库/目标文件.md)

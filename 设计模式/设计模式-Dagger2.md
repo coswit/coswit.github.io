@@ -1,6 +1,22 @@
-## Overview 
+# Dependency Injection with Dagger 2
 
-Many Android apps rely on instantiating objects that often require other dependencies.  For instance, a Twitter API client may be built using a networking library such as [[ Retrofit|Consuming-APIs-with-Retrofit]]. To use this library, you might also need to add parsing libraries such as [[Gson|Leveraging-the-Gson-Library]].  In addition, classes that implement authentication or caching may require accessing [[shared preferences|Storing-and-Accessing-SharedPreferences]] or other common storage, requiring instantiating them first and creating an inherent dependency chain.
+> 整理自 CodePath Guides：[Dependency Injection with Dagger 2](https://guides.codepath.com/android/Dependency-Injection-with-Dagger-2)。
+
+## 导读
+
+- **Advantages**：简化共享实例的获取（字段标 `@Inject` 即可）、自动构建复杂依赖图并生成易读的胶水代码、便于单元测试时替换/mock 模块、支持 Scoped instances（Application/Session/Activity 等不同生命周期）。
+- **Setup**：Gradle 依赖用 `implementation` + `annotationProcessor`（Kotlin 用 `kapt`）。
+- **Creating Singletons**：`@Module` 类中用 `@Provides` + `@Singleton` 声明单例（示例：`AppModule`/`NetModule` 提供 Application、SharedPreferences、Gson、Cache、OkHttpClient、Retrofit）；`@Component` 接口声明注入目标（`inject(MainActivity)`），编译器生成 `Dagger` 前缀的类，在 `Application` 中构建组件。
+- **Qualified types**：同一返回类型需要多个对象时，用 `@Named("cached")` 或自定义 `@Qualifier` 注解区分。
+- **Scopes**：自定义 `@Scope` 注解（如 `@UserScope`、`@MyActivityScope`）为组件划定生命周期边界；作用域实例的创建与销毁由开发者自己负责。
+- **Dependent Components vs. Subcomponents**：拆分组件的两种方式——dependent components 要求父组件显式暴露下游所需依赖（方法名随意、只看返回类型），且两个依赖组件不能共用同一 scope；subcomponents 只需在父组件中声明工厂方法，封装性弱一些但更省事；v2.7 起还可用 `@Subcomponent.Builder` 把子组件的创建与父组件进一步解耦。
+- **ProGuard / Troubleshooting**：依赖声明要用 `annotationProcessor` 而不是 `provided`；升级 Dagger 版本后出现 `MemberInjector` 等报错时，先 clean 全项目并统一版本。
+
+> 背景阅读：Dependency Injection 的理论出处见 [设计模式-Ioc](设计模式-Ioc.md)（Martin Fowler 原文导读）；Dagger 2 代码生成的底层机制见 [设计模式-依赖注入](设计模式-依赖注入.md)（Annotation Processing 教程）。
+
+## Overview
+
+Many Android apps rely on instantiating objects that often require other dependencies.  For instance, a Twitter API client may be built using a networking library such as Retrofit. To use this library, you might also need to add parsing libraries such as Gson.  In addition, classes that implement authentication or caching may require accessing SharedPreferences or other common storage, requiring instantiating them first and creating an inherent dependency chain.
 
 If you're not familiar with Dependency Injection, watch [this](https://www.youtube.com/watch?v=IKD2-MAkXyQ) quick video.
 
@@ -10,7 +26,7 @@ Dagger 2 analyzes these dependencies for you and generates code to help wire the
 
 Here is a list of other advantages for using Dagger 2:
 
- * **Simplifies access to shared instances**. Just as the [[ButterKnife|Reducing-View-Boilerplate-with-Butterknife]] library makes it easier to define references to Views, event handlers, and resources, Dagger 2 provides a simple way to obtain references to shared instances.  For instance,  once we declare in Dagger our singleton instances such as  `MyTwitterApiClient` or `SharedPreferences`, we can declare fields with a simple `@Inject` annotation:
+ * **Simplifies access to shared instances**. Just as the ButterKnife library makes it easier to define references to Views, event handlers, and resources, Dagger 2 provides a simple way to obtain references to shared instances.  For instance,  once we declare in Dagger our singleton instances such as  `MyTwitterApiClient` or `SharedPreferences`, we can declare fields with a simple `@Inject` annotation:
 
 ```java
 public class MainActivity extends Activity {
@@ -23,7 +39,7 @@ public class MainActivity extends Activity {
    } 
 ```
 
- * **Easy configuration of complex dependencies**. There is an implicit order in which your objects are often created.   Dagger 2 walks through the dependency graph and [[generates code|Dependency-Injection-with-Dagger-2#code-generation]] that is both easy to understand and trace, while also saving you from writing the large amount of boilerplate code you would normally need to write by hand to obtain references and pass them to other objects as dependencies.  It also helps simplify refactoring, since you can focus on what modules to build rather than focusing on the order in which they need to be created.
+ * **Easy configuration of complex dependencies**. There is an implicit order in which your objects are often created.   Dagger 2 walks through the dependency graph and generates code that is both easy to understand and trace, while also saving you from writing the large amount of boilerplate code you would normally need to write by hand to obtain references and pass them to other objects as dependencies.  It also helps simplify refactoring, since you can focus on what modules to build rather than focusing on the order in which they need to be created.
 
  * **Easier unit and integration testing**  Because the dependency graph is created for us, we can easily swap out modules that make network responses and mock out this behavior.
 
@@ -33,7 +49,7 @@ public class MainActivity extends Activity {
 
 Android Studio by default will not allow you to navigate to generated Dagger 2 code as legitimate classes because they are not normally added to the source path.  Adding the `annotationProcessor` plugin will add these files into the IDE classpath and enable you to have more visibility.
 
-Make sure to [[upgrade|Getting-Started-with-Gradle#upgrading-gradle]] to the latest Gradle version to use the `annotationProcessor` syntax: 
+Make sure to upgrade to the latest Gradle version to use the `annotationProcessor` syntax: 
 
 ```gradle
 dependencies {
@@ -208,8 +224,8 @@ public interface AppComponent {
 
 #### Code generation
 
-An important aspect of Dagger 2 is that the library generates code for classes annotated with the `@Component` interface.  You can use a class prefixed with `Dagger` (i.e. `DaggerTwitterApiComponent.java`) that will be responsible for instantiating an instance of our dependency graph and using it to perform the injection work for fields annotated with `@Inject`.  See the [[setup guide|Dependency-Injection-with-Dagger-2#setup]].
-### Instantiating the component
+An important aspect of Dagger 2 is that the library generates code for classes annotated with the `@Component` interface.  You can use a class prefixed with `Dagger` (i.e. `DaggerTwitterApiComponent.java`) that will be responsible for instantiating an instance of our dependency graph and using it to perform the injection work for fields annotated with `@Inject`.  See the setup section below.
+#### Instantiating the component
 
 We should do all this work within a specialization of the `Application` class since these instances should be declared only once throughout the entire lifespan of the application:
 

@@ -1,59 +1,54 @@
-### Adapter
+# Structural Patterns（结构型模式）
 
+Structural Pattern 关注类与对象的组合：如何把类或对象组合成更大的结构，同时保持结构的灵活与高效。
+
+GoF 定义了 7 种 Structural Patterns：Adapter、Bridge、Composite、Decorator、Facade、Flyweight、Proxy。
+
+> 本文件以 Java 示例代码为主；按原书模板（Intent / Participants / Consequences / Implementation）整理的概念笔记见 [GoF/02-Structural-Patterns.md](GoF/02-Structural-Patterns.md)。
+
+## Adapter（适配器模式，别名 Wrapper）
+
+> 将一个类的接口转换成客户端期望的另一种接口，使原本由于接口不兼容而无法一起工作的类可以协同工作。
+>
 > Convert the interface of a class into another interface clients expect. Adapter lets classes work together that couldn't otherwise because of incompatible interfaces.
 
+### Explanation
 
-> An adapter helps two incompatible interfaces to work together. This is the real world definition for an adapter. Interfaces may be incompatible but the inner functionality should suit the need.The Adapter design pattern allows otherwise incompatible classes to work together by converting the interface of one class into an interface expected by the clients.
+现实类比
 
-##### Also known as
-Wrapper
+> 内存卡里的照片要传到电脑，需要一个与电脑端口兼容的适配器——读卡器就是 adapter；三脚插头插不进两孔插座，需要电源适配器；翻译官把一个人说的话转述给听不懂的另一个人。
 
-##### Intent
-Convert the interface of a class into another interface the clients expect. Adapter lets classes work together that couldn't otherwise because of incompatible interfaces.
+通俗地说
 
-##### Explanation
+> 把一个不兼容的对象包进 adapter，让它能与另一个类协同工作。
 
-Real world example
+### Programmatic Example
 
-> Consider that you have some pictures in your memory card and you need to transfer them to your computer. In order to transfer them you need some kind of adapter that is compatible with your computer ports so that you can attach memory card to your computer. In this case card reader is an adapter.
-> Another example would be the famous power adapter; a three legged plug can't be connected to a two pronged outlet, it needs to use a power adapter that makes it compatible with the two pronged outlet.
-> Yet another example would be a translator translating words spoken by one person to another
+考虑一位只会使用 rowing boat（划艇）的船长（Captain），他完全不会航行。
 
-In plain words
-
-> Adapter pattern lets you wrap an otherwise incompatible object in an adapter to make it compatible with another class.
-
-Wikipedia says
-
-> In software engineering, the adapter pattern is a software design pattern that allows the interface of an existing class to be used as another interface. It is often used to make existing classes work with others without modifying their source code.
-
-**Programmatic Example**
-
-Consider a captain that can only use rowing boats and cannot sail at all.
-
-First we have interfaces `Structural.RowingBoat` and `Structural.FishingBoat`
+首先定义 `RowingBoat` 与 `FishingBoat`：
 
 ```java
-public interface Structural.RowingBoat {
+public interface RowingBoat {
   void row();
 }
 
-public class Structural.FishingBoat {
-  private static final Logger LOGGER = LoggerFactory.getLogger(Structural.FishingBoat.class);
+public class FishingBoat {
+  private static final Logger LOGGER = LoggerFactory.getLogger(FishingBoat.class);
   public void sail() {
     LOGGER.info("The fishing boat is sailing");
   }
 }
 ```
 
-And captain expects an implementation of `Structural.RowingBoat` interface to be able to move
+Captain 只依赖 `RowingBoat` 接口即可移动：
 
 ```java
-public class Structural.Captain implements Structural.RowingBoat {
+public class Captain implements RowingBoat {
 
-  private Structural.RowingBoat rowingBoat;
+  private RowingBoat rowingBoat;
 
-  public Structural.Captain(Structural.RowingBoat rowingBoat) {
+  public Captain(RowingBoat rowingBoat) {
     this.rowingBoat = rowingBoat;
   }
 
@@ -64,17 +59,17 @@ public class Structural.Captain implements Structural.RowingBoat {
 }
 ```
 
-Now let's say the pirates are coming and our captain needs to escape but there is only fishing boat available. We need to create an adapter that allows the captain to operate the fishing boat with his rowing boat skills.
+现在海盗来了，船长需要逃跑，但手边只有 fishing boat。我们创建一个 adapter，让船长用他的划船技能操纵 fishing boat：
 
 ```java
-public class Structural.FishingBoatAdapter implements Structural.RowingBoat {
+public class FishingBoatAdapter implements RowingBoat {
 
-  private static final Logger LOGGER = LoggerFactory.getLogger(Structural.FishingBoatAdapter.class);
+  private static final Logger LOGGER = LoggerFactory.getLogger(FishingBoatAdapter.class);
 
-  private Structural.FishingBoat boat;
+  private FishingBoat boat;
 
-  public Structural.FishingBoatAdapter() {
-    boat = new Structural.FishingBoat();
+  public FishingBoatAdapter() {
+    boat = new FishingBoat();
   }
 
   @Override
@@ -84,52 +79,60 @@ public class Structural.FishingBoatAdapter implements Structural.RowingBoat {
 }
 ```
 
-And now the `Structural.Captain` can use the `Structural.FishingBoat` to escape the pirates.
+这样 `Captain` 就能借助 `FishingBoat` 逃离海盗了：
 
 ```java
-Structural.Captain captain = new Structural.Captain(new Structural.FishingBoatAdapter());
+Captain captain = new Captain(new FishingBoatAdapter());
 captain.row();
 ```
 
-##### Applicability
-Use the Adapter pattern when
+### Applicability
 
-* you want to use an existing class, and its interface does not match the one you need
-* you want to create a reusable class that cooperates with unrelated or unforeseen classes, that is, classes that don't necessarily have compatible interfaces
-* you need to use several existing subclasses, but it's impractical to adapt their interface by subclassing every one. An object adapter can adapt the interface of its parent class.
-* most of the applications using third party libraries use adapters as a middle layer between the application and the 3rd party library to decouple the application from the library. If another library has to be used only an adapter for the new library is required without having to change the application code.
+以下情况使用 Adapter：
 
-##### Consequences:
-Class and object adapters have different trade-offs. A class adapter
+* 想使用一个现有的类，但它的接口不符合你的需要
+* 想创建一个可复用的类，能与无关的、事先无法预见的类（即接口不一定兼容的类）协作
+* 想同时使用多个现有的子类，但为每一个子类派生子类去适配接口并不现实。object adapter 可以直接适配其父类的接口
+* 大量使用第三方库的应用，会用 adapter 作为应用与第三方库之间的中间层来解耦。这样换库时只需为新库写一个 adapter，无需改动应用代码
 
-*	adapts Adaptee to Target by committing to a concrete Adaptee class. As a consequence, a class adapter won’t work when we want to adapt a class and all its subclasses.
-*	let’s Adapter override some of Adaptee’s behavior, since Adapter is a subclass of Adaptee.
-*	introduces only one object, and no additional pointer indirection is needed to get to the adaptee.
+### Consequences
 
-An object adapter	
+class adapter 与 object adapter 的取舍不同。
 
-*	let’s a single Adapter work with many Adaptees—that is, the Adaptee itself and all of its subclasses (if any). The Adapter can also add functionality to all Adaptees at once.
-*	makes it harder to override Adaptee behavior. It will require subclassing Adaptee and making Adapter refer to the subclass rather than the Adaptee itself.
+类适配器（class adapter）：
 
+* 通过绑定到一个具体的 Adaptee 类来把 Adaptee 适配成 Target。因此当要适配一个类及其所有子类时，类适配器行不通
+* 由于 Adapter 是 Adaptee 的子类，可以让 Adapter 覆盖 Adaptee 的部分行为
+* 只引入一个对象，访问被适配对象不需要额外的指针间接
 
-##### Real world examples
+对象适配器（object adapter）：
+
+* 允许一个 Adapter 与多个 Adaptee 协作——即 Adaptee 本身及其所有子类（如果有的话），还可以一次性为所有 Adaptee 添加功能
+* 更难覆盖 Adaptee 的行为：需要为 Adaptee 派生子类，并让 Adapter 引用该子类而不是 Adaptee 本身
+
+> 术语：Adaptee（被适配者）是已有的、接口不兼容的类；Target 是客户端期望的接口。
+
+### Real world examples
+
+JDK 中的例子：
 
 * [java.util.Arrays#asList()](http://docs.oracle.com/javase/8/docs/api/java/util/Arrays.html#asList%28T...%29)
 * [java.util.Collections#list()](https://docs.oracle.com/javase/8/docs/api/java/util/Collections.html#list-java.util.Enumeration-)
 * [java.util.Collections#enumeration()](https://docs.oracle.com/javase/8/docs/api/java/util/Collections.html#enumeration-java.util.Collection-)
 * [javax.xml.bind.annotation.adapters.XMLAdapter](http://docs.oracle.com/javase/8/docs/api/javax/xml/bind/annotation/adapters/XmlAdapter.html#marshal-BoundType-)
 
-
-##### Credits
+### Credits
 
 * [Design Patterns: Elements of Reusable Object-Oriented Software]
 * [J2EE Design Patterns](http://www.amazon.com/J2EE-Design-Patterns-William-Crawford/dp/0596004273/ref=sr_1_2)
 
-### Bridge
+## Bridge（桥接模式）
+
+> 将抽象部分与它的实现部分分离，使它们都可以独立地变化。
+>
 > Decouple an abstraction from its implementation so that the two can vary independently.
 
-> Composition over inheritance. The Bridge pattern can also be thought of as two layers of abstraction.
-With Bridge, you can decouple an abstraction from its implementation so that the two can vary independently.
+Composition over inheritance。Bridge 可以看作两层抽象（two layers of abstraction）：Weapon（Abstraction）与 Enchantment（Implementor）两个变化维度通过组合关联、各自独立扩展——新增武器或新增附魔互不影响。
 
 ```java
 public class BridgePattern {
@@ -146,17 +149,18 @@ public class BridgePattern {
     }
 }
 ```
+
 ```java
-interface Weapon{
+interface Weapon {
     void wield();
     void swing();
     void unwield();
     Enchantment getEnchantment();
 }
-
 ```
+
 ```java
-class Sword implements Weapon{
+class Sword implements Weapon {
     private Enchantment enchantment;
     public Sword(Enchantment enchantment) {
         this.enchantment = enchantment;
@@ -186,8 +190,9 @@ class Sword implements Weapon{
     }
 }
 ```
+
 ```java
-class Hammer implements Weapon{
+class Hammer implements Weapon {
     private Enchantment enchantment;
     public Hammer(Enchantment enchantment) {
         this.enchantment = enchantment;
@@ -216,17 +221,18 @@ class Hammer implements Weapon{
         return enchantment;
     }
 }
-
 ```
+
 ```java
-interface Enchantment{
+interface Enchantment {
     void onActivate();
     void apply();
     void onDeactivate();
 }
 ```
+
 ```java
-class FlyingEnchantment implements Enchantment{
+class FlyingEnchantment implements Enchantment {
 
     @Override
     public void onActivate() {
@@ -243,10 +249,10 @@ class FlyingEnchantment implements Enchantment{
         System.out.println("The item's glow fades.");
     }
 }
-
 ```
+
 ```java
-class SoulEatingEnchantment implements Enchantment{
+class SoulEatingEnchantment implements Enchantment {
 
     @Override
     public void onActivate() {
@@ -265,16 +271,21 @@ class SoulEatingEnchantment implements Enchantment{
 }
 ```
 
-### Composite
+## Composite（组合模式）
 
-### Decorator
+> 将对象组合成树形结构以表示「部分—整体」的层次结构，使客户端对单个对象（Leaf）和组合对象（Composite）的使用具有一致性。
+>
+> Compose objects into tree structures to represent part-whole hierarchies. Composite lets clients treat individual objects and compositions of objects uniformly.
 
-装饰模式
+典型应用：文件系统中的文件与目录、GUI 中的容器（Container）与叶子控件。
 
+## Decorator（装饰模式）
+
+> 动态地给一个对象添加额外的职责。就增加功能而言，Decorator 比生成子类更为灵活。
+>
 > Attach additional responsibilities to an object dynamically. Decorators provide a flexible alternative to subclassing for extending functionality.
 
-> The Decorator pattern is a more flexible alternative to subclassing. The Decorator class implements the same interface as the target and uses aggregation to "decorate" calls to the target. Using the Decorator pattern it is possible to change the behavior of the class during
-runtime.
+Decorator 是继承（subclassing）更灵活的替代方案：Decorator 类实现与目标相同的接口，并通过组合（aggregation）把对目标对象的调用"装饰"起来，从而可以在运行时改变类的行为。
 
 ```java
 public class Decorator {
@@ -291,6 +302,7 @@ public class Decorator {
     }
 }
 ```
+
 ```java
 interface Troll {
     void attack();
@@ -300,6 +312,7 @@ interface Troll {
     void fleeBattle();
 }
 ```
+
 ```java
 class SimpleTroll implements Troll {
 
@@ -319,6 +332,7 @@ class SimpleTroll implements Troll {
     }
 }
 ```
+
 ```java
 class ClubbedTroll implements Troll {
 
@@ -346,29 +360,30 @@ class ClubbedTroll implements Troll {
 }
 ```
 
-### Facede
+## Facade（外观模式）
 
-外观模式
+> 为子系统中的一组接口提供一个一致的界面，定义一个高层接口使这一子系统更加容易使用。
+>
+> Provide a unified interface to a set of interfaces in a subsystem. Facade defines a higher-level interface that makes the subsystem easier to use.
 
-> Provide a unified interface to a set of interfaces in a subsystem. Facade defines a higher- level interface that makes the subsystem easier to use.
-
-> The Facade design pattern is often used when a system is very complex or difficult to understand because the system has a large number of interdependent classes or its source code is unavailable. This pattern hides the complexities of the larger system and provides a simpler interface to the client. It typically involves a single wrapper class which contains a set of members required by client. These members access the system on behalf of the facade client and hide the implementation details.
+Facade 常用于系统非常复杂或难以理解的场景：系统包含大量相互依赖的类，或者源代码不可用。它隐藏大系统的复杂性，向客户端提供更简单的接口——通常是一个 wrapper class，包含客户端所需的一组成员，由这些成员代表客户端访问子系统并隐藏实现细节。
 
 ```java
 public class Facade {
     public static void main(String[] args) {
-        DwarwenGoldmineFacade facade = new DwarwenGoldmineFacade();
+        DwarvenGoldmineFacade facade = new DwarvenGoldmineFacade();
         facade.startNewDay();
         facade.digoutGold();
         facade.endDay();
     }
 }
 ```
+
 ```java
-class DwarwenGoldmineFacade {
+class DwarvenGoldmineFacade {
     private final List<DwarvenMineWorker> workers;
 
-    public DwarwenGoldmineFacade() {
+    public DwarvenGoldmineFacade() {
         workers = new ArrayList<>();
         workers.add(new DwarvenCartOperator());
         workers.add(new DwarvenTunnelDigger());
@@ -394,6 +409,7 @@ class DwarwenGoldmineFacade {
     }
 }
 ```
+
 ```java
 abstract class DwarvenMineWorker {
 
@@ -446,8 +462,9 @@ abstract class DwarvenMineWorker {
     static enum Action {WAKE_UP, GO_TO_MINE, WORK, GO_HOME, GO_TO_SLEEP}
 }
 ```
+
 ```java
-class DwarvenCartOperator extends DwarvenMineWorker{
+class DwarvenCartOperator extends DwarvenMineWorker {
 
     @Override
     public String name() {
@@ -460,8 +477,9 @@ class DwarvenCartOperator extends DwarvenMineWorker{
     }
 }
 ```
+
 ```java
-class DwarvenTunnelDigger extends DwarvenMineWorker{
+class DwarvenTunnelDigger extends DwarvenMineWorker {
     @Override
     public String name() {
         return "Dwarven tunnel digger";
@@ -474,31 +492,25 @@ class DwarvenTunnelDigger extends DwarvenMineWorker{
 }
 ```
 
-### Flyweight
-享元模式
-> **Use sharing to support large numbers of fine-grained objects efficiently.**
+## Flyweight（享元模式）
 
+> 运用共享技术有效地支持大量细粒度的对象。
+>
+> Use sharing to support large numbers of fine-grained objects efficiently.
 
-####  Intent
-Use sharing to support large numbers of fine-grained objects
-efficiently.
+### Explanation
 
-####  Explanation
-Real world example
+现实类比
 
-> Alchemist's shop has shelves full of magic potions. Many of the potions are the same so there is no need to create new object for each of them. Instead one object instance can represent multiple shelf items so memory footprint remains small.
+> 炼金术士的店里摆满了魔法药水，很多药水是相同的，没必要为每一瓶都创建新对象——一个对象实例可以代表货架上的多件商品，内存占用保持很小。
 
-In plain words
+通俗地说
 
-> It is used to minimize memory usage or computational expenses by sharing as much as possible with similar objects.
+> 通过与相似对象尽可能多地共享，来最小化内存使用或计算开销。
 
-Wikipedia says
+### Programmatic Example
 
-> In computer programming, flyweight is a software design pattern. A flyweight is an object that minimizes memory use by sharing as much data as possible with other similar objects; it is a way to use objects in large numbers when a simple repeated representation would use an unacceptable amount of memory.
-
-**Programmatic example**
-
-Translating our alchemist shop example from above. First of all we have different potion types
+把上面的炼金术士店铺例子写成代码。首先定义不同的药水类型：
 
 ```java
 public interface Potion {
@@ -530,7 +542,7 @@ public class InvisibilityPotion implements Potion {
 }
 ```
 
-Then the actual Flyweight object which is the factory for creating potions
+真正的 Flyweight 对象是生产药水的 factory（按类型缓存、共享实例）：
 
 ```java
 public class PotionFactory {
@@ -566,7 +578,7 @@ public class PotionFactory {
 }
 ```
 
-And it can be used as below
+使用方式如下：
 
 ```java
 PotionFactory factory = new PotionFactory();
@@ -578,28 +590,34 @@ factory.createPotion(PotionType.HOLY_WATER).drink(); // You feel blessed. (Potio
 factory.createPotion(PotionType.HEALING).drink(); // You feel healed. (Potion=648129364)
 ```
 
-####  Applicability
-The Flyweight pattern's effectiveness depends heavily on how
-and where it's used. Apply the Flyweight pattern when all of the following are
-true
+同一个 `PotionType` 两次 `createPotion` 返回的是同一实例（`identityHashCode` 相同），这就是享元的共享。
 
-* an application uses a large number of objects
-* storage costs are high because of the sheer quantity of objects
-* most object state can be made extrinsic
-* many groups of objects may be replaced by relatively few shared objects once extrinsic state is removed
-* the application doesn't depend on object identity. Since flyweight objects may be shared, identity tests will return true for conceptually distinct objects.
+### Applicability
 
-####  Real world examples
+Flyweight 的效果高度依赖使用的方式与场合。以下条件全部成立时才适用：
 
-* [java.lang.Integer#valueOf(int)](http://docs.oracle.com/javase/8/docs/api/java/lang/Integer.html#valueOf%28int%29) and similarly for Byte, Character and other wrapped types.
+* 应用使用大量的对象
+* 对象数量巨大导致存储开销高
+* 对象的大部分状态可以外部化（extrinsic）
+* 移除外部状态后，许多组对象可以用较少的共享对象代替
+* 应用不依赖对象同一性（identity）。由于 flyweight 对象会被共享，对概念上不同的对象做同一性测试也会返回 true
 
-####  Credits
+### Real world examples
+
+* [java.lang.Integer#valueOf(int)](http://docs.oracle.com/javase/8/docs/api/java/lang/Integer.html#valueOf%28int%29)，Byte、Character 等包装类型同理
+
+### Credits
 
 * [Design Patterns: Elements of Reusable Object-Oriented Software](http://www.amazon.com/Design-Patterns-Elements-Reusable-Object-Oriented/dp/0201633612)
 
-### Proxy
+## Proxy（代理模式）
 
->Provide a surrogate or placeholder for another object to control access to it.
+> 为其他对象提供一个代理（surrogate/placeholder），以控制对这个对象的访问。
+>
+> Provide a surrogate or placeholder for another object to control access to it.
 
->A proxy, in its most general form, is a class functioning as an interface to something else. The proxy could interface to anything: a network connection, a large object in memory, a file, or some other resource that is expensive or impossible to duplicate. In short, a proxy is a wrapper or agent object that is being called by the client to access the real serving object behind the scenes.
->The Proxy design pattern allows you to provide an interface to other objects by creating a wrapper class as the proxy. The wrapper class, which is the proxy, can add additional functionality to the object of interest without changing the object's code.
+广义上，proxy 就是一个"作为其他东西的接口"的类：它可以代理网络连接、内存中的大对象、文件，或其他复制代价高昂、甚至无法复制的资源。简言之，proxy 是客户端调用的一个 wrapper/agent 对象，由它去访问幕后真正提供服务的对象（real subject）。
+
+Proxy 通过创建 wrapper class 代理目标对象，可以在不改动目标对象代码的前提下附加额外功能（如访问控制、延迟初始化、缓存、日志）。
+
+常见代理类型：Remote Proxy（远程对象的本地代表）、Virtual Proxy（延迟创建开销大的对象）、Protection Proxy（控制访问权限）。

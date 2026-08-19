@@ -1,4 +1,23 @@
-[中文版](http://insights.thoughtworkers.org/injection/)
+# Inversion of Control Containers and the Dependency Injection Pattern
+
+> Martin Fowler 的经典文章。原文指出 "Inversion of Control" 这个名字过于宽泛，提出用更具体的 **Dependency Injection** 来命名这一模式，并与 Service Locator 方案对比取舍。
+>
+> - 原文：[Inversion of Control Containers and the Dependency Injection Pattern](https://martinfowler.com/articles/injection.html)
+> - 中文版：[依赖注入](http://insights.thoughtworkers.org/injection/)
+
+## 导读
+
+- **Components and Services**：component 是供外部应用在不改源码的前提下使用的软件单元（jar、dll、源码 import）；service 通过远程接口使用（web service、消息系统、RPC、socket）。
+- **A Naive Example**：以 `MovieLister`/`MovieFinder` 为例——lister 在构造函数里直接 `new ColonDelimitedMovieFinder(...)`，导致 finder 实现无法替换（换数据库、XML、web service 都得改代码），finder 也就无法成为 Plugin。核心问题：如何组装这些 plugin？
+- **Inversion of Control**：IoC 本是框架的普遍特征（如 GUI 事件循环之于命令行程序），说"容器实现了 IoC"并没有信息量。这些容器真正反转的是「插件实现的查找方式」，所以更准确的名字是 Dependency Injection。
+- **Forms of Dependency Injection**：三种注入方式——Constructor Injection（PicoContainer）、Setter Injection（Spring）、Interface Injection（Avalon）。
+- **Using a Service Locator**：另一种解法——一个知道如何拿到所有服务的注册表对象；变体包括 segregated interface（角色接口缩小依赖面）和动态 locator（按字符串 key 存取）；Avalon 把 locator 与 injection 结合使用。
+- **Service Locator vs Dependency Injection**：二者都能解耦，差别在于实现如何到达应用类——locator 由应用显式索取，injection 由容器被动注入（控制反转）。自己写应用两者皆可（locator 更直白、好调试）；写给别人复用的组件应选 DI，避免对客户环境中的 locator 产生依赖。可测试性上两者没有本质差别，"DI 更好测"多源于设计糟糕的 locator。
+- **Constructor versus Setter Injection**：默认推荐 Constructor Injection（构造即有效对象、不提供 setter 即可隐藏不可变字段），参数过多、需要多种构造组合或有继承包袱时改用 Setter Injection；选容器时最好两种都支持。
+- **Code or configuration files**：装配逻辑用代码还是配置文件（通常是 XML）取决于部署复杂度——简单装配用代码更清晰，装配复杂到接近编程时 XML 会崩溃，应改用真正的语言；建议始终提供编程式接口，配置文件作为可选。
+- **结论**：Service Locator 与 Dependency Injection 的选择，不如「把服务的配置（configuration）与使用（use）分离」这一原则重要。
+
+> 理论的工程落地：Android/Java 世界最主流的 DI 框架见 [设计模式-Dagger2](设计模式-Dagger2.md)。
 
 In the Java community there's been a rush of lightweight containers that help to assemble components from different projects into a cohesive application. Underlying these containers is a common pattern to how they perform the wiring, a concept they refer under the very generic name of "Inversion of Control". In this article I dig into how this pattern works, under the more specific name of "Dependency Injection", and contrast it with the Service Locator alternative. The choice between them is less important than the principle of separating configuration from use.
 

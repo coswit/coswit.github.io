@@ -80,6 +80,18 @@ scoop config proxy 127.0.0.1:7897
 1. Windows 客户端开启 `Allow LAN`（允许局域网连接）
 2. 端口查看：Clash 设置 → 端口设置（默认 HTTP:7897, SOCKS5:7891）
 
+#### Windows11
+
+在 Windows 下打开记事本，创建或编辑文件：%USERPROFILE%\.wslconfig（例如 `C:\Users\你的用户名\.wslconfig`）  写入以下内容并保存：
+
+```bash
+[wsl2]
+networkingMode=mirrored
+autoProxy=true
+```
+
+这是官方目前最推荐、体验最丝滑的方式。开启后，WSL2 与 Windows 共享网络栈，在 WSL 中使用 `127.0.0.1` 即可直接访问 Windows 的代理端口。
+
 ## powershell7 
 
 ### 安装

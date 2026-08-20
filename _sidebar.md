@@ -15,9 +15,12 @@
   - Android
     - [Android-相机相关.md](./Android/Android-相机相关.md)
     - [Android_Binder.md](./Android/Android_Binder.md)
+    - [Android内存分析.md](./Android/Android内存分析.md)
     - [Android监测.md](./Android/Android监测.md)
+    - [Android配置.md](./Android/Android配置.md)
     - [Handler.md](./Android/Handler.md)
     - [View阴影拖动导致layer泄漏分析.md](./Android/View阴影拖动导致layer泄漏分析.md)
+    - [adb相关.md](./Android/adb相关.md)
     - [perfetto使用.md](./Android/perfetto使用.md)
     - Android_Wifi
       - [IP路由.md](./Android/Android_Wifi/IP路由.md)
@@ -156,11 +159,9 @@
     - [16 用于大型程序的工具.md](./cpp/16%20用于大型程序的工具.md)
     - [17 特殊工具与技术.md](./cpp/17%20特殊工具与技术.md)
   - tools
-    - [Android配置.md](./tools/Android配置.md)
     - [Chrome快捷键.md](./tools/Chrome快捷键.md)
     - [Windows脚本使用.md](./tools/Windows脚本使用.md)
     - [Windows配置.md](./tools/Windows配置.md)
-    - [adb相关.md](./tools/adb相关.md)
     - [cmake.md](./tools/cmake.md)
     - [git常见命令.md](./tools/git常见命令.md)
     - [nodejs.md](./tools/nodejs.md)
@@ -232,5 +233,15 @@
       - [01-Creational-Patterns.md](./设计模式/GoF/01-Creational-Patterns.md)
       - [02-Structural-Patterns.md](./设计模式/GoF/02-Structural-Patterns.md)
       - [03-Behavioral-Patterns.md](./设计模式/GoF/03-Behavioral-Patterns.md)
+    - 重构
+      - [00-导读.md](./设计模式/重构/00-导读.md)
+      - [01-代码的坏味道.md](./设计模式/重构/01-代码的坏味道.md)
+      - [02-第一组重构.md](./设计模式/重构/02-第一组重构.md)
+      - [03-封装.md](./设计模式/重构/03-封装.md)
+      - [04-搬移特性.md](./设计模式/重构/04-搬移特性.md)
+      - [05-组织数据.md](./设计模式/重构/05-组织数据.md)
+      - [06-简化条件逻辑.md](./设计模式/重构/06-简化条件逻辑.md)
+      - [07-重构API.md](./设计模式/重构/07-重构API.md)
+      - [08-处理继承关系.md](./设计模式/重构/08-处理继承关系.md)
   - 链接、装载与库
     - [目标文件.md](./链接、装载与库/目标文件.md)

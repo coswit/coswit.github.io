@@ -4,7 +4,7 @@
 
 7 个结构型模式：Adapter、Bridge、Composite、Decorator、Facade、Flyweight、Proxy。
 
-> Java 示例代码见上级目录《设计模式之二：Structural Pattern》。
+> 类图为 mermaid；Sample Code 用 Java 还原原书的 Motivation 场景（原书为 C++/Smalltalk）。更多 Java 示例见上级目录《设计模式之二：Structural Pattern》。
 
 ## Adapter（别名 Wrapper）
 
@@ -21,12 +21,54 @@
 * **class adapter**：多重继承（实现 Target 接口 + 继承 Adaptee），静态绑定
 * **object adapter**：组合（实现 Target 接口 + 持有 Adaptee），可适配 Adaptee 及其子类
 
-### Participants
+### Applicability
 
+* 想使用一个现有的类，但它的接口不符合你的需要
+* 想创建一个可复用的类，能与无关的、事先无法预见的类（即接口不一定兼容的类）协作
+* 想同时使用多个现有的子类，但为每一个子类派生子类去适配接口并不现实。object adapter 可以直接适配其父类的接口
+* 大量使用第三方库的应用，会用 adapter 作为应用与第三方库之间的中间层来解耦。这样换库时只需为新库写一个 adapter，无需改动应用代码
+
+### Structure（object adapter）
+
+```mermaid
+classDiagram
+    class Client
+    class Target {
+        <<interface>>
+        +request()
+    }
+    class Adapter {
+        -adaptee Adaptee
+        +request()
+    }
+    class Adaptee {
+        +specificRequest()
+    }
+    Client --> Target : 依赖目标接口
+    Target <|.. Adapter
+    Adapter --> Adaptee : 翻译并转发
 ```
-Client ──▶ Target(接口) ◀──implements── Adapter ──holds──▶ Adaptee
-（class adapter 中 Adapter 同时继承 Target 与 Adaptee）
+
+class adapter 的结构（Java 无多重继承，用"实现接口 + 继承被适配者"近似）：
+
+```mermaid
+classDiagram
+    class Target {
+        <<interface>>
+        +request()
+    }
+    class Adaptee {
+        +specificRequest()
+    }
+    class Adapter {
+        +request()
+    }
+    Target <|.. Adapter
+    Adaptee <|-- Adapter : 继承获得实现
+    note for Adapter "request 内部直接调用继承来的 specificRequest"
 ```
+
+### Participants
 
 * **Target**：Client 使用的领域相关接口
 * **Client**：与符合 Target 接口的对象协作
@@ -47,7 +89,7 @@ class adapter：
 
 object adapter：
 
-* 一个 Adapter 可以适配多个 Adaptee（Adaptee 本体及其子类），还能一次性为它们添加功能
+* 一个 Adapter 可以适配多个 Adaptee（Adaptee 本体及其子类），还可以一次性为它们添加功能
 * 更难覆盖 Adaptee 的行为（需要派生 Adaptee 再让 Adapter 引用派生类）
 
 其他代价：适配工作量通常不大，但**逐个适配大量相似接口**会令人厌倦——此时应考虑重新审视抽象边界。
@@ -59,6 +101,61 @@ object adapter：
   2. 用**委托对象**：Adapter 把"取数据/发请求"委托给内部的 delegate，换 delegate 即换被适配者
   3. **参数化的适配**：调用方传入"该调用 Adaptee 的什么操作"的信息
 * **Two-way adapter（双向适配器）**：同时实现 Target 与 Adaptee 两个接口，可站在任一侧使用——依赖多重继承（class adapter）
+
+### Sample Code（Shape 与 TextView）
+
+```java
+// ---- Target：编辑器的统一接口 ----
+// （BoundingBox/Point/Manipulator 等辅助类型为示意，从略）
+interface Shape {
+    BoundingBox boundingBox();
+    Manipulator createManipulator();
+}
+
+// ---- Adaptee：界面工具包已有类，接口不同 ----
+class TextView {
+    Point origin() { return new Point(0, 0); }
+    Point extent() { return new Point(80, 24); }
+    boolean isEmpty() { return false; }
+}
+
+// ---- 对象适配器：实现 Target + 持有 Adaptee，逐个翻译 ----
+class TextShape implements Shape {
+    private final TextView textView;               // Adaptee
+
+    TextShape(TextView textView) { this.textView = textView; }
+
+    @Override
+    public BoundingBox boundingBox() {             // 用 Adaptee 的两个点拼出 Target 的结果
+        Point bottomLeft = textView.origin();
+        Point topRight = textView.extent();
+        return new BoundingBox(bottomLeft, topRight);
+    }
+
+    @Override
+    public Manipulator createManipulator() {
+        return new TextManipulator(this);          // 适配器自己的实现
+    }
+}
+
+// ---- 编辑器（Client）：TextShape 当普通 Shape 使用 ----
+Shape shape = new TextShape(new TextView());
+shape.boundingBox();                               // 编辑器无感知 TextView 的存在
+```
+
+```java
+// ---- class adapter（Java 近似：继承 Adaptee + 实现 Target）----
+class TextShapeClassAdapter extends TextView implements Shape {
+    @Override
+    public BoundingBox boundingBox() {
+        return new BoundingBox(origin(), extent()); // 直接用继承来的方法
+    }
+    @Override
+    public Manipulator createManipulator() {
+        return new TextManipulator(this);
+    }
+}
+```
 
 ### 现代对应
 
@@ -80,19 +177,41 @@ Window 抽象要在 X Window System 与 Presentation Manager 两个平台上实�
 
 ### Applicability
 
-* 不希望在抽象与其实现之间有永久的静态绑定（如运行期/运行期后选择实现）
+* 不希望在抽象与其实现之间有永久的静态绑定（如运行期选择实现）
 * 抽象与实现都应可通过子类化扩展，且二者可独立变化
 * 实现的改变不应对客户产生影响（实现细节对客户透明）
 * 想在多个对象间共享一个实现
 * 需要在两个独立维度上扩展类层次（避免 n×m 类爆炸）
 
-### Participants
+### Structure
 
+```mermaid
+classDiagram
+    class Abstraction {
+        <<abstract>>
+        -imp Implementor
+        +operation()
+    }
+    class RefinedAbstraction {
+        +operation()
+    }
+    class Implementor {
+        <<interface>>
+        +operationImpl()
+    }
+    class ConcreteImplementorA {
+        +operationImpl()
+    }
+    class ConcreteImplementorB {
+        +operationImpl()
+    }
+    Abstraction <|-- RefinedAbstraction
+    Abstraction o--> Implementor : 组合而非继承
+    Implementor <|.. ConcreteImplementorA
+    Implementor <|.. ConcreteImplementorB
 ```
-Abstraction ──holds──▶ Implementor（实现接口）
-    ▲                       ▲
-RefinedAbstraction    ConcreteImplementorA / B
-```
+
+### Participants
 
 * **Abstraction**：定义抽象类接口，维护对 Implementor 的引用
 * **RefinedAbstraction**：扩展 Abstraction
@@ -107,7 +226,7 @@ Abstraction 把客户请求转发给 Implementor 对象完成；Abstraction 高�
 
 * **接口与实现分离**：实现不绑定在接口上，可实现"运行期切换实现"，对客户隐藏实现细节（平台 API 等）
 * **提高可扩展性**：两个层次独立扩展，新增 RefinedAbstraction 或 ConcreteImplementor 互不影响
-* **实现细节对客户透明**（ hiding implementation），实现可在多个对象间共享
+* **实现细节对客户透明**（hiding implementation），实现可在多个对象间共享
 
 ### Implementation
 
@@ -115,6 +234,57 @@ Abstraction 把客户请求转发给 Implementor 对象完成；Abstraction 高�
 * **创建正确的 Implementor**：Abstraction 构造时选择并装配 Implementor；若 Abstraction 不知道具体实现，可用 Abstract Factory 创建
 * **共享 Implementor**：多个 Abstraction 实例可引用同一 Implementor（引用计数管理生命期）
 * C++ 中可用 **private 继承**复用 Implementor 的机制而不暴露其接口
+
+### Sample Code（Window 与 WindowImp）
+
+```java
+// ---- Implementor：平台实现接口（原语操作，接口与 Window 不必一致）----
+interface WindowImp {
+    void deviceText(String text, int x, int y);
+    void deviceRect(int x0, int y0, int x1, int y1);
+}
+
+class XWindowImp implements WindowImp {            // ConcreteImplementor A
+    public void deviceText(String text, int x, int y) {
+        System.out.println("XWindow 绘制文本: " + text);        // 实际调用 Xlib
+    }
+    public void deviceRect(int x0, int y0, int x1, int y1) { }
+}
+class PMWindowImp implements WindowImp {           // ConcreteImplementor B
+    public void deviceText(String text, int x, int y) {
+        System.out.println("PM 窗口绘制文本: " + text);          // 实际调用 Presentation Manager
+    }
+    public void deviceRect(int x0, int y0, int x1, int y1) { }
+}
+
+// ---- Abstraction：窗口的高层接口 ----
+class Window {
+    protected WindowImp imp;                       // 关键：持有实现维度的引用
+
+    protected Window() {
+        // 装配正确的实现：WindowSystemFactory 为示意（按当前平台产出 X/PM 实现），
+        // 实际项目可由 Abstract Factory 决定——两个维度从此解耦
+        this.imp = WindowSystemFactory.current().createWindowImp();
+    }
+
+    void drawText(String text, int x, int y) {     // 高层策略
+        imp.deviceText(text, x, y);                // 转发给底层实现
+    }
+}
+
+// ---- RefinedAbstraction：窗口语义的扩展，不涉及任何平台代码 ----
+class IconWindow extends Window {
+    private final String iconName = "close-icon";
+
+    void drawBorder() {
+        drawText(iconName, 0, 0);                  // 复用高层接口
+        imp.deviceRect(0, 0, 16, 16);              // 需要时也可直接用原语
+    }
+}
+
+// 新增平台 = 新增一个 WindowImp；新增窗口种类 = 新增一个 Window 子类
+// 2 个平台 × 3 种窗口只需 2 + 3 个类，而不是 6 个
+```
 
 ### 现代对应
 
@@ -139,13 +309,35 @@ JDBC：`Connection/Statement`（抽象侧）与各数据库 Driver（实现侧�
 * 想表示对象的「部分—整体」层次结构
 * 希望客户忽略组合对象与单个对象的差别，统一使用层次中的所有对象
 
-### Participants
+### Structure
 
+```mermaid
+classDiagram
+    class Component {
+        <<abstract>>
+        +operation()
+        +add(Component)
+        +remove(Component)
+        +getChild(int) Component
+    }
+    class Leaf {
+        +operation()
+    }
+    class Composite {
+        -children List~Component~
+        +operation()
+        +add(Component)
+        +remove(Component)
+        +getChild(int) Component
+    }
+    class Client
+    Component <|-- Leaf
+    Component <|-- Composite
+    Composite o-- Component : 递归持有子节点
+    Client --> Component : 统一对待叶与容器
 ```
-Component（公共接口）
-    ├── Leaf（叶子：无孩子）
-    └── Composite（容器：持有 Component 列表，请求转发给孩子们）
-```
+
+### Participants
 
 * **Component**：为 Leaf 与 Composite 声明公共接口；可为管理子节点等操作声明默认行为
 * **Leaf**：叶子对象，无孩子
@@ -172,8 +364,62 @@ Component（公共接口）
 * **显式父指针**：子节点持父引用便于 `Parent()` 上溯；变更时须维护一致性
 * **共享组件**：孩子常被多方共享，配合 **Flyweight**；父指针与共享冲突（谁的父亲？）
 * **最大化 Component 接口 vs 单一职责**：接口塞入过多子类操作会污染叶子；可用"缺省失败（报错）"的折中
-* **谁删除孩子**：通常 Composite 删除孩子时递归析构未共享的子树（语言 GC 则无此忧）
 * **孩子顺序**：需要有序遍历时让孩子列表维护顺序；可配合 Iterator 遍历
+* **谁删除孩子**：通常 Composite 删除孩子时递归析构未共享的子树（语言 GC 则无此忧）
+
+### Sample Code（Lexi 的 Glyph 树）
+
+```java
+// ---- Component：排版元素的统一接口（书中采用"透明优先"折中）----
+abstract class Glyph {
+    private Glyph parent;                           // 显式父指针，便于上溯
+
+    Glyph parent() { return parent; }
+    void setParent(Glyph p) { this.parent = p; }
+
+    void draw() { }                                 // 缺省为空，叶子/容器各自覆盖
+
+    void add(Glyph glyph) {                         // 叶子不支持：透明性折中的代价
+        throw new UnsupportedOperationException();
+    }
+    void remove(Glyph glyph) {
+        throw new UnsupportedOperationException();
+    }
+}
+
+// ---- Leaf 1：字符（书中为 Character，避开 java.lang.Character 改名）----
+class CharacterGlyph extends Glyph {
+    private final char code;                        // 书中此角色由 Flyweight 共享
+    CharacterGlyph(char code) { this.code = code; }
+    @Override void draw() { System.out.print(code); }
+}
+
+// ---- Composite：行、列都是容器，请求转发给孩子 ----
+class Row extends Glyph {
+    private final List<Glyph> children = new ArrayList<>();
+
+    @Override void add(Glyph glyph) { glyph.setParent(this); children.add(glyph); }
+    @Override void remove(Glyph glyph) { children.remove(glyph); }
+
+    @Override void draw() {                         // 转发：递归直至叶子
+        for (Glyph child : children) child.draw();
+    }
+}
+class Column extends Glyph {                        // 与 Row 同构，可换行距等策略
+    private final List<Glyph> children = new ArrayList<>();
+    @Override void add(Glyph glyph) { glyph.setParent(this); children.add(glyph); }
+    @Override void draw() { for (Glyph child : children) { child.draw(); System.out.println(); } }
+}
+
+// ---- Client：对叶与容器一视同仁 ----
+Column page = new Column();
+Row line = new Row();
+line.add(new CharacterGlyph('H'));
+line.add(new CharacterGlyph('i'));
+page.add(line);
+page.add(new Row());                                // 空行也是 Row
+page.draw();                                        // 递归输出整页
+```
 
 ### 现代对应
 
@@ -198,15 +444,38 @@ Component（公共接口）
 * 动态、透明地给单个对象添加职责（不影响其他对象），且职责可以撤销
 * 用子类扩展不可行：组合爆炸，或类定义被隐藏/不能用于继承
 
-### Participants
+### Structure
 
+```mermaid
+classDiagram
+    class Component {
+        <<interface>>
+        +operation()
+    }
+    class ConcreteComponent {
+        +operation()
+    }
+    class Decorator {
+        <<abstract>>
+        -component Component
+        +operation()
+    }
+    class ConcreteDecoratorA {
+        +operation()
+        -addedState
+    }
+    class ConcreteDecoratorB {
+        +operation()
+        +addedBehavior()
+    }
+    Component <|.. ConcreteComponent
+    Component <|.. Decorator
+    Decorator <|-- ConcreteDecoratorA
+    Decorator <|-- ConcreteDecoratorB
+    Decorator o-- Component : 被装饰者（可再是 Decorator）
 ```
-Component（接口）◀── ConcreteComponent
-    ▲
-Decorator ──holds──▶ Component（被装饰者，可再是一个 Decorator）
-    ▲
-ConcreteDecoratorA / B（转发请求 + 附加职责）
-```
+
+### Participants
 
 * **Component**：声明接口，Decorator 与被装饰者共同实现它
 * **ConcreteComponent**：被装饰的原始对象
@@ -230,6 +499,62 @@ Decorator 在转发请求给内嵌组件**前后**附加自己的行为；多重
 * **保持 Component 类轻量**：不要把数据存进 Component（每个装饰层都要包一遍）；Component 只定义接口，数据放 ConcreteComponent
 * 装饰策略只有一层（如仅"画边框"）时 Decorator 也可只提供简化形式的子类
 
+### Sample Code（Lexi 的 MonoGlyph：Border / Scroll 装饰）
+
+```java
+// ---- Component（沿用上节的 Glyph）----
+abstract class Glyph2 {
+    void draw() { }
+    BoundingBox bounds() { return new BoundingBox(); }
+}
+
+// ---- ConcreteComponent：文本视图 ----
+class TextViewGlyph extends Glyph2 {
+    private final String text;
+    TextViewGlyph(String text) { this.text = text; }
+    @Override void draw() { System.out.print(text); }
+    @Override BoundingBox bounds() { return new BoundingBox(0, 0, 100, 20); }
+}
+
+// ---- Decorator 基类：持有一个 Glyph 并默认转发 ----
+abstract class MonoGlyph extends Glyph2 {
+    protected final Glyph2 component;               // 被装饰者（可再是一个 Decorator）
+    MonoGlyph(Glyph2 component) { this.component = component; }
+    @Override void draw() { component.draw(); }     // 默认：原样转发
+}
+
+// ---- ConcreteDecorator 1：边框 ----
+class BorderDecorator extends MonoGlyph {
+    private final int width;
+    BorderDecorator(Glyph2 g, int width) { super(g); this.width = width; }
+    @Override void draw() {
+        System.out.print("[");                      // 附加职责（前）
+        super.draw();                               // 转发给内层
+        System.out.print("]");                      // 附加职责（后）
+    }
+    @Override BoundingBox bounds() {
+        BoundingBox inner = component.bounds();
+        return inner.expand(width);                 // 职责带来的语义变化
+    }
+}
+
+// ---- ConcreteDecorator 2：滚动条 ----
+class ScrollDecorator extends MonoGlyph {
+    ScrollDecorator(Glyph2 g) { super(g); }
+    @Override void draw() {
+        super.draw();
+        System.out.print("(scrollbar)");            // 附加职责（后）
+    }
+}
+
+// ---- Client：按需层层包装，任意组合 ----
+Glyph2 plain    = new TextViewGlyph("hello");
+Glyph2 bordered = new BorderDecorator(plain, 1);                 // 只要边框
+Glyph2 full     = new BorderDecorator(                           // 边框 + 滚动条
+                    new ScrollDecorator(plain), 1);
+full.draw();   // [hello(scrollbar)]  —— 没有为组合派生任何子类
+```
+
 ### Known Uses / 现代对应
 
 * 书中：InterViews 的 MonoGlyph 等界面工具包的装饰机制、许多 iostream 库的流抽象
@@ -247,7 +572,7 @@ Decorator 在转发请求给内嵌组件**前后**附加自己的行为；多重
 
 ### Motivation
 
-编译器子系统包含 Scanner、Parser、ProgramNode、CodeGenerator 等众多类，彼此协作方式复杂。绝大多数客户只需要"编译一个源文件"。解法：定义 **Parser** 门面类，提供 `compile(source)` 一个高层方法，内部编排子系统各对象——客户不必与子系统内部类打交道。
+编译器子系统包含 Scanner、Parser、ProgramNode、CodeGenerator 等众多类，彼此协作方式复杂。绝大多数客户只需要"编译一个源文件"。解法：定义 **Compiler** 门面类，提供 `compile(source, target)` 一个高层方法，内部编排子系统各对象——客户不必与子系统内部类打交道。
 
 ### Applicability
 
@@ -255,11 +580,32 @@ Decorator 在转发请求给内嵌组件**前后**附加自己的行为；多重
 * 客户程序与抽象类的实现部分之间存在着依赖关系，引入 Facade 将子系统与客户及其他子系统分离，可提高独立性与可移植性
 * 需要分层构建子系统——每层一个 Facade 作为入口
 
-### Participants
+### Structure
 
+```mermaid
+classDiagram
+    class Facade {
+        +request()
+    }
+    class SubsystemA {
+        +methodOne()
+        +methodTwo()
+    }
+    class SubsystemB {
+        +operation()
+    }
+    class SubsystemC {
+        +step()
+    }
+    class Client
+    Client --> Facade : 只面对门面
+    Facade --> SubsystemA : 编排
+    Facade --> SubsystemB
+    Facade --> SubsystemC
+    SubsystemA --> SubsystemB : 子系统内部协作（对客户隐藏）
 ```
-Client ──▶ Facade（简化入口）──▶ 子系统各类（内部复杂协作，对客户隐藏）
-```
+
+### Participants
 
 * **Facade**：知道哪些子系统类负责处理请求；把客户的请求代理给适当的子系统对象
 * **Subsystem classes**：实现子系统功能，处理 Facade 指派的任务；不知道 Facade 的存在
@@ -275,6 +621,51 @@ Client ──▶ Facade（简化入口）──▶ 子系统各类（内部复�
 * **降低客户—子系统耦合**：Facade 的方法对客户"够用即可"，必要时用参数传递细节
 * **抽象 Facade 类**：需要多种子系统实现时，可把 Facade 做成抽象类 + 每种子系统一个具体 Facade 子类（另一种做法是直接换不同的 Facade 对象/配置，组合优先）
 * **子系统私有化**：语言允许时（package/C++ namespace），把子系统类对 Facade 之外的世界隐藏
+
+### Sample Code（编译器子系统）
+
+```java
+// ---- 子系统：一组相互协作的类，客户直接使用它们会非常繁琐 ----
+class Scanner {
+    Scanner(InputStream source) { }
+    Token scan() { return null; }
+}
+class Parser {
+    private final ProgramNodeBuilder builder;
+    Parser(ProgramNodeBuilder builder) { this.builder = builder; }
+    void parse(Scanner scanner) { /* 逐 token 构建语法树 */ }
+}
+class ProgramNodeBuilder {
+    ProgramNode getProgramNode() { return new ProgramNode(); }
+}
+class ProgramNode {
+    void traverse(CodeGenerator g) { /* 遍历语法树，驱动代码生成 */ }
+}
+abstract class CodeGenerator { abstract void generate(); }
+class RISCCodeGenerator extends CodeGenerator {
+    RISCCodeGenerator(BytecodeStream target) { }
+    void generate() { }
+}
+class BytecodeStream { }
+
+// ---- Facade：一个方法收口全部子系统交互 ----
+class Compiler {
+    // 客户只需调用 compile()；Scanner/Parser/Builder/Generator 的编排被封装在这里
+    void compile(InputStream source, BytecodeStream target) {
+        Scanner scanner = new Scanner(source);
+        ProgramNodeBuilder builder = new ProgramNodeBuilder();
+        Parser parser = new Parser(builder);
+
+        parser.parse(scanner);                       // 子系统内部协作 1：解析建树
+
+        RISCCodeGenerator generator = new RISCCodeGenerator(target);
+        builder.getProgramNode().traverse(generator); // 子系统内部协作 2：遍历生成代码
+    }
+}
+
+// ---- Client ----
+new Compiler().compile(new FileInputStream("a.c"), new BytecodeStream());
+```
 
 ### 现代对应
 
@@ -301,14 +692,35 @@ Spring 的 `JdbcTemplate`（把 JDBC 的连接/语句/异常处理收进一个�
 * 按外蕴状态分组后，多组对象可被较少的共享对象代替
 * 应用不依赖对象同一性（identity）——共享后"概念上不同的对象"会共用同一实例
 
-### Participants
+### Structure
 
+```mermaid
+classDiagram
+    class Flyweight {
+        <<interface>>
+        +operation(extrinsicState)
+    }
+    class ConcreteFlyweight {
+        -intrinsicState
+        +operation(extrinsicState)
+    }
+    class UnsharedConcreteFlyweight {
+        -allState
+        +operation(extrinsicState)
+    }
+    class FlyweightFactory {
+        -flyweights Map~String,Flyweight~
+        +flyweight(key) Flyweight
+    }
+    class Client
+    Flyweight <|.. ConcreteFlyweight
+    Flyweight <|.. UnsharedConcreteFlyweight
+    FlyweightFactory o-- ConcreteFlyweight : 按 key 缓存共享
+    Client --> FlyweightFactory : 查询
+    Client ..> Flyweight : 调用时传入 extrinsic state
 ```
-Client ──▶ FlyweightFactory（按 key 查表，未命中则创建并缓存）
-                └──▶ Flyweight（接口）
-                        ├── ConcreteFlyweight（只存 intrinsic state，必须可共享）
-                        └── UnsharedConcreteFlyweight（如行/列这类组合节点，不作共享）
-```
+
+### Participants
 
 * **Flyweight**：声明接口，通过它 Flyweight 可接收外蕴状态
 * **ConcreteFlyweight**：实现接口，存储内蕴状态；必须可共享
@@ -325,6 +737,63 @@ Client ──▶ FlyweightFactory（按 key 查表，未命中则创建并缓存
 * **移除外蕴状态**：模式成败的关键在于多少状态能外蕴化——设计时常把"坐标、样式、容器关系"外移
 * **管理共享对象**：Factory 内维护 `key → flyweight` 表；享元不引用 Factory（避免循环）；不再使用的享元的回收（引用计数/GC，或干脆不回收——数量有限）
 * 共享的范围：常按"字符/图元类别"共享，容器（行、列）不共享（UnsharedConcreteFlyweight），构成 Composite
+
+### Sample Code（字符 Glyph 的共享与 GlyphContext）
+
+```java
+// ---- Flyweight：接口多带一个 extrinsic 上下文参数 ----
+abstract class Glyph3 {
+    abstract void draw(Window w, GlyphContext ctx);
+    void insert(Glyph3 g, GlyphContext ctx) { }
+}
+
+// ---- ConcreteFlyweight：只存 intrinsic state（字符编码），必须可共享 ----
+class CharacterGlyph3 extends Glyph3 {
+    private final char code;                        // intrinsic：与位置无关
+    CharacterGlyph3(char code) { this.code = code; }
+    @Override void draw(Window w, GlyphContext ctx) {
+        // extrinsic（位置、字体）不在对象里，画的时候向 ctx 要
+        Font font = ctx.getFont();
+        int x = ctx.getX(), y = ctx.getY();
+        System.out.println("draw '" + code + "' @" + x + "," + y + " font=" + font);
+    }
+}
+
+// ---- UnsharedConcreteFlyweight：行/列不共享，作为共享叶的容器 ----
+class Row3 extends Glyph3 {
+    private final List<Glyph3> children = new ArrayList<>();
+    @Override void insert(Glyph3 g, GlyphContext ctx) { children.add(g); }
+    @Override void draw(Window w, GlyphContext ctx) {
+        for (Glyph3 child : children) { child.draw(w, ctx); ctx.next(1); }
+    }
+}
+
+// ---- FlyweightFactory：按字符缓存，每种字符只有一个实例 ----
+class GlyphFactory {
+    private final CharacterGlyph3[] cache = new CharacterGlyph3[128];
+    CharacterGlyph3 characterGlyph(char c) {
+        if (cache[c] == null) cache[c] = new CharacterGlyph3(c);
+        return cache[c];                            // 命中即共享
+    }
+    Row3 row() { return new Row3(); }               // 不共享的类型每次新建
+}
+
+// ---- Client 侧：外蕴状态（当前字体/游标）由 GlyphContext 持有 ----
+class GlyphContext {
+    private int x = 0, y = 0;
+    private Font font = new Font("Serif");
+    Font getFont() { return font; }
+    int getX() { return x; }  int getY() { return y; }
+    void next(int step) { x += step * 8; }
+}
+
+GlyphFactory factory = new GlyphFactory();
+Row3 row = factory.row();
+row.insert(factory.characterGlyph('g'), null);     // 两个 'o' 命中同一个缓存实例
+row.insert(factory.characterGlyph('o'), null);
+row.insert(factory.characterGlyph('o'), null);
+row.draw(new Window(), new GlyphContext());        // Window 见 Bridge 一节（示意）
+```
 
 ### Known Uses / 现代对应
 
@@ -352,12 +821,36 @@ Flyweight 的共享叶 + 不共享容器 = **Composite**；**State** 与 **Strat
 * **Protection proxy（保护代理）**：控制对原始对象的访问（权限检查）
 * **Smart reference（智能引用）**：取代裸指针，在访问时做附加工作（引用计数、首次加载持久对象、加锁等）
 
-### Participants
+### Applicability
 
+* Remote proxy：为不同地址空间的对象提供本地代表
+* Virtual proxy：为创建开销大的对象做按需加载与延迟初始化
+* Protection proxy：控制对原始对象的访问权限
+* Smart reference：在访问对象时附加内务操作（引用计数、加载持久对象、加锁）
+
+### Structure
+
+```mermaid
+classDiagram
+    class Subject {
+        <<interface>>
+        +request()
+    }
+    class RealSubject {
+        +request()
+    }
+    class Proxy {
+        -realSubject RealSubject
+        +request()
+    }
+    class Client
+    Subject <|.. RealSubject
+    Subject <|.. Proxy
+    Proxy --> RealSubject : 控制创建与访问后转发
+    Client --> Subject : 面向同一接口
 ```
-Client ──▶ Subject(接口) ◀── Proxy ──holds──▶ RealSubject
-（Proxy 与 RealSubject 同接口，Proxy 控制创建/访问/转发）
-```
+
+### Participants
 
 * **Proxy**：维持对 RealSubject 的引用以转发请求；实现与 Subject 相同的接口以便替代它；控制 RealSubject 的创建/删除与访问
 * **Subject**：为 RealSubject 与 Proxy 的公共接口
@@ -374,7 +867,64 @@ Client ──▶ Subject(接口) ◀── Proxy ──holds──▶ RealSubjec
 
 * **Proxy 重载运算符**（C++ 的 `operator->`/`operator*`）让"透过代理访问"与直接访问写法一致；Java 无运算符重载，动态代理 `java.lang.reflect.Proxy` 在运行期生成实现类
 * **Copy-on-write**：Proxy 先与原对象共享，写操作时才真正复制——用 Proxy 实现"惰性复制"，配合引用计数管理
-* Proxy 与 RealSubject 的创建时机解耦：`RealSubject()` 可以在代理首次需要时才执行
+* Proxy 与 RealSubject 的创建时机解耦：真实对象在代理首次需要时才创建
+
+### Sample Code（ImageProxy：Virtual Proxy）
+
+```java
+// ---- Subject ----
+interface Graphic {
+    void draw(Position pos);
+    BoundingBox extent();
+    void store();
+}
+
+// ---- RealSubject：加载开销大（读入整幅图像）----
+class Image implements Graphic {
+    private final String fileName;
+    private byte[] pixels;                          // 体积大
+
+    Image(String fileName) {
+        this.fileName = fileName;
+        this.pixels = readFromFile(fileName);       // 构造即加载 —— 昂贵
+    }
+    public void draw(Position pos) { System.out.println("绘制图像 " + fileName); }
+    public BoundingBox extent() { return readExtent(pixels); }
+    public void store() { }
+    private static byte[] readFromFile(String f) { return new byte[0]; }
+    private static BoundingBox readExtent(byte[] p) { return new BoundingBox(); }
+}
+
+// ---- Proxy：与 Image 同接口，先占位、真正需要时才加载 ----
+class ImageProxy implements Graphic {
+    private Graphic image;                          // 延迟到首次使用才创建
+    private final String fileName;
+    private BoundingBox extent;                     // 代理自己的小状态
+
+    ImageProxy(String fileName) { this.fileName = fileName; }
+
+    public BoundingBox extent() {
+        if (image != null) extent = image.extent(); // 已加载：直接转发
+        else if (extent == null)
+            extent = readExtentFromSidecar(fileName); // 未加载：从旁侧信息取尺寸，不动真图
+        return extent;
+    }
+
+    public void draw(Position pos) {
+        if (image == null) image = new Image(fileName); // Virtual Proxy 的核心：按需加载
+        image.draw(pos);
+    }
+    public void store() { if (image != null) image.store(); }
+
+    private static BoundingBox readExtentFromSidecar(String f) { return new BoundingBox(); }
+}
+
+// ---- Client：文档里放的是 Proxy，多数图像从未被加载 ----
+Graphic image1 = new ImageProxy("cover.png");
+Graphic image2 = new ImageProxy("figure-1.png");
+image1.extent();      // 不触发加载
+image1.draw(new Position(0, 0)); // 此时才真正读文件
+```
 
 ### 现代对应
 

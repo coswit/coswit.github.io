@@ -4,7 +4,7 @@
 
 11 个行为型模式：Chain of Responsibility、Command、Interpreter、Iterator、Mediator、Memento、Observer、State、Strategy、Template Method、Visitor。
 
-> Java 示例代码见上级目录《设计模式之三：Behavioral Patterns》。
+> 类图为 mermaid；Sample Code 用 Java 还原原书的 Motivation 场景（原书为 C++/Smalltalk）。更多 Java 示例见上级目录《设计模式之三：Behavioral Patterns》。
 
 ## Chain of Responsibility
 
@@ -22,12 +22,29 @@
 * 想在不明确指定接收者的情况下向多个对象中的一个提交请求
 * 可处理请求的对象集合应能动态配置
 
-### Participants
+### Structure
 
+```mermaid
+classDiagram
+    class Handler {
+        <<abstract>>
+        -successor Handler
+        +handleRequest()
+    }
+    class ConcreteHandler1 {
+        +handleRequest()
+    }
+    class ConcreteHandler2 {
+        +handleRequest()
+    }
+    class Client
+    Handler <|-- ConcreteHandler1
+    Handler <|-- ConcreteHandler2
+    Handler --> Handler : successor 转发
+    Client --> Handler
 ```
-Handler ──successor──▶ Handler ──successor──▶ Handler（链式）
-（ConcreteHandler：自己能处理则处理；否则转给 successor）
-```
+
+### Participants
 
 * **Handler**：定义处理请求的接口；（可选）实现指向后继的链接
 * **ConcreteHandler**：处理自己负责的请求；可访问后继；不能处理则转发
@@ -44,6 +61,61 @@ Handler ──successor──▶ Handler ──successor──▶ Handler（链�
 * **如何组织链**：可用专门的链对象；更常见的是**复用已有的对象结构**（如 Composite 的父链，或 Smalltalk 用 `doesNotUnderstand:` 消息自动转发机制）
 * **连接后继**：Handler 定义统一接口设置/获取 successor
 * **请求的表示**：硬编码调用（简单高效）；用字符串/编码 key（需查表）；或定义独立的 Request 对象携带参数（灵活、可扩展新请求类型）
+
+### Sample Code（上下文相关帮助：按钮 → 对话框 → 应用）
+
+```java
+// ---- Handler：帮助请求的公共接口，默认转发给后继 ----
+abstract class HelpHandler {
+    private final HelpHandler successor;            // 链的下一环
+
+    HelpHandler(HelpHandler successor) { this.successor = successor; }
+
+    void handleHelp() {
+        if (successor != null) successor.handleHelp(); // 默认：自己不处理，上抛
+    }
+    Topic topic() { return Topic.NO_HELP_TOPIC; }   // 请求的可选表示
+}
+
+// ---- ConcreteHandler 1：按钮（多数按钮自己没有帮助，转给对话框）----
+class Button extends HelpHandler {
+    private final Topic helpTopic;
+    Button(HelpHandler successor, Topic topic) {
+        super(successor);
+        this.helpTopic = topic;
+    }
+    @Override void handleHelp() {
+        if (helpTopic != Topic.NO_HELP_TOPIC) show(helpTopic); // 自己能处理
+        else super.handleHelp();                               // 否则上抛
+    }
+    private void show(Topic t) { System.out.println("Button help: " + t); }
+}
+
+// ---- ConcreteHandler 2：对话框（处理一般性帮助，也可继续上抛）----
+class Dialog extends HelpHandler {
+    private final Topic topic;
+    Dialog(HelpHandler successor, Topic topic) { super(successor); this.topic = topic; }
+    @Override void handleHelp() {
+        if (topic != Topic.NO_HELP_TOPIC) System.out.println("Dialog help: " + topic);
+        else super.handleHelp();
+    }
+}
+
+// ---- 链尾：应用级兜底——保证请求最终有人响应（若无兜底，请求将"掉出"链尾）----
+class Application extends HelpHandler {
+    Application() { super(null); }
+    @Override void handleHelp() { System.out.println("Show general help index"); }
+}
+
+enum Topic { NO_HELP_TOPIC, PRINT_TOPIC, PAPER_ORIENTATION_TOPIC }
+
+// ---- 组链：按钮 → 打印对话框 → 应用（链常直接复用父/容器关系）----
+Application application = new Application();
+Dialog printDialog = new Dialog(application, Topic.PRINT_TOPIC);
+Button printButton = new Button(printDialog, Topic.NO_HELP_TOPIC);
+
+printButton.handleHelp();   // 按钮无帮助 → 对话框处理（PRINT_TOPIC）
+```
 
 ### 现代对应
 
@@ -63,11 +135,43 @@ Composite 的父链本身就是一条现成的 Chain of Responsibility；请求"
 
 菜单项、按钮、快捷键都应触发"打开文档"这类动作，且同一动作可绑定到多个触发器。把"动作"做成对象（Command）：界面组件（Invoker）只持有 Command 并调用 `execute()`，不关心动作具体做什么、由谁做——回调的面向对象替代品。
 
-### Participants
+### Applicability
 
+* 按要执行的动作给对象参数化。过程式语言可以用回调函数（callback）表达这种参数化——先注册、稍后调用；Command 就是回调的面向对象替代品
+* 在不同时刻指定、排队并执行请求。Command 对象的生命周期可以独立于原始请求；如果请求的接收者能以与地址空间无关的方式表示，还可以把 command 对象传给另一个进程，在那里完成请求
+* 支持 undo。execute 时把逆转其效果所需的状态存进 command 自身；接口增加一个 unexecute 操作即可逆转效果；已执行的命令存入 history list，前后遍历并分别调用 unexecute/execute，即可实现无限级的撤销与重做
+* 支持变更日志，系统崩溃后可重放。给 Command 接口加上 load/store 操作即可持久化变更日志；恢复时从磁盘重载日志中的命令并重新 execute
+* 用建立在 primitive operations 之上的高层操作来构建系统。这在支持事务的信息系统中很常见：事务封装了一组数据变更，Command 提供了建模事务的方式——所有命令有统一接口，任何事务都以同一种方式调用，扩展新事务也很容易
+
+### Structure
+
+```mermaid
+classDiagram
+    class Command {
+        <<interface>>
+        +execute()
+    }
+    class ConcreteCommand {
+        -receiver Receiver
+        -state
+        +execute()
+    }
+    class Invoker {
+        -command Command
+        +call()
+    }
+    class Receiver {
+        +action()
+    }
+    class Client
+    Command <|.. ConcreteCommand
+    Invoker --> Command : 触发
+    ConcreteCommand --> Receiver : 调用
+    Client ..> ConcreteCommand : 创建并绑定 Receiver
+    Client ..> Invoker : 装配命令
 ```
-Client ──创建/装配──▶ Invoker ──execute()──▶ Command ◀── ConcreteCommand ──holds──▶ Receiver
-```
+
+### Participants
 
 * **Command**：声明执行操作的接口
 * **ConcreteCommand**：绑定 Receiver 与动作；实现 `execute()`（调用 Receiver 的相应操作）
@@ -88,6 +192,57 @@ Client ──创建/装配──▶ Invoker ──execute()──▶ Command ◀
 * **误差累积问题**：基于"反向操作"的 undo 反复执行会累积误差；改用 **Memento** 快照恢复可避免，代价是存储
 * 多级 undo 中命令对象的生命期与状态管理是主要复杂度来源
 
+### Sample Code（菜单命令 + 宏命令）
+
+```java
+// ---- Command ----
+interface Command { void execute(); }
+
+// ---- ConcreteCommand 1：普通命令，复用 Receiver（Application/Document）的能力 ----
+class OpenCommand implements Command {
+    private final Application app;                  // Receiver
+    OpenCommand(Application app) { this.app = app; }
+    public void execute() {
+        String name = app.askUser();                // 询问要打开的文档
+        if (name == null) return;
+        Document doc = new Document(name);
+        app.add(doc);
+        doc.open();
+    }
+}
+
+class PasteCommand implements Command {
+    private final Document document;                // Receiver
+    PasteCommand(Document document) { this.document = document; }
+    public void execute() { document.paste(); }
+}
+
+// ---- ConcreteCommand 2：宏命令 = Command 的 Composite ----
+class MacroCommand implements Command {
+    private final List<Command> commands = new ArrayList<>();
+    void add(Command c) { commands.add(c); }
+    void remove(Command c) { commands.remove(c); }
+    public void execute() { for (Command c : commands) c.execute(); }
+}
+
+// ---- Invoker：菜单项对命令一无所知，只负责触发 ----
+class MenuItem {
+    private Command command;
+    MenuItem(Command command) { this.command = command; }
+    void clicked() { command.execute(); }           // 触发点与动作解耦
+}
+
+// ---- Client：自由装配"触发器 → 命令"（Application/Document 为应用领域类，示意）----
+Document doc = new Document("notes.txt");
+MenuItem openItem = new MenuItem(new OpenCommand(app));
+MenuItem pasteItem = new MenuItem(new PasteCommand(doc));
+
+MacroCommand macro = new MacroCommand();            // 一个动作 = 一串命令
+macro.add(new PasteCommand(doc));
+macro.add(new PasteCommand(doc));
+new MenuItem(macro).clicked();
+```
+
 ### 现代对应
 
 `java.lang.Runnable`（线程池排队执行的就是 Command 对象）、Swing `Action`、事务日志/操作队列。
@@ -104,26 +259,48 @@ Client ──创建/装配──▶ Invoker ──execute()──▶ Command ◀
 
 ### Motivation
 
-正则匹配、SQL 子集、表达式语言……当一种"简单语言"的句子可以表示成**抽象语法树（AST）**、且语法规则不多时，可以为每条文法规则建一个类，解释 = 沿树递归求值。
+正则匹配、SQL 子集、表达式语言……当一种"简单语言"的句子可以表示成**抽象语法树（AST）**、且语法规则不多时，可以为每条文法规则建一个类，解释 = 沿树递归求值。原书以布尔表达式语言（and/or/not/常量/变量）为例。
 
 ### Applicability
 
 * 有一门语言要解释，且能把句子表示为 AST；**文法简单**（复杂文法应改用 parser generator 等工具）、**效率不是关键**时最合适
 
+### Structure
+
+```mermaid
+classDiagram
+    class AbstractExpression {
+        <<abstract>>
+        +interpret(Context) boolean
+    }
+    class TerminalExpression {
+        -name
+        +interpret(Context) boolean
+    }
+    class NonterminalExpression {
+        -left AbstractExpression
+        -right AbstractExpression
+        +interpret(Context) boolean
+    }
+    class Context {
+        -bindings Map~String,Boolean~
+    }
+    class Client
+    AbstractExpression <|-- TerminalExpression
+    AbstractExpression <|-- NonterminalExpression
+    NonterminalExpression o-- AbstractExpression : 语法子树
+    AbstractExpression --> Context : 读写变量绑定
+    Client --> AbstractExpression : 构建 AST 并求值
+    Client --> Context
+```
+
 ### Participants
 
-```
-Client ──▶ AbstractExpression#interpret(Context)
-              ├── TerminalExpression（终结符，如变量、常量）
-              └── NonterminalExpression（非终结符，持有子表达式，递归解释）
-Context：解释过程中的全局信息（如变量绑定表）
-```
-
 * **AbstractExpression**：声明 `interpret(Context)` 抽象操作
-* **TerminalExpression**：实现终结符的解释
-* **NonterminalExpression**：实现非终结符的解释，通常递归调用子表达式
-* **Context**：解释器之外的全程可见的状态
-* **Client**：构建（或让 parser 构建）代表句子的 AST，调用interpret
+* **TerminalExpression**：实现终结符（变量、常量）的解释
+* **NonterminalExpression**：实现非终结符（and/or/not）的解释，通常递归调用子表达式
+* **Context**：解释器之外的全程可见的状态（如变量绑定表）
+* **Client**：构建（或让 parser 构建）代表句子的 AST，调用 interpret
 
 ### Consequences
 
@@ -136,6 +313,68 @@ Context：解释过程中的全局信息（如变量绑定表）
 * **建语法树**：AST 由 Client 手工构建或由语法分析器产出（书中的示例是逐字符扫描构建）
 * **跳过 AST 的变体**：一边解析一边解释（不建树）可省空间，但失去"结构可复用、可多次解释"的能力
 * 终结符共享、加 `Print`/`Visit` 等辅助操作时与其他模式联动（Flyweight/Visitor）
+
+### Sample Code（布尔表达式语言）
+
+```java
+// ---- Context：变量绑定表，解释全程可读写 ----
+class Context {
+    private final Map<String, Boolean> bindings = new HashMap<>();
+    boolean lookup(String name) { return bindings.get(name); }
+    void assign(VariableExp exp, boolean value) { bindings.put(exp.name(), value); }
+}
+
+// ---- AbstractExpression ----
+abstract class BooleanExp {
+    abstract boolean evaluate(Context ctx);
+}
+
+// ---- TerminalExpression：常量与变量 ----
+class ConstantExp extends BooleanExp {
+    private final boolean value;
+    ConstantExp(boolean value) { this.value = value; }
+    boolean evaluate(Context ctx) { return value; }
+}
+class VariableExp extends BooleanExp {
+    private final String name;
+    VariableExp(String name) { this.name = name; }
+    String name() { return name; }
+    boolean evaluate(Context ctx) { return ctx.lookup(name); }
+}
+
+// ---- NonterminalExpression：and / or / not，递归求子树 ----
+class AndExp extends BooleanExp {
+    private final BooleanExp left, right;
+    AndExp(BooleanExp left, BooleanExp right) { this.left = left; this.right = right; }
+    boolean evaluate(Context ctx) { return left.evaluate(ctx) && right.evaluate(ctx); }
+}
+class OrExp extends BooleanExp {
+    private final BooleanExp left, right;
+    OrExp(BooleanExp left, BooleanExp right) { this.left = left; this.right = right; }
+    boolean evaluate(Context ctx) { return left.evaluate(ctx) || right.evaluate(ctx); }
+}
+class NotExp extends BooleanExp {
+    private final BooleanExp exp;
+    NotExp(BooleanExp exp) { this.exp = exp; }
+    boolean evaluate(Context ctx) { return !exp.evaluate(ctx); }
+}
+
+// ---- Client：手写 AST —— (true and x) or (not y) ----
+Context ctx = new Context();
+VariableExp x = new VariableExp("X");
+VariableExp y = new VariableExp("Y");
+BooleanExp expression = new OrExp(
+        new AndExp(new ConstantExp(true), x),
+        new NotExp(y));
+
+ctx.assign(x, false);
+ctx.assign(y, true);
+expression.evaluate(ctx);   // (true && false) || (!true) => false
+
+// 同一 Context 换组绑定可重复解释，这就是保留 AST 的意义
+ctx.assign(x, true);
+expression.evaluate(ctx);   // true
+```
 
 ### 现代对应
 
@@ -155,22 +394,53 @@ AST 本身是 **Composite**；终结符节点可用 **Flyweight** 共享；遍�
 
 聚合（List、Tree、HashTable）内部结构各异，但客户都想要"逐个取元素"。把遍历逻辑抽成独立对象（Iterator），聚合只负责提供创建迭代器的方法——遍历算法与聚合结构解耦，同一聚合可并存多种遍历。
 
+### Applicability
+
+* 访问一个聚合对象的内容而不暴露其内部表示
+* 支持对聚合对象的多种遍历方式
+* 为遍历不同的聚合结构提供统一的接口
+
+### Structure
+
+```mermaid
+classDiagram
+    class Aggregate {
+        <<interface>>
+        +createIterator() Iterator
+    }
+    class ConcreteAggregate {
+        -elements List~Element~
+        +createIterator() Iterator
+        +count() int
+        +get(int) Element
+    }
+    class Iterator {
+        <<interface>>
+        +first()
+        +next()
+        +isDone() boolean
+        +currentItem() Element
+    }
+    class ConcreteIterator {
+        -aggregate ConcreteAggregate
+        -current int
+    }
+    Aggregate <|.. ConcreteAggregate
+    Iterator <|.. ConcreteIterator
+    ConcreteAggregate ..> ConcreteIterator : 创建配对的迭代器
+    ConcreteIterator --> ConcreteAggregate : 按下标遍历
+```
+
 ### Participants
 
-```
-Aggregate#createIterator() ──▶ Iterator（first/next/isDone/currentItem）
-      ▲                              ▲
-ConcreteAggregate ──────────▶ ConcreteIterator（持有聚合引用 + 当前位置）
-```
-
-* **Iterator**：声明遍历接口
+* **Iterator**：声明遍历接口（`first/next/isDone/currentItem`）
 * **ConcreteIterator**：实现接口，记录遍历位置
 * **Aggregate**：声明创建迭代器的接口
 * **ConcreteAggregate**：实现该接口，返回配对的 ConcreteIterator
 
 ### Consequences
 
-* **可变化遍历算法**：同一聚合可有不同 Iterator（正序、逆序、过滤）
+* **可变化遍历算法**：同一聚合可有不同 Iterator（正序、逆序、过滤、跳跃表）
 * **简化 Aggregate 接口**：遍历操作外移，聚合不必为每种遍历提供一堆方法
 * **同一时刻可有多个遍历**并存（各自有独立 Iterator 与游标）
 * 代价：额外的对象与间接调用
@@ -181,8 +451,60 @@ ConcreteAggregate ──────────▶ ConcreteIterator（持有聚
 * **Internal iterator（内部迭代器）**：迭代器自己驱动，对每个元素回调客户传入的操作——使用简单，但不易"同时跑两个遍历"，也不易中断
 * **谁定义遍历算法**：Iterator 定义则易支持多种遍历（书中取向）；Aggregate 定义（Iterator 只存游标）则暴露更少内部信息——二选一
 * **健壮性（robustness）**：遍历中聚合被改怎么办——常见方案是聚合带**版本号/修改计数**，Iterator 每步核对，不匹配即失效（fail-fast，Java 集合的 `modCount` 正是此法；也可用 **Memento** 快照）
-* **额外操作**：`previous()/skip(n)` 等按需增加；C++ STL 把"迭代器"做成了更一般的指针抽象
-* **多态迭代器的创建**：`createIterator()` 返回new出的对象，C++ 需明确释放责任（谁分配谁释放/代理计数的辅助 Iterator）
+* **额外操作**：`previous()/skip(n)` 等按需增加
+* **多态迭代器的创建**：`createIterator()` 返回 new 出的对象，C++ 需明确释放责任
+
+### Sample Code（外部迭代器 + fail-fast 健壮性）
+
+```java
+// ---- Aggregate ----
+class MyList<E> {
+    private final List<E> items = new ArrayList<>();
+    int modCount = 0;                               // 包内可见：供配对的迭代器核对版本
+
+    void add(E e) { items.add(e); modCount++; }
+    int count() { return items.size(); }
+    E get(int i) { return items.get(i); }
+
+    Iterator2<E> createIterator() {                  // 创建配对的迭代器
+        return new ListIterator2<>(this);
+    }
+}
+
+// ---- Iterator（外部迭代器：客户驱动推进）----
+class ListIterator2<E> implements Iterator2<E> {
+    private final MyList<E> aggregate;
+    private int current = 0;
+    private final int expectedModCount;             // 创建时的版本
+
+    ListIterator2(MyList<E> aggregate) {
+        this.aggregate = aggregate;
+        this.expectedModCount = aggregate.modCount;
+    }
+
+    public void first() { check(); current = 0; }
+    public void next()  { check(); current++; }
+    public boolean isDone() { check(); return current >= aggregate.count(); }
+    public E currentItem() { check(); return aggregate.get(current); }
+
+    private void check() {                          // fail-fast：遍历中聚合被改即失效
+        if (expectedModCount != aggregate.modCount)
+            throw new ConcurrentModificationException();
+    }
+}
+interface Iterator2<E> { void first(); void next(); boolean isDone(); E currentItem(); }
+
+// ---- 同一聚合可并存多个独立遍历 ----
+MyList<String> list = new MyList<>();
+list.add("a"); list.add("b"); list.add("c");
+
+for (Iterator2<String> it = list.createIterator(); !it.isDone(); it.next()) {
+    System.out.println(it.currentItem());           // a b c
+}
+
+// 内部迭代器变体（示意）：迭代器自己驱动，对每个元素回调客户传入的操作
+// list.forEach(e -> System.out.println(e));        // MyList 另行提供，语义等价
+```
 
 ### 现代对应
 
@@ -200,7 +522,7 @@ ConcreteAggregate ──────────▶ ConcreteIterator（持有聚
 
 ### Motivation
 
-对话框里字体列表、输入框、确认/取消按钮互相联动：选了字体要更新预览、输入非法要禁用确认……若对象间两两直接引用，复用任何一个都困难。解法：对话框（或专门的 DialogDirector）做 **Mediator**，各控件（Colleague）只与 Mediator 通信，由它编排联动规则。
+字体对话框里字体列表、输入框、确认/取消按钮互相联动：选了字体要更新输入框、输入为空要禁用确认……若对象间两两直接引用，复用任何一个都困难。解法：**FontDialogDirector** 做 Mediator，各控件（Colleague）只与 Mediator 通信，由它编排联动规则。
 
 ### Applicability
 
@@ -208,13 +530,34 @@ ConcreteAggregate ──────────▶ ConcreteIterator（持有聚
 * 对象因相互引用过多而难以复用
 * 想把分布于多个类中的行为**定制化**，又不想生成太多子类——行为集中在 Mediator，改 Mediator 即改交互
 
-### Participants
+### Structure
 
+```mermaid
+classDiagram
+    class Mediator {
+        <<interface>>
+        +colleagueChanged(Colleague)
+    }
+    class ConcreteMediator {
+        -colleague1 ConcreteColleague1
+        -colleague2 ConcreteColleague2
+        +colleagueChanged(Colleague)
+    }
+    class Colleague {
+        <<abstract>>
+        -mediator Mediator
+        +changed()
+    }
+    class ConcreteColleague1
+    class ConcreteColleague2
+    Mediator <|.. ConcreteMediator
+    Colleague <|-- ConcreteColleague1
+    Colleague <|-- ConcreteColleague2
+    Colleague --> Mediator : 变化时通知
+    ConcreteMediator --> Colleague : 编排各方
 ```
-Colleague ──▶ Mediator ◀── Colleague（同事间互不直接引用）
-                 ▲
-          ConcreteMediator（知道全部同事，编排交互规则）
-```
+
+### Participants
 
 * **Mediator**：定义与 Colleague 通信的接口
 * **ConcreteMediator**：协调各 Colleague 实现协作行为；了解并维护各 Colleague
@@ -234,6 +577,69 @@ Colleague ──▶ Mediator ◀── Colleague（同事间互不直接引用�
 * 同事与 Mediator 的通信可配合 **Observer**：同事作为 Subject 发事件，Mediator 订阅
 * 交互规则多的 Mediator 可进一步拆分或用表驱动
 
+### Sample Code（字体对话框的 DialogDirector）
+
+```java
+// ---- Colleague 基类：只认识 Mediator，不认识其他同事 ----
+abstract class Widget {
+    protected final DialogDirector director;
+    Widget(DialogDirector director) { this.director = director; }
+    void changed() { director.colleagueChanged(this); }  // 变化一律报告中介
+}
+
+class ListBox extends Widget {
+    private String selection = "";
+    ListBox(DialogDirector d) { super(d); }
+    String getSelection() { return selection; }
+    void select(String item) { this.selection = item; changed(); } // 触发联动
+}
+class EntryField extends Widget {
+    private String text = "";
+    EntryField(DialogDirector d) { super(d); }
+    void setText(String t) { this.text = t; }
+    String getText() { return text; }
+}
+class Button extends Widget {
+    private boolean enabled = true;
+    Button(DialogDirector d) { super(d); }
+    void setEnabled(boolean e) { this.enabled = e; }
+    void click() { changed(); }
+}
+
+// ---- Mediator：联动规则全部集中在这里 ----
+abstract class DialogDirector {
+    abstract void colleagueChanged(Widget widget);  // 单一通知入口
+}
+class FontDialogDirector extends DialogDirector {
+    private ListBox fontList;
+    private EntryField fontName;
+    private Button ok, cancel;
+
+    FontDialogDirector() {                          // 创建并接线全部同事
+        fontList = new ListBox(this);
+        fontName = new EntryField(this);
+        ok = new Button(this);
+        cancel = new Button(this);
+    }
+
+    @Override void colleagueChanged(Widget widget) {
+        if (widget == fontList) {                   // 选中字体 → 同步输入框、激活确认
+            fontName.setText(fontList.getSelection());
+            ok.setEnabled(true);
+        } else if (widget == ok) {
+            System.out.println("应用字体: " + fontName.getText());
+        } else if (widget == cancel) {
+            ok.setEnabled(false);
+        }
+    }
+}
+
+// ---- Client：只知道 Mediator，同事间零引用 ----
+DialogDirector dialog = new FontDialogDirector();
+// 用户操作由框架回调触发（示意）：
+// dialog 内部的 fontList.select("Serif") → ok 联动启用
+```
+
 ### 现代对应
 
 GUI 对话框/表单联动（如 Android 用一个 Activity/ViewModel 充当 Mediator）、消息总线/EventBus、机场塔台调度（概念例子）。
@@ -252,12 +658,32 @@ GUI 对话框/表单联动（如 Android 用一个 Activity/ViewModel 充当 Med
 
 约束求解器/编辑器做 checkpoint：需要把对象内部状态存档以便回滚，但把内部结构公开给外界存取会破坏封装。解法：对象自己把状态打包成 **Memento** 交给外界保管，外界"只许保存、不许查看"——窄接口对 Caretaker，宽接口只对 Originator。
 
-### Participants
+### Applicability
 
+* 必须保存一个对象在某时刻的（部分）状态快照，且之后需要恢复
+* 直接用接口读取/保存内部状态会暴露实现细节、破坏封装
+
+### Structure
+
+```mermaid
+classDiagram
+    class Originator {
+        -state
+        +createMemento() Memento
+        +setMemento(Memento)
+    }
+    class Memento {
+        -state
+    }
+    class Caretaker {
+        -memento Memento
+    }
+    Originator ..> Memento : 创建与恢复（宽接口）
+    Caretaker --> Memento : 只保管不查看（窄接口）
+    note for Memento "双接口：Originator 可读写全部状态；Caretaker 只当不透明句柄"
 ```
-Originator ──createMemento()/setMemento()──▶ Memento
-Caretaker ──（只保管，不可读内容）──▶ Memento
-```
+
+### Participants
 
 * **Memento**：存储 Originator 内部状态；除 Originator 外不能访问其内容（宽接口 vs 窄接口）
 * **Originator**：创建记载自身状态的 Memento，并用 Memento 恢复状态
@@ -275,6 +701,46 @@ Caretaker ──（只保管，不可读内容）──▶ Memento
 * **宽/窄双接口**：Memento 提供 Originator 可用的全套存取（宽）与 Caretaker 可用的不透明句柄（窄）
 * **增量 vs 全量快照**：只存差异（delta）可省内存，但恢复逻辑复杂
 * Memento 与 Command 配合时，"反向操作（易累积误差） vs 快照恢复（费内存）"是常见取舍
+
+### Sample Code（求解器/编辑器的 checkpoint 与回滚）
+
+```java
+// ---- Memento：状态不透明，只对 Originator 开放读写（Java 用包内可见近似宽窄双接口）----
+class Memento {
+    String state;                                   // 包内可见 = 只有同包的 Originator 能动
+    Memento(String state) { this.state = state; }
+}
+
+// ---- Originator：自己打包/复原，外界不经手内部结构 ----
+class ConstraintSolver {
+    private String variables;                       // 真实系统是大量约束变量
+
+    Memento createMemento() {                       // 打包快照（宽接口）
+        return new Memento(variables);
+    }
+    void setMemento(Memento memento) {              // 从快照复原（宽接口）
+        this.variables = memento.state;
+    }
+    void solve(String input) {                      // 求解会改动内部状态
+        this.variables = "solved(" + input + ")";
+    }
+}
+
+// ---- Caretaker：只存取快照，绝不查看内容（窄接口）----
+class SolverCaretaker {
+    private Memento checkpoint;
+    void checkpoint(ConstraintSolver solver) { checkpoint = solver.createMemento(); }
+    void rollback(ConstraintSolver solver) { solver.setMemento(checkpoint); }
+}
+
+// ---- Client ----
+ConstraintSolver solver = new ConstraintSolver();
+SolverCaretaker caretaker = new SolverCaretaker();
+
+caretaker.checkpoint(solver);   // 存档
+solver.solve("A+B=C");          // 修改
+caretaker.rollback(solver);     // 回滚到存档点，Caretaker 始终不知道里面存了什么
+```
 
 ### 现代对应
 
@@ -294,14 +760,46 @@ Caretaker ──（只保管，不可读内容）──▶ Memento
 
 同一份数据（电子表格单元）同时驱动表格、柱状图、饼图——数据变，视图都要刷新。让数据做 **Subject**，各视图做 **Observer** 注册订阅，Subject 变化时广播通知，视图再自行拉取所需数据。Smalltalk MVC 的 Model/View 正是此结构。
 
+### Applicability
+
+* 一个抽象有两个方面，其一依赖于另一个——把二者封装在独立对象里独立变化复用
+* 一个对象的改变需要同时改变其他对象，且不知道有多少对象待改变
+* 对象应能在不假设对方是谁的前提下通知其他对象
+
+### Structure
+
+```mermaid
+classDiagram
+    class Subject {
+        <<abstract>>
+        -observers List~Observer~
+        +attach(Observer)
+        +detach(Observer)
+        +notify()
+    }
+    class Observer {
+        <<interface>>
+        +update()
+    }
+    class ConcreteSubject {
+        -subjectState
+        +getState()
+        +setState()
+    }
+    class ConcreteObserver {
+        -observerState
+        -subjectRef ConcreteSubject
+        +update()
+    }
+    Subject <|-- ConcreteSubject
+    Observer <|.. ConcreteObserver
+    Subject o-- Observer : 注册/注销
+    ConcreteObserver --> ConcreteSubject : update 时拉取状态
+```
+
 ### Participants
 
-```
-Subject ──attach/detach/notify──▶ Observer ──update──▶（向 Subject 拉取变化）
-   ▲ ConcreteSubject（状态源）            ▲ ConcreteObserver（观察者，引用 Subject）
-```
-
-* **Subject**：知道其 Observer；提供注册/注销接口；状态变化时通知所有 Observer
+* **Subject**：知道其 Observer（任意多个）；提供注册/注销接口；状态变化时通知所有 Observer
 * **Observer**：声明 `update()` 更新接口
 * **ConcreteSubject**：存储状态，状态变化时发出通知
 * **ConcreteObserver**：实现 update，向 Subject 查询以同步自身状态
@@ -320,6 +818,55 @@ Subject ──attach/detach/notify──▶ Observer ──update──▶（向
 * **按方面（aspect）订阅**：attach 时带上感兴趣的事件类别，通知时只发给相关观察者，减少无效更新
 * **ChangeManager**：当 Subject 与 Observer 是多对多、更新次序有要求时，引入专职对象维护映射与更新顺序——它本身是 **Mediator**（常做成 **Singleton**）
 * 多重继承（C++）：ConcreteObserver 常同时继承"领域对象"与"Observer 基类"
+
+### Sample Code（电子表格数据与多个视图）
+
+```java
+// ---- Observer / Subject ----
+interface Observer { void update(); }
+interface Subject {
+    void attach(Observer o);
+    void detach(Observer o);
+    void notifyObservers();
+}
+
+// ---- ConcreteSubject：数据源，状态变化统一触发 notify ----
+class Data implements Subject {
+    private final List<Observer> observers = new ArrayList<>();
+    private int value;
+
+    public void attach(Observer o) { observers.add(o); }
+    public void detach(Observer o) { observers.remove(o); }
+    public void notifyObservers() { for (Observer o : observers) o.update(); }
+
+    int getValue() { return value; }                // 供 Observer pull
+    void setValue(int v) {
+        this.value = v;
+        notifyObservers();                          // 状态先改，再广播（保证自洽）
+    }
+}
+
+// ---- ConcreteObserver：表格/柱状图，update 时自行拉取（pull 模型）----
+class SpreadsheetView implements Observer {
+    private final Data subject;
+    SpreadsheetView(Data subject) { this.subject = subject; subject.attach(this); }
+    public void update() {
+        int v = subject.getValue();                 // 拉取自己关心的数据
+        System.out.println("表格刷新: " + v);
+    }
+}
+class BarChartView implements Observer {
+    private final Data subject;
+    BarChartView(Data subject) { this.subject = subject; subject.attach(this); }
+    public void update() { System.out.println("柱状图重绘: " + subject.getValue()); }
+}
+
+// ---- Client ----
+Data data = new Data();
+new SpreadsheetView(data);
+new BarChartView(data);
+data.setValue(42);   // 一次修改 => 两个视图同时更新，Data 不知道视图的具体类型
+```
 
 ### Known Uses / 现代对应
 
@@ -345,13 +892,32 @@ TCPConnection 的行为随连接状态（LISTEN、ESTABLISHED、CLOSED）而变�
 * 对象的行为随状态改变而改变，且状态在运行期切换
 * 操作中出现**庞大而分散的多部分条件语句**（大量 `switch(state)` 散布各方法），每个分支其实是"某状态下的行为"
 
-### Participants
+### Structure
 
+```mermaid
+classDiagram
+    class Context {
+        -state State
+        +request()
+        +setState(State)
+    }
+    class State {
+        <<interface>>
+        +handle(Context)
+    }
+    class ConcreteStateA {
+        +handle(Context)
+    }
+    class ConcreteStateB {
+        +handle(Context)
+    }
+    State <|.. ConcreteStateA
+    State <|.. ConcreteStateB
+    Context o-- State : 当前状态，可整体替换
+    ConcreteStateA ..> Context : handle 内可 setState 发起迁移
 ```
-Context ──request()──▶ State（状态行为接口）
-    ▲（持当前状态）         ▲
-                    ConcreteStateA / B（实现各自行为，并可发起状态迁移）
-```
+
+### Participants
 
 * **Context**：面向客户的接口；维护一个 ConcreteState 实例作为当前状态
 * **State**：声明封装上下文某状态行为的接口
@@ -369,6 +935,68 @@ Context ──request()──▶ State（状态行为接口）
 * **表驱动替代**：状态迁移表（当前状态 × 事件 → 次状态/动作）适合迁移规则密集的系统；牺牲类型安全与类的多态表达
 * **状态对象的创建**：按需创建后丢弃（状态有实例数据时）；或预先建好共享（无状态时最常见）
 * 状态迁移可以发生在 Context 或 State；请求处理前后皆可切换
+
+### Sample Code（TCPConnection，书中场景）
+
+```java
+// ---- Context：面向客户的连接对象，请求全部委托当前状态 ----
+class TCPConnection {
+    private TCPState state;
+
+    TCPConnection() { state = TCPClosed.instance(); } // 初始状态：CLOSED
+
+    void activeOpen()  { state.activeOpen(this);  }   // 主动打开（发 SYN）
+    void passiveOpen() { state.passiveOpen(this); }   // 被动打开（监听）
+    void close()       { state.close(this);       }   // 关闭（发 FIN）
+    void send(byte[] data) { state.send(this, data); }
+
+    void setState(TCPState s) {                       // 状态迁移：整体换对象
+        this.state = s;
+        System.out.println("  -> " + s.name());
+    }
+}
+
+// ---- State：为每个事件声明缺省行为（非法/忽略），子类按状态覆盖 ----
+abstract class TCPState {
+    void activeOpen(TCPConnection c)  { illegal("activeOpen"); }
+    void passiveOpen(TCPConnection c) { illegal("passiveOpen"); }
+    void close(TCPConnection c)       { illegal("close"); }
+    void send(TCPConnection c, byte[] d) { illegal("send"); }
+    String name() { return getClass().getSimpleName(); }
+    private void illegal(String op) {
+        System.out.println("非法操作: " + op + " in " + name());
+    }
+}
+
+// ---- ConcreteState：无实例字段 => 单例共享（Flyweight 思想）----
+class TCPClosed extends TCPState {
+    private static final TCPClosed INSTANCE = new TCPClosed();
+    static TCPState instance() { return INSTANCE; }
+    @Override void activeOpen(TCPConnection c) {
+        // 发 SYN，收到 ACK 后进入 ESTABLISHED（示意：直接迁移）
+        c.setState(TCPEstablished.instance());
+    }
+    @Override void passiveOpen(TCPConnection c) { c.setState(TCPListen.instance()); }
+}
+class TCPListen extends TCPState {
+    private static final TCPListen INSTANCE = new TCPListen();
+    static TCPState instance() { return INSTANCE; }
+    @Override void activeOpen(TCPConnection c)  { c.setState(TCPEstablished.instance()); }
+}
+class TCPEstablished extends TCPState {
+    private static final TCPEstablished INSTANCE = new TCPEstablished();
+    static TCPState instance() { return INSTANCE; }
+    @Override void close(TCPConnection c) { c.setState(TCPClosed.instance()); } // 发 FIN
+    @Override void send(TCPConnection c, byte[] d) { System.out.println("发送 " + d.length + " 字节"); }
+}
+
+// ---- Client：同一操作在不同状态下行为不同 ----
+TCPConnection conn = new TCPConnection();
+conn.send(new byte[]{1});   // CLOSED 下非法
+conn.activeOpen();          // CLOSED -> ESTABLISHED
+conn.send(new byte[]{1});   // ESTABLISHED 下真正发送
+conn.close();               // -> CLOSED
+```
 
 ### 现代对应
 
@@ -395,13 +1023,30 @@ Context ──request()──▶ State（状态行为接口）
 * 算法使用了客户不应知道的数据
 * 一个类中定义了多种行为且以条件语句切换——把分支搬进各自的 Strategy 类
 
-### Participants
+### Structure
 
+```mermaid
+classDiagram
+    class Context {
+        -strategy Strategy
+        +contextInterface()
+    }
+    class Strategy {
+        <<interface>>
+        +algorithmInterface()
+    }
+    class ConcreteStrategyA {
+        +algorithmInterface()
+    }
+    class ConcreteStrategyB {
+        +algorithmInterface()
+    }
+    Strategy <|.. ConcreteStrategyA
+    Strategy <|.. ConcreteStrategyB
+    Context o-- Strategy : 运行期可整体替换
 ```
-Context ──holds──▶ Strategy（算法接口）
-                       ▲
-                ConcreteStrategyA / B（算法实现）
-```
+
+### Participants
 
 * **Strategy**：声明所有具体算法的公共接口
 * **ConcreteStrategy**：以该接口实现具体算法
@@ -421,6 +1066,69 @@ Context ──holds──▶ Strategy（算法接口）
 * **C++ 模板参数**：把 Strategy 作为模板参数在编译期绑定（静态 Strategy），免去虚调用开销，但失去运行期替换
 * Strategy 对象常无状态，最适合做成共享的（Flyweight/无状态单例）
 
+### Sample Code（排版器的 Compositor 族）
+
+```java
+// ---- Strategy：断行算法的公共接口 ----
+interface Compositor {
+    // 返回断点：components 在 lineWidth 下应在哪里换行
+    List<Integer> compose(List<String> components, int lineWidth);
+}
+
+// ---- ConcreteStrategy 1：简单断行——填满一行就断 ----
+class SimpleCompositor implements Compositor {
+    public List<Integer> compose(List<String> cs, int lineWidth) {
+        List<Integer> br = new ArrayList<>();
+        int w = 0;
+        for (int i = 0; i < cs.size(); i++) {
+            w += cs.get(i).length();
+            if (w > lineWidth) { br.add(i - 1); w = cs.get(i).length(); }
+        }
+        return br;
+    }
+}
+
+// ---- ConcreteStrategy 2：TeX 式——全局权衡（段内整体最优）----
+class TeXCompositor implements Compositor {
+    public List<Integer> compose(List<String> cs, int lineWidth) {
+        // 简化示意：真正的 TeX 断行会做整段动态规划权衡
+        List<Integer> br = new ArrayList<>();
+        for (int i = 0; i < cs.size(); i += 4) br.add(i + 3);
+        return br;
+    }
+}
+
+// ---- Context：排版器只依赖抽象算法，可运行期换策略 ----
+class Composition {
+    private Compositor compositor;                  // 可替换的 Strategy
+    private final List<String> components;
+
+    Composition(List<String> components, Compositor compositor) {
+        this.components = components;
+        this.compositor = compositor;
+    }
+
+    void setCompositor(Compositor c) { this.compositor = c; } // 换算法不动排版器
+
+    void repair() {                                 // 排版主流程
+        List<Integer> breaks = compositor.compose(components, 20);
+        int from = 0;
+        for (int to : breaks) {
+            System.out.println(String.join(" ", components.subList(from, to)));
+            from = to;
+        }
+    }
+}
+
+// ---- Client：同一份内容，不同策略产出不同排版 ----
+List<String> words = List.of("Design", "Patterns", "are", "reusable",
+                             "object", "oriented", "solutions");
+Composition c = new Composition(words, new SimpleCompositor());
+c.repair();                       // 简单断行
+c.setCompositor(new TeXCompositor());  // 运行期整体替换
+c.repair();                       // TeX 式断行
+```
+
 ### 现代对应
 
 `Comparator`（排序策略注入）、`ThreadPoolExecutor` 的四种 `RejectedExecutionHandler`、`Map` 的遍历策略参数化。
@@ -437,15 +1145,34 @@ Context ──holds──▶ Strategy（算法接口）
 
 ### Motivation
 
-框架的 Application 打开文档流程固定：检查类型 → 创建文档 → 读入内容 → 恢复视图。步骤顺序是稳定骨架，但"创建什么文档、怎么读"由应用子类决定。把流程写成 `OpenDocument()`（Template Method），其中的可变步骤留成原语操作（Factory Method/抽象方法）交给子类。
+框架的 Application 打开文档流程固定：检查类型 → 创建文档 → 读入内容 → 恢复视图。步骤顺序是稳定骨架，但"创建什么文档、怎么读"由应用子类决定。把流程写成 `openDocument()`（Template Method），其中的可变步骤留成原语操作（工厂方法/抽象方法）交给子类。
+
+### Applicability
+
+* 一次性实现算法的不变部分，把可变行为留给子类
+* 各子类的公共行为应提取、集中到一处（避免代码重复；便于维护时"改一处动全局"）
+* 控制子类扩展——模板方法调用的原语操作是受控的扩展点，子类只在该处扩展
+
+### Structure
+
+```mermaid
+classDiagram
+    class AbstractClass {
+        <<abstract>>
+        +templateMethod()
+        #primitiveOperation1()
+        #primitiveOperation2()
+        #hookOperation()
+    }
+    class ConcreteClass {
+        #primitiveOperation1()
+        #primitiveOperation2()
+    }
+    AbstractClass <|-- ConcreteClass
+    note for AbstractClass "templateMethod 固定算法骨架，按序调用原语操作；hookOperation 是带默认实现的可选扩展点"
+```
 
 ### Participants
-
-```
-AbstractClass：templateMethod()（固定骨架）调用 primitiveOperation1/2(…)
-        ▲
-ConcreteClass：实现各 primitiveOperation
-```
 
 * **AbstractClass**：定义抽象原语操作；实现一个模板方法给出算法骨架（调用原语操作）
 * **ConcreteClass**：实现原语操作，完成算法中与自身相关的步骤
@@ -458,10 +1185,61 @@ ConcreteClass：实现各 primitiveOperation
 
 ### Implementation
 
-* **C++ 访问控制**：原语操作设为 `protected`（只有模板方法需要调用它们），模板方法设为 `public` 非虚且不再被子类覆盖（C++ 中无 `final` 的年代靠惯例约定）
+* **C++ 访问控制**：原语操作设为 `protected`（只有模板方法需要调用它们），模板方法设为 `public` 非虚，约定不再被子类覆盖（C++ 无 `final` 的年代靠惯例，Java 应加 `final`）
 * **最小化原语操作**：模板方法定义得越多，子类要实现的越多——定义"必要操作"为抽象原语，其余尽量给出默认
-* **命名约定**：给"子类应覆盖的原语"一个统一前缀（书中示例用 `Do-` 前缀），一眼可辨哪些是钩子
+* **命名约定**：给"子类应覆盖的原语"一个统一前缀，一眼可辨哪些是扩展点
 * **Hook operations（钩子操作）**：提供**默认实现**的原语——子类可覆盖也可不覆盖；比纯抽象原语更宽松，常用于"可选的参与点"
+
+### Sample Code（Application.openDocument 骨架）
+
+```java
+// ---- AbstractClass：框架的 Application ----
+abstract class Application2 {
+    private final List<Document> docs = new ArrayList<>();
+
+    // Template Method：固定"打开文档"的算法骨架（final：子类不得改结构）
+    final void openDocument(String name) {
+        if (!canOpenDocument(name)) {               // 步骤 1：检查（有默认）
+            System.out.println("无法打开: " + name);
+            return;
+        }
+        Document doc = doCreateDocument(name);      // 步骤 2：原语（抽象，子类定）
+        if (doc != null) {
+            docs.add(doc);
+            aboutToOpenDocument(doc);               // 步骤 3：钩子（默认空实现）
+            doc.doRead();                           // 步骤 4：读入内容
+            doc.doRestoreView();                    // 步骤 5：恢复视图
+        }
+    }
+
+    protected boolean canOpenDocument(String name) { return name != null; }
+    protected abstract Document doCreateDocument(String name);  // 必须实现的原语
+    protected void aboutToOpenDocument(Document doc) { }        // hook：可不覆盖
+}
+
+abstract class Document {                           // Document 侧同构的模板
+    abstract void doRead();
+    void doRestoreView() { }                        // hook
+}
+class DrawingDocument extends Document {            // 示意的具体文档
+    DrawingDocument(String name) { }
+    @Override void doRead() { System.out.println("读入文档内容"); }
+}
+
+// ---- ConcreteClass：填空即可，不触碰算法结构 ----
+class DrawingApplication2 extends Application2 {
+    @Override protected Document doCreateDocument(String name) {
+        return new DrawingDocument(name);
+    }
+    @Override protected void aboutToOpenDocument(Document doc) { // 可选参与
+        System.out.println("加载绘图工具栏");
+    }
+}
+
+// ---- Client：调的是模板方法，流程由框架（父类）主导 ----
+new DrawingApplication2().openDocument("架构图.vsd");
+// 输出：加载绘图工具栏 → 读入文档 → 恢复视图（顺序由 openDocument 骨架锁死）
+```
 
 ### 现代对应
 
@@ -479,7 +1257,7 @@ ConcreteClass：实现各 primitiveOperation
 
 ### Motivation
 
-编译器的 AST 节点（AssignmentNode、VariableRefNode…）上要不断添加操作：类型检查、代码生成、格式化打印……每次加操作都要给**所有**节点类加方法，还必须重编译。反转方向：把"操作"做成 Visitor 对象，节点只实现固定的 `accept(visitor)`，新操作 = 新 Visitor 类。
+编译器的 AST 节点（AssignmentNode、VariableRefNode…）上要不断添加操作：类型检查、代码生成、格式化打印……每次加操作都要给**所有**节点类加方法，还必须重编译。反转方向：把"操作"做成 Visitor 对象，节点只实现固定的 `accept(visitor)`，新操作 = 新 Visitor 类。原书另一个例子是设备定价/盘点。
 
 ### Applicability
 
@@ -487,12 +1265,47 @@ ConcreteClass：实现各 primitiveOperation
 * 需要对结构中的元素做很多**不同且互不相关**的操作，且不想让这些操作"污染"元素类
 * 对象结构（元素类）**很少变化**，而作用于其上的**操作经常新增**
 
-### Participants
+### Structure
 
+```mermaid
+classDiagram
+    class Visitor {
+        <<interface>>
+        +visitConcreteElementA(ConcreteElementA)
+        +visitConcreteElementB(ConcreteElementB)
+    }
+    class ConcreteVisitor1 {
+        +visitConcreteElementA(e)
+        +visitConcreteElementB(e)
+    }
+    class Element {
+        <<interface>>
+        +accept(Visitor)
+    }
+    class ConcreteElementA {
+        +accept(Visitor)
+        +operationA()
+    }
+    class ConcreteElementB {
+        +accept(Visitor)
+        +operationB()
+    }
+    class ObjectStructure {
+        -elements List~Element~
+        +attach(Element)
+        +accept(Visitor)
+    }
+    class Client
+    Visitor <|.. ConcreteVisitor1
+    Element <|.. ConcreteElementA
+    Element <|.. ConcreteElementB
+    ObjectStructure o-- Element : 枚举元素
+    Element --> Visitor : accept 回调 visit
+    Client --> ObjectStructure
+    Client ..> ConcreteVisitor1 : 创建
 ```
-Client ──▶ ObjectStructure ──▶ element.accept(visitor)
-                                     └── visitor.visit(ConcreteElement)（回调，double dispatch）
-```
+
+### Participants
 
 * **Visitor**：为每个 Element 类声明一个 `visitConcreteElementX()` 操作
 * **ConcreteVisitor**：实现这些操作，即作用的具体行为；可累积局部状态
@@ -519,6 +1332,77 @@ Client ──▶ ObjectStructure ──▶ element.accept(visitor)
 * **双分派是实现核心**：accept/visit 的配合替代了 `instanceof` 链
 * **由谁遍历**：结构迭代元素逐个 accept（可用 Iterator）；或元素自身递归 accept 子节点（配合 Composite）
 * Visitor 的接口按元素具体类型逐一定义——元素越多接口越宽，这正是"元素常变则不宜用 Visitor"的原因
+
+### Sample Code（设备结构上的定价与盘点）
+
+```java
+// ---- Visitor：为每种元素声明一个 visit ----
+interface EquipmentVisitor {
+    void visitFloppyDisk(FloppyDisk d);
+    void visitChassis(Chassis c);
+    void visitBus(Bus b);
+}
+
+// ---- Element ----
+abstract class Equipment {
+    abstract int price();
+    abstract String name();
+    abstract void accept(EquipmentVisitor v);       // 关键：回调 visitor
+}
+
+// ---- ConcreteElement（结构稳定：FloppyDisk/Chassis/Bus）----
+class FloppyDisk extends Equipment {
+    int price() { return 70; }
+    String name() { return "FloppyDisk"; }
+    void accept(EquipmentVisitor v) { v.visitFloppyDisk(this); }  // 一行回调
+}
+class Bus extends Equipment {
+    int price() { return 30; }
+    String name() { return "Bus"; }
+    void accept(EquipmentVisitor v) { v.visitBus(this); }
+}
+class Chassis extends Equipment {                   // 组合节点（Composite）
+    private final List<Equipment> parts = new ArrayList<>();
+    void add(Equipment e) { parts.add(e); }
+    int price() { return 45; }                      // 机箱自身价格；配件价格由 visitor 遍历时累加
+    String name() { return "Chassis"; }
+    void accept(EquipmentVisitor v) {
+        v.visitChassis(this);                       // 先访问自己
+        for (Equipment e : parts) e.accept(v);      // 再递归访问孩子
+    }
+}
+
+// ---- ConcreteVisitor 1：定价（跨元素累积状态）----
+class PricingVisitor implements EquipmentVisitor {
+    private int total = 0;
+    public void visitFloppyDisk(FloppyDisk d) { total += d.price(); }
+    public void visitChassis(Chassis c)  { total += c.price(); }
+    public void visitBus(Bus b)          { total += b.price(); }
+    int total() { return total; }
+}
+
+// ---- ConcreteVisitor 2：盘点（新操作 = 新 Visitor，元素类零改动）----
+class InventoryVisitor implements EquipmentVisitor {
+    private final List<String> inventory = new ArrayList<>();
+    public void visitFloppyDisk(FloppyDisk d) { inventory.add(d.name()); }
+    public void visitChassis(Chassis c)  { inventory.add(c.name()); }
+    public void visitBus(Bus b)          { inventory.add(b.name()); }
+    List<String> inventory() { return inventory; }
+}
+
+// ---- Client：一个结构，按需"接待"不同访问者 ----
+Chassis chassis = new Chassis();
+chassis.add(new FloppyDisk());
+chassis.add(new Bus());
+
+PricingVisitor pricing = new PricingVisitor();
+chassis.accept(pricing);
+System.out.println("总价: " + pricing.total());     // 145 = 机箱 45 + 软驱 70 + 总线 30
+
+InventoryVisitor inventory = new InventoryVisitor();
+chassis.accept(inventory);
+System.out.println("清单: " + inventory.inventory()); // [Chassis, FloppyDisk, Bus]
+```
 
 ### 现代对应
 

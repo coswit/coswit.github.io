@@ -75,6 +75,9 @@
       if (darkLink) darkLink.disabled = !useDark;
       document.documentElement.classList.toggle('dark', useDark);
       updateIcon();
+      // 明暗切换后用新主题重绘 mermaid 图
+      // （该函数定义时 mermaid 尚未加载，需判空调用）
+      if (window.__rerenderMermaid) window.__rerenderMermaid();
     }
 
     function currentMode() {
@@ -138,11 +141,14 @@
       langPrefix: 'language-'
     },
 
-    mermaid: {
-        theme: 'forest',
-        flowchart: { useMaxWidth: true }
+    // docsify-mermaid 插件读取的是 mermaidConfig（传给 mermaid.run），
+    // 而非 mermaid 初始化配置；mermaid 主题在页面底部脚本中跟随明暗模式设置。
+    // suppressErrors：单个损坏的图不中断其余图的渲染
+    mermaidConfig: {
+        querySelector: 'div.mermaid',
+        suppressErrors: true
     },
-	
+
 	copyCode: {
       buttonText: '复制',
       errorText:  '错误',
@@ -150,6 +156,17 @@
     },
     
     plugins: [
+      // 缓存 mermaid 图源码：docsify-mermaid 的 doneEach 随后调用 mermaid.run 渲染，
+      // 渲染后原始源码会被 SVG 替换；切换明暗主题重绘时需要源码。
+      // 必须注册在 docsify-mermaid（脚本加载时追加）之前，保证先于 mermaid.run 执行
+      function(hook, vm) {
+        hook.doneEach(function() {
+          document.querySelectorAll('div.mermaid').forEach(function(el) {
+            if (el.__mermaidSrc === undefined) el.__mermaidSrc = el.textContent;
+          });
+        });
+      },
+
       function(hook, vm) {
         hook.beforeEach(function(content) {
           // 预处理中文加粗问题
@@ -404,6 +421,36 @@
   <!-- Mermaid 插件 -->
   <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/docsify-mermaid@latest/dist/docsify-mermaid.min.js"></script>
+  <script>
+  // mermaid 主题跟随站点明暗模式：暗色用 dark 主题，浅色保持默认外观；
+  // 实际渲染由 docsify-mermaid 在每个页面渲染完成后调用 mermaid.run 完成
+  (function () {
+    function currentTheme() {
+      return document.documentElement.classList.contains('dark') ? 'dark' : 'default';
+    }
+
+    mermaid.initialize({
+      startOnLoad: false,   // 避免与 docsify-mermaid 的 mermaid.run 重复渲染
+      theme: currentTheme(),
+      flowchart: { useMaxWidth: true }
+    });
+
+    // 切换主题后重绘当前页所有图：恢复缓存的源码、清掉已渲染标记，再重新 run
+    window.__rerenderMermaid = function () {
+      var els = document.querySelectorAll('div.mermaid');
+      if (!els.length) return;
+      mermaid.initialize({ theme: currentTheme() });
+      els.forEach(function (el) {
+        var src = el.__mermaidSrc !== undefined ? el.__mermaidSrc : el.textContent;
+        if (!src || !src.trim()) return;
+        el.__mermaidSrc = src;
+        el.removeAttribute('data-processed');
+        el.textContent = src;
+      });
+      mermaid.run({ querySelector: 'div.mermaid', suppressErrors: true }).catch(function () {});
+    };
+  })();
+  </script>
 
   <script src="https://cdn.jsdelivr.net/npm/docsify@4/lib/plugins/zoom-image.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/docsify@4/lib/plugins/search.js"></script>

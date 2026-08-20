@@ -4,7 +4,7 @@
 
 5 个创建型模式：Abstract Factory、Builder、Factory Method、Prototype、Singleton。
 
-> Java 示例代码见上级目录《设计模式之一：Creational Pattern》。
+> 类图为 mermaid；Sample Code 用 Java 还原原书的 Motivation 场景（原书为 C++/Smalltalk）。更多 Java 示例见上级目录《设计模式之一：Creational Pattern》。
 
 ## Abstract Factory（别名 Kit）
 
@@ -23,13 +23,48 @@
 * 一族相关产品被设计为必须配套使用，需要强制这种约束
 * 想提供一个只暴露接口、隐藏实现的产品类库
 
-### Participants
+### Structure
 
+```mermaid
+classDiagram
+    class Client
+    class AbstractFactory {
+        <<interface>>
+        +createProductA() AbstractProductA
+        +createProductB() AbstractProductB
+    }
+    class ConcreteFactory1 {
+        +createProductA() AbstractProductA
+        +createProductB() AbstractProductB
+    }
+    class ConcreteFactory2 {
+        +createProductA() AbstractProductA
+        +createProductB() AbstractProductB
+    }
+    class AbstractProductA {
+        <<interface>>
+    }
+    class AbstractProductB {
+        <<interface>>
+    }
+    class ProductA1
+    class ProductA2
+    class ProductB1
+    class ProductB2
+    Client --> AbstractFactory : 只依赖抽象
+    AbstractFactory <|.. ConcreteFactory1
+    AbstractFactory <|.. ConcreteFactory2
+    AbstractProductA <|.. ProductA1
+    AbstractProductA <|.. ProductA2
+    AbstractProductB <|.. ProductB1
+    AbstractProductB <|.. ProductB2
+    ConcreteFactory1 ..> ProductA1 : creates
+    ConcreteFactory1 ..> ProductB1 : creates
+    ConcreteFactory2 ..> ProductA2 : creates
+    ConcreteFactory2 ..> ProductB2 : creates
 ```
-Client ──uses──▶ AbstractFactory ──creates──▶ AbstractProduct
-                        ▲                          ▲
-                 ConcreteFactory ──creates──▶ ConcreteProduct
-```
+
+### Participants
 
 * **AbstractFactory**：声明创建抽象产品对象的操作接口
 * **ConcreteFactory**：实现创建具体产品的操作
@@ -60,6 +95,51 @@ Client ──uses──▶ AbstractFactory ──creates──▶ AbstractProduc
 * **参数化工厂**（`get(class)` 一个方法创建任意产品）：减少方法数量，但失去类型安全，且要求所有产品接口统一——一般不推荐
 * 若必须支持新种类产品，可给工厂加"更少的创造方法 + 更参数化的产品"这类折中
 
+### Sample Code（look-and-feel 的 WidgetFactory）
+
+```java
+// ---- AbstractProduct：一族抽象产品 ----
+interface ScrollBar { void paint(); }
+interface Window { void drawFrame(); }
+
+// ---- ConcreteProduct：Motif / PM 两个产品族 ----
+class MotifScrollBar implements ScrollBar {
+    public void paint() { System.out.println("MotifScrollBar"); }
+}
+class MotifWindow implements Window {
+    public void drawFrame() { System.out.println("MotifWindow"); }
+}
+class PMScrollBar implements ScrollBar {
+    public void paint() { System.out.println("PMScrollBar"); }
+}
+class PMWindow implements Window {
+    public void drawFrame() { System.out.println("PMWindow"); }
+}
+
+// ---- AbstractFactory / ConcreteFactory ----
+interface WidgetFactory {
+    ScrollBar createScrollBar();
+    Window createWindow();
+}
+class MotifWidgetFactory implements WidgetFactory {
+    public ScrollBar createScrollBar() { return new MotifScrollBar(); }
+    public Window createWindow() { return new MotifWindow(); }
+}
+class PMWidgetFactory implements WidgetFactory {
+    public ScrollBar createScrollBar() { return new PMScrollBar(); }
+    public Window createWindow() { return new PMWindow(); }
+}
+
+// ---- Client：只依赖抽象，整族切换只改这一行 ----
+public class Client {
+    public static void main(String[] args) {
+        WidgetFactory factory = new MotifWidgetFactory();
+        factory.createScrollBar().paint();   // MotifScrollBar
+        factory.createWindow().drawFrame();  // MotifWindow
+    }
+}
+```
+
 ### Known Uses / 现代对应
 
 * 书中：InterViews 的 inter-look 机制、ET++ 编辑器的 look-and-feel
@@ -84,13 +164,42 @@ Client ──uses──▶ AbstractFactory ──creates──▶ AbstractProduc
 * 创建复杂对象的算法应独立于对象的组成部分及它们的组装方式
 * 构造过程必须允许不同的表示
 
-### Participants
+### Structure
 
+```mermaid
+classDiagram
+    class Director {
+        -builder Builder
+        +construct()
+    }
+    class Builder {
+        <<interface>>
+        +buildPartA()
+        +buildPartB()
+        +getResult() Product
+    }
+    class ConcreteBuilder1 {
+        -parts List~String~
+        +buildPartA()
+        +buildPartB()
+        +getResult() Product1
+    }
+    class ConcreteBuilder2 {
+        -parts List~String~
+        +buildPartA()
+        +buildPartB()
+        +getResult() Product2
+    }
+    class Product1
+    class Product2
+    Director --> Builder : 按固定算法调用
+    Builder <|.. ConcreteBuilder1
+    Builder <|.. ConcreteBuilder2
+    ConcreteBuilder1 ..> Product1 : 逐步组装交付
+    ConcreteBuilder2 ..> Product2 : 逐步组装交付
 ```
-Client ──创建/装配──▶ Director ──按算法调用──▶ Builder(接口)
-                                            ▲
-                                     ConcreteBuilder ──产出──▶ Product
-```
+
+### Participants
 
 * **Builder**：为创建 Product 对象的各个部件声明抽象接口
 * **ConcreteBuilder**：实现接口，构造并装配部件；定义并跟踪所创建的表示；提供取回产品的接口
@@ -114,6 +223,60 @@ Client ──创建/装配──▶ Director ──按算法调用──▶ Buil
 * Builder 接口要**足够细粒度**，否则难以支撑不同表示；反之不必为不常用的操作设复杂默认——书中让 Builder 的方法默认为空实现，ConcreteBuilder 只覆盖需要的
 * **通常不定义公共的 Product 抽象类**：各表示差异太大，没有统一接口的意义，客户按具体 Builder 类型取回产品
 * Director 可用同样方式构造多个产品（Builder 状态多次复用）
+
+### Sample Code（RTF 转换器）
+
+```java
+// ---- Builder：为"构建文档的每个部分"声明接口，默认空实现 ----
+abstract class TextConverter {
+    void convertCharacter(char c) {}
+    void convertFontChange(String font) {}
+    void convertParagraphStart() {}
+    void convertParagraphEnd() {}
+}
+
+// ---- ConcreteBuilder 1：目标表示为纯文本 ----
+class PlainTextConverter extends TextConverter {
+    private final StringBuilder text = new StringBuilder(); // Product
+    @Override void convertCharacter(char c) { text.append(c); }
+    @Override void convertParagraphEnd() { text.append('\n'); }
+    String getText() { return text.toString(); }            // 取回产品
+}
+
+// ---- ConcreteBuilder 2：目标表示为 TeX ----
+class TeXConverter extends TextConverter {
+    private final StringBuilder tex = new StringBuilder();  // 另一种 Product
+    @Override void convertCharacter(char c) { tex.append(c); }
+    @Override void convertParagraphStart() { tex.append("\\begin{para}"); }
+    @Override void convertParagraphEnd() { tex.append("\\end{para}"); }
+    String getTeX() { return tex.toString(); }
+}
+
+// ---- Director：RTF 解析算法固定，只面向 Builder 接口 ----
+class RTFReader {
+    private final TextConverter builder;
+    RTFReader(TextConverter builder) { this.builder = builder; }
+    void parseRTF(String rtf) {
+        // tokenize(rtf) 产出 Token 流（CHAR / FONT / PARA_END …，此处示意）
+        for (Token token : tokenize(rtf)) {
+            switch (token.kind) {
+                case CHAR:     builder.convertCharacter(token.ch);    break;
+                case FONT:     builder.convertFontChange(token.font); break;
+                case PARA_END: builder.convertParagraphEnd();         break;
+            }
+        }
+    }
+}
+
+// ---- Client：同一个 Director + 不同 Builder => 不同表示 ----
+PlainTextConverter plain = new PlainTextConverter();
+new RTFReader(plain).parseRTF(rtfSource);
+String product = plain.getText();
+
+TeXConverter tex = new TeXConverter();
+new RTFReader(tex).parseRTF(rtfSource);           // 解析算法完全复用
+String texProduct = tex.getTeX();
+```
 
 ### 现代对应
 
@@ -139,13 +302,29 @@ Client ──创建/装配──▶ Director ──按算法调用──▶ Buil
 * 类希望由子类指定它所创建的对象
 * 类把职责委托给多个辅助子类之一，并且希望把"是哪一个子类"这一知识局部化
 
-### Participants
+### Structure
 
+```mermaid
+classDiagram
+    class Creator {
+        <<abstract>>
+        +factoryMethod() Product
+        +anOperation()
+    }
+    class ConcreteCreator {
+        +factoryMethod() Product
+    }
+    class Product {
+        <<interface>>
+    }
+    class ConcreteProduct
+    Creator <|-- ConcreteCreator
+    Product <|.. ConcreteProduct
+    Creator ..> Product : 框架逻辑只依赖抽象产品
+    ConcreteCreator ..> ConcreteProduct : 实例化
 ```
-Creator ──factoryMethod()──▶ Product
-    ▲                           ▲
-ConcreteCreator ──────────▶ ConcreteProduct
-```
+
+### Participants
 
 * **Product**：工厂方法所创建对象的抽象接口
 * **ConcreteProduct**：具体产品
@@ -174,6 +353,44 @@ Creator 依赖子类实现工厂方法，从而返回正确的 ConcreteProduct�
 * 命名惯例：工厂方法常以 `Create…/Make…/New…` 前缀命名（Java 世界如 `createXxx`、`valueOf`、`getInstance`）
 * C++ 中可用模板（template method + 模板参数）避免为每种产品派生 Creator
 
+### Sample Code（框架的 Application/Document）
+
+```java
+// ---- Product ----
+interface Document {
+    void open();
+    void save();
+    void close();
+}
+
+class DrawingDocument implements Document {          // ConcreteProduct
+    public void open()  { System.out.println("打开绘图文档"); }
+    public void save()  { /* ... */ }
+    public void close() { /* ... */ }
+}
+
+// ---- Creator：框架逻辑（newDocument）与具体文档解耦 ----
+abstract class Application {
+    private final List<Document> docs = new ArrayList<>();
+
+    abstract Document createDocument();              // Factory Method
+
+    void newDocument(String name) {                  // 框架代码，不关心具体文档类型
+        Document doc = createDocument();             // 只依赖抽象 Product
+        docs.add(doc);
+        doc.open();
+    }
+}
+
+// ---- ConcreteCreator：唯一需要知道具体产品类的地方 ----
+class DrawingApplication extends Application {
+    @Override Document createDocument() { return new DrawingDocument(); }
+}
+
+Application app = new DrawingApplication();
+app.newDocument("架构图.vsd");   // 内部创建的是 DrawingDocument，框架无感知
+```
+
 ### 现代对应
 
 `java.util.Collection#iterator()`（每个具体集合决定返回哪种 Iterator）、`Calendar#getInstance()`、各类 `valueOf()`。
@@ -199,11 +416,31 @@ Creator 依赖子类实现工厂方法，从而返回正确的 ConcreteProduct�
 * 避免创建与产品层次平行的工厂层次
 * 类的实例只处于少数几种状态组合之一，预置对应原型并克隆它们比反复初始化更方便
 
-### Participants
+### Structure
 
+```mermaid
+classDiagram
+    class Client
+    class Prototype {
+        <<interface>>
+        +clone() Prototype
+    }
+    class ConcretePrototype1 {
+        -state
+        +clone() Prototype
+    }
+    class PrototypeManager {
+        -prototypes Map~String,Prototype~
+        +register(key, Prototype)
+        +create(key) Prototype
+    }
+    Prototype <|.. ConcretePrototype1
+    Client ..> Prototype : clone 而非 new
+    PrototypeManager o-- Prototype : 注册并缓存
+    Client ..> PrototypeManager : 按 key 取原型
 ```
-Client ──clone()──▶ Prototype ──▶ ConcretePrototype（实现 clone）
-```
+
+### Participants
 
 * **Prototype**：声明克隆自身的接口
 * **ConcretePrototype**：实现克隆操作
@@ -229,6 +466,48 @@ Client ──clone()──▶ Prototype ──▶ ConcretePrototype（实现 clo
 * `clone()` 的实现：基本类型直接复制；对象成员需决定浅/深拷贝；C++ 用拷贝构造、Smalltalk 用 `copy`，Java 实现 `Cloneable` 并重写 `clone()`
 * 克隆后常用 `Initialize(参数)` 重新初始化状态，避免为每种配置准备一个原型
 
+### Sample Code（乐谱编辑器的 GraphicTool）
+
+```java
+// ---- Prototype ----
+interface Graphic {
+    Graphic clone();
+    void draw(int x, int y);
+}
+
+class MusicalNote implements Graphic {               // ConcretePrototype
+    private final String note;                       // 需要深拷贝的成员
+    MusicalNote(String note) { this.note = note; }
+    @Override public Graphic clone() { return new MusicalNote(note); }
+    public void draw(int x, int y) {
+        System.out.println(note + " @(" + x + "," + y + ")");
+    }
+}
+
+// ---- Client（书中场景）：工具持原型，用克隆代替 new ----
+class GraphicTool {
+    private final Graphic prototype;
+    GraphicTool(Graphic prototype) { this.prototype = prototype; }
+    Graphic apply(int x, int y) {
+        Graphic g = prototype.clone();               // 克隆，不依赖具体类
+        g.draw(x, y);
+        return g;
+    }
+}
+
+// ---- PrototypeManager：运行期动态注册/查找原型 ----
+class PrototypeManager {
+    private final Map<String, Graphic> prototypes = new HashMap<>();
+    void register(String key, Graphic p) { prototypes.put(key, p); }
+    Graphic create(String key) { return prototypes.get(key).clone(); }
+}
+
+PrototypeManager mgr = new PrototypeManager();
+mgr.register("quarter-note", new MusicalNote("♩"));
+Graphic g1 = mgr.create("quarter-note");   // 两次 create 得到两个
+Graphic g2 = mgr.create("quarter-note");   // 相互独立的实例（区别于 Flyweight 的共享）
+```
+
 ### 现代对应
 
 `Object#clone()`/`Cloneable`、Apache Commons `SerializationUtils.clone()`、Kotlin data class 的 `copy()`——都是"以复制代替重新构造"。（注意与 Flyweight 区分：Prototype 是复制出**独立实例**，Flyweight 是**共享同一实例**。）
@@ -247,18 +526,30 @@ Client ──clone()──▶ Prototype ──▶ ConcretePrototype（实现 clo
 
 一个系统只应有一个窗口管理器、一个文件系统、一个打印后台（print spooler）。全局变量虽然"唯一"，但不能防止客户创建第二个实例，也污染命名空间。
 
-### Participants
-
-```
-Client ──getInstance()──▶ Singleton（自己创建并静态持有唯一实例）
-```
-
-* **Singleton**：定义 `Instance()` 操作，允许客户访问唯一实例；可能自己负责创建该实例
-
 ### Applicability
 
 * 类只能有一个实例，且客户必须从一个众所周知的访问点访问它
 * 唯一实例应可通过子类化扩展，且客户无需改代码即可使用扩展的实例
+
+### Structure
+
+```mermaid
+classDiagram
+    class Singleton {
+        -uniqueInstance Singleton
+        -Singleton()
+        +instance() Singleton
+    }
+    class SingletonSubclassA {
+        +instance() Singleton
+    }
+    note for Singleton "私有构造 + 静态持有唯一实例；子类化时需注册表决定返回哪个子类"
+    Singleton <|-- SingletonSubclassA
+```
+
+### Participants
+
+* **Singleton**：定义 `Instance()` 操作，允许客户访问唯一实例；可能自己负责创建该实例
 
 ### Consequences
 
@@ -272,6 +563,38 @@ Client ──getInstance()──▶ Singleton（自己创建并静态持有唯�
 
 * 保证唯一性：构造器私有（或保护），静态方法 `Instance()` 惰性创建并返回唯一实例（C++ 用函数内 static，Java 用 `private static` 字段 + `getInstance()`，多线程需同步或 holder/enum 方案——详见上级目录的 Java 版三种写法）
 * **子类化 Singleton** 的问题：`Instance()` 必须决定返回哪个子类的实例——常用 **注册表**（按名字查找已注册的 Singleton 子类）解决；实例的真正类型在编译期不再固定
+
+### Sample Code（MazeFactory 及其注册表式子类化）
+
+```java
+// 基本形态：静态持有 + 私有构造 + 全局访问点
+class MazeFactory {
+    private static final MazeFactory INSTANCE = new MazeFactory();
+
+    static MazeFactory instance() { return INSTANCE; }
+
+    protected MazeFactory() {}        // 外部无法 new；protected 允许子类化
+    // makeMaze()/makeWall()/makeRoom() ...
+}
+
+// 子类化 + 注册表：instance(key) 返回不同子类的唯一实例
+class BombedMazeFactory extends MazeFactory { }
+class EnchantedMazeFactory extends MazeFactory { }
+
+class MazeFactoryRegistry {
+    private static final Map<String, MazeFactory> REGISTRY = new HashMap<>();
+    static {  // 或由子类静态代码块自注册：MazeFactory.register("bombed", this)
+        REGISTRY.put("bombed",    new BombedMazeFactory());
+        REGISTRY.put("enchanted", new EnchantedMazeFactory());
+    }
+    static void register(String key, MazeFactory f) { REGISTRY.put(key, f); }
+    static MazeFactory instance(String key) { return REGISTRY.get(key); }
+}
+
+MazeFactory factory = MazeFactoryRegistry.instance("bombed"); // 运行期选择实现
+```
+
+> Java 平台上更完备的线程安全写法（饿汉式 / 静态内部类 holder / volatile DCL / 单元素 enum）见上级目录《设计模式之一：Creational Pattern》的 Singleton 一节。
 
 ### 现代对应
 

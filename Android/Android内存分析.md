@@ -32,8 +32,10 @@ adb shell dumpsys meminfo --checkin <package>    # 机器可读格式，适合�
 原理：
 
 - 数据来源是内核的 `/proc/<pid>/smaps`（新版走 `smaps_rollup`）：每个 mapping 记录了 Private_Clean/Dirty、Pss、Swap 等字段。
-- dumpsys 按 mapping 的路径/属性把它归类成 Dalvik Heap、Native Heap、.so mmap、Graphics 等行；Graphics/Gfx 部分来自 gralloc（Graphics Allocator）/dmabuf（DMA-BUF，图形缓冲共享句柄）的厂商统计（mtrack）。
+- dumpsys 按 mapping 的路径/属性把它归类成 Dalvik Heap、Native Heap、.so mmap、Graphics 等行；Graphics/Gfx 部分来自 gralloc（Graphics Allocator）/dmabuf（DMA-BUF，Direct Memory Access Buffer，跨设备共享的图形缓冲句柄）的厂商统计（mtrack）。
 - 应用内等价接口：`Debug.getMemoryInfo()`。
+
+采样技巧：先 `adb shell kill -10 <pid>`（SIGUSR1）触发一次 GC——ART 的 signal catcher 线程响应该信号并请求 GC，把"待回收垃圾"挤掉后再采样，PSS 更真实；属非官方接口，部分系统/版本有效。
 
 ### showmap / smaps
 
@@ -54,6 +56,37 @@ adb shell cat /proc/<pid>/smaps      # 原始数据
 | Java OOM（Out Of Memory） | OutOfMemoryError（超出 Java 堆上限） | heap dump |
 | Native 耗尽 | 32 位进程 malloc 失败、mmap 失败 | showmap 看 VSS 分布 |
 | 整机低内存 | lmkd（Low Memory Killer Daemon）按 oom_adj（OOM 调整分数）杀掉 cached 进程 | 事件日志 / dumpsys activity oom |
+
+## debug 与 release 的具体方案
+
+是否 debuggable 决定了分析路线：**debug 包用"定位型"工具**（能直接拿到引用链、分配调用栈）；**release 包只能用"观测型"命令 + 进程内自采集**。
+
+### debug 包（debuggable）
+
+| 问题 | 具体方案 |
+|---|---|
+| 内存概况 | `dumpsys meminfo`；Android Studio Memory Profiler 实时曲线 |
+| Java 泄漏 | Memory Profiler 抓 heap dump 看 References 引用链；或 `am dumpheap` 导出 hprof 用 MAT 分析（Histogram 对比 / Path to GC Roots）；集成 LeakCanary 自动报最短引用链 |
+| 内存抖动 | Memory Profiler 的 allocation tracking 记录分配栈，找高频分配点 |
+| Native 泄漏 | Perfetto + heapprofd 采样出调用栈火焰图；malloc debug（`wrap.*` 属性）记录分配 backtrace；`memunreachable` 扫描不可达块 |
+| 越界 / UAF（Use-After-Free） | ASan（AddressSanitizer）/ HWASan 专项构建复现 |
+
+### release 包（非 debuggable）
+
+| 问题 | 具体方案 |
+|---|---|
+| 内存概况 / 趋势 | `dumpsys meminfo`（`--checkin` 定时采样）；应用内 `Debug.getMemoryInfo()` |
+| Java 泄漏 | 代码内 `Debug.dumpHprofData()` 主动导出 hprof，再离线用 MAT/shark 分析；线上由 KOOM 这类框架在阈值触发时 **fork 子进程 dump + 裁剪解析**，不冻结主进程；内测 release 包可显式集成 LeakCanary（引入依赖 + 手动初始化 AppWatcher）自动分析并导出上报 |
+| Native 泄漏 | 进程内 hook 方案（KOOM/Matrix：代理 malloc/free 采集分配栈，周期性分析上报）；`Debug.getNativeHeapAllocatedSize()` 监控 native 堆水位 |
+| Bitmap 等大户监控 | hook `Bitmap.createBitmap`/解码路径收集超大图实例；`ComponentCallbacks2.onTrimMemory()` 按级别告警并释放缓存 |
+| 越界 / UAF | GWP-ASan（基于 Guarded Page Allocator，系统内置抽样检测，崩溃时直接给出堆栈，无需重编译） |
+| 低内存 | `onTrimMemory()` 提前释放缓存；线上采集 lmkd 杀进程事件（事件日志 / Dropbox）辅助归因 |
+
+要点：
+
+- 实测 Perfetto 抓取、heapprofd 采样、`am dumpheap`、`memunreachable`、`wrap.*` 都要求 debug 包，release 下不可用；
+- release 下的 dump 一律走应用自身能力（`Debug.dumpHprofData()` / 进程内 hook），这正是 KOOM / Matrix 这类线上框架存在的原因；
+- debug 包自身开销偏大（JDWP、检测库、ART 关闭优化），**内存水位与趋势的评估要以 release 数据为准**，debug 只用于定位。
 
 ## Java 堆分析
 
@@ -106,7 +139,7 @@ Debug.dumpHprofData(absPath);
 
 - 成因：大量短生命周期的小对象（onDraw 中创建对象、循环内拼接字符串、自动装箱、频繁创建 Bitmap/byte[] 等），导致高频 young GC；
 - 表现：Memory Profiler 曲线呈锯齿状、logcat 中 art tag 的 GC 日志密集、Perfetto 里 dalvik 轨道 GC slice 频繁；
-- 危害：CC（Concurrent Copying）GC 虽并发，仍会与主线程竞争 CPU，且部分阶段需要短暂挂起线程，造成卡顿；
+- 危害：CC（Concurrent Copying）GC 虽并发，仍会与主线程竞争 CPU，且部分阶段需要短暂挂起线程，造成卡顿；频繁的分配/回收还会污染 CPU 缓存（Cache Miss 增多）、白白消耗 DDR 带宽；
 - 定位：Allocation tracking 找分配热点栈，治理高频分配点（对象复用、缓存、避免在热路径分配）。
 
 ## Native 堆分析
@@ -116,7 +149,7 @@ Debug.dumpHprofData(absPath);
 - Android 10+ 内置，**采样式** native 堆分析器，默认每 4096 字节采样一次，开销低，可长时间跟踪；
 - 原理：拦截目标进程的 malloc/free，按采样间隔记录分配/释放与调用栈（unwinding），进程通过共享内存把数据发给 heapprofd 守护进程，结果按调用栈聚合；
 - 产出：调用栈火焰图 / 按调用栈聚合的分配量。持续增长的调用栈即泄漏点；
-- 具体抓取配置见 [perfetto使用](perfetto使用.md#内存分析)。
+- 具体抓取配置见 [perfetto使用](perfetto使用.md)。
 
 ### malloc debug（bionic 自带）
 
@@ -163,7 +196,22 @@ adb shell memunreachable -t <pid>   # 需要 debuggable 进程，执行期间进
 
 - **MemAvailable** 比 MemFree 更能反映真实可用内存（包含可回收的 cache/buffer 估计值）；
 - ZRAM 是压缩内存盘作 swap，`SwapTotal/SwapFree` 反映其用量；换出的页按压缩后大小计入 SwapPSS；
-- 注意 **MADV_FREE**（madvise 系统调用选项之一）行为：分配器（Scudo/glibc）释放内存后内核可以延迟回收，表现为 free 不会立即上涨，属正常现象，不要误判为泄漏。
+- 注意 **MADV_FREE**（madvise 系统调用选项之一）行为：部分分配器（jemalloc/tcmalloc）释放内存后内核可以延迟回收，表现为 free 不会立即上涨，属正常现象，不要误判为泄漏。
+
+### DDR 与内存带宽
+
+- DDR（Double Data Rate SDRAM，双倍速率同步动态随机存储器）就是手机的物理运行内存芯片；手机使用低功耗版本 **LPDDR**（Low-Power DDR，主流为 LPDDR4X / LPDDR5 / LPDDR5X），标称"运存"容量即 DDR 容量。
+- 与 CPU/GPU 内部的高速 Cache 不同，DDR 是所有进程、系统服务、图形缓冲共同分享的"大池子"：手机 SoC 是**统一内存架构**（Unified Memory Architecture），CPU/GPU/显示共用同一块 LPDDR、没有独立显存，因此图形负载天然是 DDR 带宽大户。
+- VSS/RSS/PSS 都只是统计口径，最终消耗的都是 DDR 物理容量；**ZRAM 的压缩页仍放在 DDR 中**（用 CPU 换容量），而落盘 swap 在 UFS（Universal Flash Storage）/eMMC（embedded MultiMediaCard）闪存上（慢且有写损耗）。
+- **性能视角——容量与带宽是两个独立维度**：带宽饱和时所有进程的访存延迟一起上升，CPU 转而等待内存响应，典型表现是**整机变慢、渲染掉帧（Jank）**。大图解码、高频图形绘制/合成这类瞬时大流量场景最容易触发；此时看各进程 CPU 占用率并不会有异常，属于"看不见"的卡顿来源。DDR 频率/带宽由 devfreq 按负载动态调节（节点厂商私有，如 `/sys/class/devfreq/*ddr*/cur_freq`）。
+- **功耗视角**：高内存带宽负载会拉高 DDR 频率、阻止 SoC（System on Chip，片上系统）进入深度休眠，是发热与耗电的常见来源。
+- 观测手段：部分厂商 ROM 的 perfetto trace 自带 DDR 频率/带宽轨道；没有时可用 devfreq 节点定时采样频率曲线。
+
+减少带宽浪费的常见手段：
+
+- CPU 与 GPU 之间优先用 `HardwareBuffer` / `GraphicBuffer` 等共享内存机制零拷贝传递，避免 `ByteArray` 一类的来回转换拷贝；
+- 控制 Bitmap 尺寸与格式：按目标 View 尺寸下采样解码（如 `inSampleSize`），避免"4K 图渲染到 1080p View"——既浪费 DDR 容量，每次绘制还持续消耗带宽；只上屏的位图可用硬件位图（`Bitmap.Config.HARDWARE`）；
+- 减少内存抖动：分配风暴会同时消耗 GC、CPU 缓存与 DDR 带宽（见下文"内存抖动"）。
 
 ### lmkd 与 oom_adj
 

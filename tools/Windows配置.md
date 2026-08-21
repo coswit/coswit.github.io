@@ -104,6 +104,9 @@ autoProxy=true
 
 ```bash
 winget upgrade Microsoft.PowerShell
+
+# winget 代理
+winget upgrade Microsoft.PowerShell --proxy http://127.0.0.1:7897
 ```
 
 或者直接使用微软提供的在线安装角本，`-UseMSI`会下载并运行标准的Windows程序，并自动替换旧版保留所有设置：

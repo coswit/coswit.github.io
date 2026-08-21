@@ -69,10 +69,10 @@ file_write_period_ms: 1000     # 定期落盘，防止丢数据
 adb shell perfetto -c /data/local/tmp/trace_config.pbtx --txt \
   -o /data/misc/perfetto-traces/long.perfetto-trace -d   # -d 后台 detach 运行
 # 需要停止时向进程发 SIGINT，让其 flush 落盘
-adb shell "kill -INT $(pidof perfetto)"
+adb shell 'kill -INT $(pidof perfetto)'
 ```
 
-- 长跟踪注意文件大小（可配 `max_file_size_kb` 滚动覆盖）；
+- 长跟踪注意文件大小（可配 `max_file_size_kb` 限制上限，到达后停止记录并落盘）；
 - 大部分环形 buffer 数据源在 write_into_file 模式下改为流式写文件。
 
 ### UI 在线录制
@@ -93,9 +93,9 @@ Android 9 及以下无 `perfetto` 命令：用 perfetto 仓库的 `tools/record_
 | binder_driver | binder 事务与锁 | 跨进程调用耗时 |
 | hal | HAL（Hardware Abstraction Layer）跟踪点 | 相机等 HAL 层耗时 |
 | dalvik | ART（Android Runtime）GC / JIT（Just-In-Time 编译）/ 堆 | GC 抖动、内存分析 |
-| memory | 系统内存计数器（meminfo/vmstat/PSI） | 内存趋势 |
+| memory | 系统内存计数器（meminfo/vmstat/PSI，Pressure Stall Information） | 内存趋势 |
 | camera / input / res / audio | 各子系统 atrace 点 | 对应场景 |
-| process_stats（需配置） | 进程 RSS 等计数器 | 应用内存趋势 |
+| process_stats（需配置） | 进程 RSS（Resident Set Size）等计数器 | 应用内存趋势 |
 | heapprofd（需配置） | native 堆采样 | native 泄漏定位 |
 | android.java_heap_dump（需配置） | Java 堆快照 | 对象级分析 |
 
@@ -118,7 +118,7 @@ perfetto目前提供两种标记类型,标记的方式分别为:
 parent_tms=1719212453068
 ```
 
-trace 内部的 `ts` 单位是**纳秒**，且基于单调时钟（从开机起算），与 logcat 的墙钟时间不能直接比较。对齐方法：用当前墙钟时间减去系统已运行时长得到开机时刻，再与 trace 时间相加：
+形如上面的 13 位数字是墙钟毫秒时间戳（epoch ms）。而 trace 内部的 `ts` 单位是**纳秒**，且基于单调时钟（从开机起算），与 logcat 的墙钟时间不能直接比较。对齐方法：用当前墙钟时间减去系统已运行时长得到开机时刻，再与 trace 时间相加：
 
 ```shell
 date +%s%3N && adb shell cat /proc/uptime   # 两者相减 ≈ 开机时刻(ms)
@@ -191,14 +191,17 @@ WHERE t.is_main_thread
   AND s.state = 'R';
 ```
 
-binder 调用耗时 top：
+binder 调用耗时 top（限定目标应用线程）：
 
 ```sql
-SELECT name, COUNT(*) AS cnt,
-       SUM(dur)/1e6 AS total_ms, MAX(dur)/1e6 AS max_ms
-FROM slice
-WHERE name LIKE 'binder%'
-GROUP BY name
+SELECT s.name, COUNT(*) AS cnt,
+       SUM(s.dur)/1e6 AS total_ms, MAX(s.dur)/1e6 AS max_ms
+FROM slice s
+JOIN thread_track tt ON s.track_id = tt.id
+JOIN thread t ON t.utid = tt.utid
+JOIN process p ON p.upid = t.upid
+WHERE s.name LIKE 'binder%' AND p.name = 'com.example.app'
+GROUP BY s.name
 ORDER BY total_ms DESC
 LIMIT 20;
 ```
@@ -251,11 +254,13 @@ LIMIT 50;
   ```
 
 - 抓完后 UI 中出现 Flamegraph 轨道，按调用栈聚合看分配量，持续增长的栈即泄漏嫌疑；原理与完整方法见 [Android内存分析](Android内存分析.md)。
+- 实测非 debug（非 debuggable）进程无法被 Perfetto 抓取分析，heapprofd 等采样只对 debug 包生效；release 场景改用 `dumpsys meminfo` 观测趋势，或 KOOM 等进程内自采集方案，见 [Android内存分析](Android内存分析.md)。
 
 ### 功耗
 
 - `freq` / `idle` 看大核占用与休眠情况；
-- 结合 `sched_wakeup` 链找频繁唤醒源的进程/线程；支持 power rails 的设备可看实际电流。
+- 结合 `sched_wakeup` 链找频繁唤醒源的进程/线程；支持 power rails 的设备可看实际电流；
+- 部分厂商 ROM 的 trace 自带 DDR（物理内存）频率/带宽轨道：高内存带宽负载会拉高 DDR 频率、影响功耗与整机流畅度。
 
 ## 参考
 

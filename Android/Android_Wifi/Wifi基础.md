@@ -59,7 +59,7 @@
 
 MAC 帧由 **MAC Header**（帧头）、**Frame Body**（帧体）和 **FCS**（校验）三部分组成：
 
-<img src="./android/images/802.11_mac.png"  style="zoom:100%;" />
+<img src="/Android/images/802.11_mac.png"  style="zoom:100%;" />
 
 | 字段 | 长度 | 说明 |
 | --- | --- | --- |

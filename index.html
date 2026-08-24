@@ -219,7 +219,7 @@
                 if (!contentEl) return;
 
                 // 先移除旧面板：页面无标题时也不会残留上一页的目录
-                var existing = contentEl.querySelector('.toc-panel');
+                var existing = document.querySelector('.toc-panel');
                 if (existing) existing.remove();
 
                 // 直接从当前页面标题生成目录（h2~h5，与 subMaxLevel 一致）。
@@ -284,7 +284,10 @@
 
                 panel.appendChild(title);
                 panel.appendChild(tocContent);
-                contentEl.appendChild(panel);
+                // 挂到 body 而非 .content：收起侧边栏时主题会给 .content 加
+                // transform（translateX(0)），transform 的祖先会成为 fixed 元素的
+                // 定位基准，导致 fixed 的目录面板在页面滚动时跟着滚走
+                document.body.appendChild(panel);
 
                 var tocLinks = panel.querySelectorAll('a');
                 var lastActive = '';

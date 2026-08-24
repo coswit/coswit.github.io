@@ -443,41 +443,173 @@ new Thread(new Runnable() {
 
 不加 `Looper.prepare()` 会抛 `Can't create handler inside thread that has not called Looper.prepare()``——子线程没有 Looper 对象（见 Handler 构造器源码）。加上 prepare 后若不调用 `Looper.loop()`，消息入队了也无人消费。
 
-实践中更推荐 **HandlerThread**：它把 prepare + loop 封装好了：
+实践中更推荐 **HandlerThread**，它把 prepare + loop 封装好了，原理与使用见下节。
+
+## HandlerThread
+
+普通 Thread 的 run() 执行完就结束，不适合"常驻接收任务"的场景；直接手写 prepare + loop 又容易漏步骤。**HandlerThread 就是把"创建 Looper + 开启消息循环"封装好的 Thread**：任务以消息形式进它自己的队列，由它的 Looper 串行执行。
+
+### 原理
 
 ```java
-HandlerThread thread = new HandlerThread("worker");
-thread.start();                                          // 内部完成 prepare + loop
-Handler workerHandler = new Handler(thread.getLooper()); // 绑定子线程 Looper
+public class HandlerThread extends Thread {
+    Looper mLooper;                       // 在 run 中创建, 经 getLooper 对外提供
+
+    @Override
+    public void run() {
+        Looper.prepare();                 // 在本线程创建 Looper
+        synchronized (this) {
+            mLooper = Looper.myLooper();
+            notifyAll();                  // 唤醒等在 getLooper 里的调用方
+        }
+        onLooperPrepared();               // 钩子: 循环开始前做准备工作, 默认空实现
+        Looper.loop();                    // 进入消息循环, run 从此不返回
+    }
+
+    public Looper getLooper() {
+        if (!isAlive()) {
+            return null;
+        }
+        // start 后 looper 可能还没创建完: 阻塞等待 run 里的 notifyAll
+        synchronized (this) {
+            while (isAlive() && mLooper == null) {
+                try {
+                    wait();
+                } catch (InterruptedException e) {
+                }
+            }
+        }
+        return mLooper;
+    }
+
+    public boolean quit() {
+        Looper looper = getLooper();
+        if (looper != null) {
+            looper.quit();                // 立即清空队列, 未到期的延迟消息全部丢弃
+            return true;
+        }
+        return false;
+    }
+
+    public boolean quitSafely() {
+        Looper looper = getLooper();
+        if (looper != null) {
+            looper.quitSafely();          // 已到期的消息处理完再退出
+            return true;
+        }
+        return false;
+    }
+}
 ```
+
+三个要点：
+
+- **Looper 的创建与获取是线程间协作**：Looper 在工作线程的 run 里创建，使用者却往往在主线程调用 getLooper——wait/notifyAll 保证了 start 之后立刻 getLooper 也一定能拿到，不会拿到 null。
+- **任务串行执行**：一个 HandlerThread 一个 Looper 一个队列，所有任务排队执行，天然免加锁；需要并行就开多个 HandlerThread。
+- **退出**：quit() 直接清空队列；quitSafely() 处理完已到期消息再退。**忘记 quit 是泄漏的常见来源**（见下文内存泄漏）。
+
+### 使用
+
+```java
+// 1. 创建并启动: 内部完成 Looper.prepare + Looper.loop
+HandlerThread workerThread = new HandlerThread("worker");
+workerThread.start();
+
+// 2. 用它的 Looper 创建 Handler, 之后 post 的任务都在该线程串行执行
+Handler workerHandler = new Handler(workerThread.getLooper());
+
+workerHandler.post(new Runnable() {
+    @Override
+    public void run() {
+        // 后台任务(如读数据库、解压文件), 在 worker 线程串行执行
+    }
+});
+
+// 3. 不再使用时退出循环, 回收线程
+workerHandler.removeCallbacksAndMessages(null);
+workerThread.quitSafely();
+```
+
+注意 getLooper 必须在 start() **之后**调用：start 前 isAlive() 为 false，直接返回 null；start 后 looper 尚未创建完毕时，则会阻塞等待 run 里的 notifyAll 再返回。历史上的 IntentService 内部就是一个 HandlerThread + ServiceHandler 实现串行 onHandleIntent——如今已被 WorkManager 取代，但"绑定工作线程 Looper 的 Handler"这套用法没变。
 
 ## 内存泄漏
 
-### 原因
+### 泄漏示例
 
-1. Handler 隐式持有外部类引用
-   - 若 Handler 声明为**非静态内部类**（如匿名内部类或内部类），会默认持有外部类（如 Activity）的强引用。
-   - 如果 Handler 的消息队列中存在未处理的延迟消息（如 `postDelayed()`），即使 Activity 已被销毁，**消息队列仍会保持 Handler 的引用**（Message.target），从而阻止 Activity 被 GC 回收——引用链是 `MessageQueue → Message → Handler(target) → Activity`，而主线程的 MessageQueue 生命周期与进程相同。
+一段最典型的会泄漏的代码——匿名内部类 Handler + postDelayed：
 
-2. 生命周期不匹配
-   - 后台线程（如通过 HandlerThread）持有 Handler 引用，若线程未及时终止，会导致 Handler 关联的 Activity 泄漏。
+```java
+public class LeakActivity extends Activity {
+
+    // 匿名内部类: 隐式持有 LeakActivity.this
+    private final Handler handler = new Handler() {
+        @Override
+        public void handleMessage(Message msg) {
+            updateUi();               // 访问外部类方法 → 编译器自动生成对外部类的强引用
+        }
+    };
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_leak);
+
+        // 60 秒后才执行的延迟任务
+        handler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                updateUi();           // 这个匿名 Runnable 同样捕获了 LeakActivity
+            }
+        }, 60_000);
+    }
+
+    private void updateUi() { ... }
+}
+```
+
+### 原因分析
+
+假设用户进入后立刻 finish() 了 LeakActivity：
+
+1. **匿名内部类持有外部类引用**
+   - `new Handler() {...}` 是匿名内部类，编译器会为它生成对 `LeakActivity.this` 的隐式强引用——内部类能访问 `updateUi()` 正是靠这个引用；postDelayed 里的匿名 Runnable 同理。
+
+2. **延迟消息把引用钉在了主线程队列里**
+   - postDelayed 的消息 60 秒后才到期，它入队时写入了 `msg.target = handler`、`msg.callback = Runnable`，于是形成引用链：
+
+```mermaid
+flowchart TD
+    A[主线程 MessageQueue 生命周期与进程相同] --> B[Message 延迟60s 未出队]
+    B --> C[msg.target 匿名Handler]
+    B --> D[msg.callback 匿名Runnable]
+    C --> E[LeakActivity 隐式强引用]
+    D --> E
+```
+
+   - GC 的可达性分析下 LeakActivity 仍然可达，无法回收——**泄漏时长 = 剩余延迟时间**（本例最长 60 秒）。主线程的 MessageQueue 生命周期与进程相同，是链的锚点，永远不会自己消失。
+
+3. **生命周期不匹配（HandlerThread 场景）**
+   - 若 handler 绑定的是 HandlerThread 的 Looper，引用链换成 `子线程 MessageQueue → Message → handler → Activity`，只要线程没 quit，这条链一直挂着——后台线程未及时终止时，泄漏甚至没有"到期自动解除"一说。
 
 ### 解决方法
 
-1. 根据生命周期，在 onDestroy() 中清理资源：
+对照上面的示例，两条解法的思路都是**切断引用链**：
+
+1. 按生命周期在 onDestroy() 中清理：把队列里 target 为该 handler 的消息全部移除，Message → Activity 的链就断了；绑的是 HandlerThread 则一并退出循环：
 
    ```java
    @Override
    protected void onDestroy() {
        super.onDestroy();
-       handler.removeCallbacksAndMessages(null);   // 清空该 handler 的所有消息
-       if (handlerThread != null) {
-           handlerThread.quit();                   // 结束子线程的消息循环
+       // 队列中该 handler 的消息(含那条 60s 的延迟消息)被移除, 引用链断开
+       handler.removeCallbacksAndMessages(null);
+       if (workerThread != null) {
+           workerThread.quitSafely();        // 结束子线程的消息循环
        }
    }
    ```
 
-2. 使用静态内部类 + 弱引用：
+2. 使用静态内部类 + 弱引用：直接断掉 handler → Activity 这条边，即使消息滞留也拽不住 Activity：
 
    ```java
    private static class SafeHandler extends Handler {
@@ -490,7 +622,7 @@ Handler workerHandler = new Handler(thread.getLooper()); // 绑定子线程 Loop
        @Override
        public void handleMessage(@NonNull Message msg) {
            Activity activity = mActivityRef.get();
-           if (activity == null || activity.isDestroyed()) return;
+           if (activity == null || activity.isDestroyed()) return;   // 已销毁则不处理
            // 处理消息
        }
    }
@@ -503,3 +635,4 @@ Handler workerHandler = new Handler(thread.getLooper()); // 绑定子线程 Loop
 - **不卡死的原因**：无消息时 nativePollOnce → epoll_wait 休眠让出 CPU；唤醒靠 nativeWake 写 eventfd；延迟消息靠 next() 的超时参数，无需定时器。
 - **分发优先级**：msg.callback（post 的 Runnable）> Handler 的 mCallback > handleMessage。
 - **常见坑**：子线程 new Handler 前忘 prepare；延迟消息持有 Activity 导致泄漏（removeCallbacksAndMessages 清理）；同步屏障未移除导致消息"卡住"。
+- **HandlerThread**：自带 Looper 的串行工作线程，getLooper 靠 wait/notifyAll 等待就绪；用完 quit/quitSafely，否则线程与滞留消息会一直持有引用。

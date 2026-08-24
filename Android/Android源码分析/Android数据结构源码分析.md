@@ -1,6 +1,8 @@
 ## 1. SparseArray
 
-SparseArray 是 Android 针对「int → object」映射的内存优化实现:**用两个平行数组(mKeys/mValues)替代 HashMap 的 Entry 数组,避免了 int 自动装箱成 Integer 的开销**。key 数组始终保持有序,查找依赖二分查找:
+SparseArray 是 Android 针对「int → object」映射的内存优化实现:**用两个平行数组(mKeys/mValues)替代 HashMap 的 Entry 数组,避免了 int 自动装箱成 Integer 的开销**。key 数组始终保持有序,查找依赖二分查找。
+
+> 下文摘录的是 **SparseArrayCompat** 的代码——它与 SparseArray 算法完全一致,只是不依赖框架内部类、可用在非 Android 环境(如单元测试);分析结论对两者同样成立。
 
 ```java
 public class SparseArrayCompat<E> implements Cloneable {

@@ -300,12 +300,6 @@ scrcpy --display-id 1
 scrcpy --record file.mp4 --display-id 1
 ```
 
-## trace
-
-```
-parent_tms=1719212453068
-```
-
 ## setting
 
 ```bash

@@ -99,7 +99,7 @@
 
 示例:
 
-![](./images/an7.png)
+![LayerDrawable 示例](./images/an7.png)
 
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
@@ -173,7 +173,7 @@
 - android:dither:是否开启抖动效果
 - android:variablePadding:StateListDrawable 的 padding 是否随着其状态的改变而改变,true 表示会随着状态的改变而改变,false 表示 StateListDrawable 的 padding 是内部所有 Drawable 的 padding 的最大值。此选项默认值为 false,并且不建议开启此选项。
 
-![](./images/an9.png)
+![selector 状态切换示例](./images/an9.png)
 
 ## 5. LevelListDrawable
 
@@ -435,11 +435,11 @@ testClipDrawable.setLevel(8000);
 
 Drawable 的等级(level)是有范围的,即 0~10000,最小等级是 0,最大等级是 10000。对于 ClipDrawable 来说,**等级 0 表示完全裁剪,即整个 Drawable 都不可见了,而等级 10000 表示不裁剪**。在上面的代码中将等级设置为 8000 表示裁剪了 2000,即在顶部裁剪掉 20% 的区域,被裁剪的区域就相当于不存在了。
 
-![](./images/an8.png)
+![ClipDrawable 裁剪示例](./images/an8.png)
 
-![](./images/an10.png)
+![ClipDrawable 不同等级效果](./images/an10.png)
 
-## 10. ColorDrawable(补写)
+## 10. ColorDrawable
 
 最简单的 Drawable,纯色填充,对应 `<color>` 根标签,也可以直接在代码中 new ColorDrawable(color) 使用:
 
@@ -449,7 +449,7 @@ Drawable 的等级(level)是有范围的,即 0~10000,最小等级是 0,最大等
     android:color="#ff0000" />
 ```
 
-## 11. RotateDrawable(补写)
+## 11. RotateDrawable
 
 根据等级(level)对内部 Drawable 进行旋转,level 0~10000 映射到 fromDegrees~toDegrees 的旋转角度,常与 ProgressBar 配合实现旋转的进度效果:
 
@@ -463,7 +463,7 @@ Drawable 的等级(level)是有范围的,即 0~10000,最小等级是 0,最大等
     android:pivotY="50%" />
 ```
 
-## 12. AnimationDrawable(补写)
+## 12. AnimationDrawable
 
 帧动画 Drawable,像放胶卷一样按顺序逐帧播放一组 Drawable,对应 `<animation-list>` 根标签,`android:oneshot="false"` 表示循环播放。需要在代码中调用 start() 启动:
 
@@ -483,7 +483,7 @@ AnimationDrawable anim = (AnimationDrawable) imageView.getBackground();
 anim.start();
 ```
 
-## 13. VectorDrawable(补写)
+## 13. VectorDrawable
 
 矢量图 Drawable,基于 SVG 的 path 数据描述图形,任意缩放不失真、体积小。API 21+ 原生支持,更低版本可通过 support 库兼容。根标签为 `<vector>`,内部用 `<path>` 描述绘制路径:
 

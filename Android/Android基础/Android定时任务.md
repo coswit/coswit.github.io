@@ -145,7 +145,7 @@ public ScheduledThreadPoolExecutor(int corePoolSize,
                                        }
 ```
 
-## 4. Handler.postDelayed 与选型对比(补写)
+## 4. Handler.postDelayed 与选型对比
 
 更简单的一次性/循环延时常用 Handler 实现:
 

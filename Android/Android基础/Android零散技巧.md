@@ -130,7 +130,7 @@ getWindow().setDecorFitsSystemWindows(false);
 getWindow().getInsetsController().hide(WindowInsets.Type.statusBars());
 ```
 
-## 11. dp 与 px 互转(补写)
+## 11. dp 与 px 互转
 
 代码中设置尺寸的参数单位是 px,而设计稿通常标注 dp,需要互转:
 
@@ -146,7 +146,7 @@ public static int px2dp(Context context, float px) {
 }
 ```
 
-## 12. 获取屏幕宽高(补写)
+## 12. 获取屏幕宽高
 
 ```java
 WindowManager wm = (WindowManager) context.getSystemService(Context.WINDOW_SERVICE);

@@ -43,7 +43,7 @@ y = top  + translationY
 - getX/getY:返回相对于**当前 View 左上角**的 x 和 y 坐标
 - getRawX/getRawY:返回相对于**手机屏幕左上角**的 x 和 y 坐标
 
-一次触摸交互就是一个 MotionEvent 事件序列,典型的事件类型(补写):
+一次触摸交互就是一个 MotionEvent 事件序列,典型的事件类型:
 
 | 事件类型 | 含义 |
 | --- | --- |
@@ -308,7 +308,7 @@ public void computeScroll() {
 private void smoothScrollTo(int destX, int destY) {
     int scrollX = getScrollX();
     int delta = destX - scrollX;
-    // 1000ms内滑向destX，效果就是慢慢滑动
+    // 1000ms内滑向destX, 效果就是慢慢滑动
     mScroller.startScroll(scrollX, 0, delta, 0, 1000);
     invalidate();
 }
@@ -483,7 +483,7 @@ public boolean superDispatchTouchEvent(MotionEvent event) {
 }
 ```
 
-### 4.2 事件分发核心流程(补写)
+### 4.2 事件分发核心流程
 
 一个点击事件产生后,传递顺序为:**Activity → Window → ViewGroup → View**。事件分发的本质是一个责任链:由 dispatchTouchEvent 分发,onInterceptTouchEvent 拦截(仅 ViewGroup 有),onTouchEvent 消费。ViewGroup 的 dispatchTouchEvent 核心逻辑可以用如下伪代码表达:
 
@@ -520,7 +520,7 @@ flowchart TD
 - 某个 View 一旦开始处理事件,**如果它不消费 ACTION_DOWN 事件(onTouchEvent 返回 false),同一事件序列的其他事件不会再交给它处理**。
 - 如果事件最终无人消费,将回传给 Activity 的 onTouchEvent 处理。
 
-### 4.3 View 对点击事件的处理过程(补写)
+### 4.3 View 对点击事件的处理过程
 
 View(不含 ViewGroup)的 dispatchTouchEvent 简化逻辑:
 

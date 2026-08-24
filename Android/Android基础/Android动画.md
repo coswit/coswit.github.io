@@ -24,7 +24,7 @@ anim.setDuration(1000);
 anim.start();
 ```
 
-### AnimatorSet 组合动画(补写)
+### AnimatorSet 组合动画
 
 多个动画需要按顺序或同时播放时,用 AnimatorSet 编排,playTogether 同时执行、playSequentially 顺序执行,也可以用 play().with()/before()/after() 精细控制先后关系:
 
@@ -37,7 +37,7 @@ animatorSet.setDuration(1000);
 animatorSet.start();
 ```
 
-### XML 定义动画资源(补写)
+### XML 定义动画资源
 
 动画 XML 所在的资源目录有区别:**View Animation 与帧动画放在 res/anim/ 目录**(根标签为 alpha/scale/translate/rotate/set 或 animation-list),**Property Animation 放在 res/animator/ 目录**(根标签为 set/objectAnimator/valueAnimator):
 
@@ -159,7 +159,7 @@ overridePendingTransition(R.anim.enter_anim, R.anim.exit_anim);
 | LinearInterpolator | 以常量速率改变 |
 | OvershootInterpolator | 向前甩一定值后再回到原来位置 |
 
-### 4.2 Interpolator 与 Evaluator 的关系(补写)
+### 4.2 Interpolator 与 Evaluator 的关系
 
 属性动画的每次取值分两步:**Interpolator 决定"时间流逝的百分比"如何映射为"动画完成的百分比"(速度曲线),TypeEvaluator(类型估值器)再决定"动画完成的百分比"如何映射为"具体的属性值"**:
 

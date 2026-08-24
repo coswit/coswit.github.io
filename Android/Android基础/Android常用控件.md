@@ -298,10 +298,10 @@ WebView 的常用设置:
 
 ```java
 /*
-LayoutAlgorithm 总共有三种类型：
-NORMAL：正常显示，没有渲染变化。
-SINGLE_COLUMN：把所有内容放到WebView组件等宽的一列中。   // 这个是强制的，把网页都挤变形了
-NARROW_COLUMNS：可能的话，使所有列的宽度不超过屏幕宽度。默认的
+LayoutAlgorithm 总共有三种类型: 
+NORMAL: 正常显示, 没有渲染变化。
+SINGLE_COLUMN: 把所有内容放到WebView组件等宽的一列中。   // 这个是强制的, 把网页都挤变形了
+NARROW_COLUMNS: 可能的话, 使所有列的宽度不超过屏幕宽度。默认的
 */
 webSettings.setLayoutAlgorithm(WebSettings.LayoutAlgorithm.NARROW_COLUMNS);
 webSettings.setDomStorageEnabled(true);          // 设置 DOM Storage 缓存
@@ -309,7 +309,6 @@ webSettings.setJavaScriptEnabled(true);          // 支持 js 脚本
 webSettings.setPluginState(WebSettings.PluginState.ON); // 支持插件
 webSettings.setUseWideViewPort(false);           // 将图片调整到适合 webview 的大小
 webSettings.setSupportZoom(true);                // 支持缩放
-webSettings.setLayoutAlgorithm(WebSettings.LayoutAlgorithm.NARROW_COLUMNS); // 支持内容重新布局
 webSettings.supportMultipleWindows();            // 多窗口
 webSettings.setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK); // 关闭 webview 中缓存
 webSettings.setAllowFileAccess(true);            // 设置可以访问文件
@@ -327,7 +326,7 @@ webView.getSettings().setGeolocationEnabled(true); // 启用地理定位
 > - `LayoutAlgorithm.SINGLE_COLUMN` 布局算法已废弃,应使用 NARROW_COLUMNS 或 NORMAL;
 > - `setRenderPriority(RenderPriority.HIGH)` 已废弃且不再生效,已移除。
 
-## 7. Toast(补写)
+## 7. Toast
 
 轻量提示,不获取焦点、自动消失,常用于操作反馈:
 

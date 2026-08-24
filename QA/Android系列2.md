@@ -6,7 +6,7 @@
 - 硬件抽象层
 - Linux 内核层
 
-	![](https://upload-images.jianshu.io/upload_images/8945592-b2cc038f019b9362.png?imageMogr2/auto-orient/)
+	![Android驾构](./images/android_platform.png)
 
 
 
@@ -57,8 +57,6 @@
 10. Android 14
 
     **前台服务必须声明 foregroundServiceType** 并申请对应权限、部分媒体访问权限（READ_MEDIA_VISUAL_USER_SELECTED）、语法性别（Grammatical Inflection）、App 数据目录禁止写入可执行文件。
-
-参考：[Android 各版本特性](https://www.jianshu.com/p/e8db7954a895)（5-9 部分原文，10-14 为补充）
 
 ### 3. Android 系统启动流程
 

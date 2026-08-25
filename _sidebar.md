@@ -46,6 +46,24 @@
       - [Surface.md](./Android/Android视频/Surface.md)
     - Android音频
       - [AudioTrack.md](./Android/Android音频/AudioTrack.md)
+    - 深入理解Android卷I
+      - [01-深入理解JNI.md](./Android/深入理解Android卷I/01-深入理解JNI.md)
+      - [02-深入理解init.md](./Android/深入理解Android卷I/02-深入理解init.md)
+      - [03-深入理解Zygote.md](./Android/深入理解Android卷I/03-深入理解Zygote.md)
+      - [04-深入理解常见类.md](./Android/深入理解Android卷I/04-深入理解常见类.md)
+      - [05-深入理解Binder.md](./Android/深入理解Android卷I/05-深入理解Binder.md)
+      - [06-深入理解Audio系统.md](./Android/深入理解Android卷I/06-深入理解Audio系统.md)
+      - [07-深入理解Surface系统.md](./Android/深入理解Android卷I/07-深入理解Surface系统.md)
+      - [08-深入理解Vold和Rild.md](./Android/深入理解Android卷I/08-深入理解Vold和Rild.md)
+      - [09-深入理解MediaScanner.md](./Android/深入理解Android卷I/09-深入理解MediaScanner.md)
+    - 深入理解Android卷II
+      - [01-深入理解JavaBinder和MessageQueue.md](./Android/深入理解Android卷II/01-深入理解JavaBinder和MessageQueue.md)
+      - [02-深入理解SystemServer.md](./Android/深入理解Android卷II/02-深入理解SystemServer.md)
+      - [03-深入理解PackageManagerService.md](./Android/深入理解Android卷II/03-深入理解PackageManagerService.md)
+      - [04-深入理解PowerManagerService.md](./Android/深入理解Android卷II/04-深入理解PowerManagerService.md)
+      - [05-深入理解ActivityManagerService.md](./Android/深入理解Android卷II/05-深入理解ActivityManagerService.md)
+      - [06-深入理解ContentProvider.md](./Android/深入理解Android卷II/06-深入理解ContentProvider.md)
+      - [07-深入理解ContentService和AccountManagerService.md](./Android/深入理解Android卷II/07-深入理解ContentService和AccountManagerService.md)
   - CSAPP
     - [00-导读.md](./CSAPP/00-导读.md)
     - [01-计算机系统漫游.md](./CSAPP/01-计算机系统漫游.md)

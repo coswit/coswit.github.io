@@ -128,7 +128,14 @@
     - [08并发与协程.md](./Kotlin/08并发与协程.md)
     - [09Flow流.md](./Kotlin/09Flow流.md)
   - Linux内核分析
-    - [01.图解分析汇编代码以理解计算机.md](./Linux内核分析/01.图解分析汇编代码以理解计算机.md)
+    - [01.Linux操作系统概览.md](./Linux内核分析/01.Linux操作系统概览.md)
+    - [02.计算机系统的基本工作原理.md](./Linux内核分析/02.计算机系统的基本工作原理.md)
+    - [03.Linux内核源码及调试环境.md](./Linux内核分析/03.Linux内核源码及调试环境.md)
+    - [04.深入理解系统调用.md](./Linux内核分析/04.深入理解系统调用.md)
+    - [05.进程的描述和进程的创建.md](./Linux内核分析/05.进程的描述和进程的创建.md)
+    - [06.可执行程序工作原理.md](./Linux内核分析/06.可执行程序工作原理.md)
+    - [07.中断处理与设备驱动框架.md](./Linux内核分析/07.中断处理与设备驱动框架.md)
+    - [08.进程调度与进程切换.md](./Linux内核分析/08.进程调度与进程切换.md)
   - Linux基础
     - [Linux命令(find、xargs、grep、cut).md](./Linux基础/Linux命令(find、xargs、grep、cut).md)
     - [Linux命令(sed、awk).md](./Linux基础/Linux命令(sed、awk).md)

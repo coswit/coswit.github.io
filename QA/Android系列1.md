@@ -49,7 +49,7 @@ public void onConfigurationChanged(Configuration newConfig) {
 
 **Activity 的启动过程（应用进程已存在时）**
 
-1. Launcher 通过 Binder 通知 AMS 要启动一个 Activity；
+1. Launcher 通过 Binder 通知 AMS（ActivityManagerService）要启动一个 Activity；
 2. AMS 通过 Binder 通知 Launcher 进入 Paused 状态；
 3. AMS 创建/复用一个进程，初始化 ActivityThread，ActivityThread 把 ApplicationThread（Binder 对象）交给 AMS 作为后续通信渠道；
 4. AMS 通过 Binder 通知 ActivityThread 一切就绪，真正执行启动：创建 Activity 实例 → attach → onCreate → onResume。
@@ -58,7 +58,7 @@ public void onConfigurationChanged(Configuration newConfig) {
 
 后台运行的组件，**默认运行在主线程**，耗时操作必须自建子线程。
 
-按运行地点：本地服务（主进程内，节约资源）/ 远程服务（独立进程，android:process，需 AIDL）；按运行类型：前台服务（带 ongoing 通知，如音乐播放）/ 后台服务；按使用方式：startService（不通信）/ bindService（要通信）/ 混合。
+按运行地点：本地服务（主进程内，节约资源）/ 远程服务（独立进程，android:process，需 AIDL, Android Interface Definition Language）；按运行类型：前台服务（带 ongoing 通知，如音乐播放）/ 后台服务；按使用方式：startService（不通信）/ bindService（要通信）/ 混合。
 
 生命周期：
 
@@ -84,7 +84,7 @@ bindService():  onCreate → onBind（一次）→ onUnbind → onDestroy
 1. 广播接收者通过 Binder 在 AMS 注册（订阅）；
 2. 发送者通过 Binder 向 AMS 发送广播；
 3. AMS 按 IntentFilter / Permission 匹配接收者，把广播投递到其消息循环；
-4. 接收者回调 onReceive()（**运行在主线程，不能耗时，否则 ANR**）。
+4. 接收者回调 onReceive()（**运行在主线程，不能耗时，否则 ANR, Application Not Responding**）。
 
 **注册方式**
 
@@ -108,13 +108,13 @@ unregisterReceiver(receiver);
 
 #### ContentProvider
 
-跨进程数据共享组件，底层是 Binder。通过 URI 定位：`content://authority/path/id`（通配符 `*` 任意字符、`#` 数字），getType 返回 MIME 类型。详见 [Android_Binder](/Android/Android_Binder.md)。
+跨进程数据共享组件，底层是 Binder。通过 URI 定位：`content://authority/path/id`（通配符 `*` 任意字符、`#` 数字），getType 返回 MIME 类型；对外暴露 query / insert / update / delete 四个方法，它们**运行在提供方进程的 Binder 线程池，不在主线程**。
 
 > 【演进】现代组合：Room（SQLite ORM）+ Paging 分页 + ContentProvider 对外共享；数据变化 notifyChange 配合 ContentObserver 或 Paging 的 InvalidatingTracker。
 
 ### 3. Context的理解？
 
-组件的运行需要一个完整的 Android 工程环境，组件不能像普通对象那样 new 出来——这个上下文环境就是 Context，它是维持各组件正常工作的核心功能类。可以把 App 理解成一部电影：四大组件是剧组定好的主角（不能随便拉人 new），Button/TextView 是群演（可以 new），但都要通过镜头（Context）才能把戏传给观众。
+组件的运行需要一个完整的 Android 工程环境，组件不能像普通对象那样 new 出来——这个上下文环境就是 Context，它是维持各组件正常工作的核心功能类。可以把 App 理解成一部电影：四大组件是剧组定好的主角（不能随便拉人 new），Button/TextView 是群演（可以 new），但都得经过镜头（Context）才能把戏呈现给观众。
 
 **类结构**
 
@@ -159,29 +159,19 @@ AsyncTask 是轻量级异步类：在线程池中执行后台任务，把进度�
 
 - **字节码格式**：JVM 运行 Java 字节码（.class）；Dalvik 运行 dex（dx 工具把多个 class 转换、去冗余、共享常量池，体积更小）；
 - **架构**：JVM 基于**栈**（指令多、访存多）；Dalvik 基于**寄存器**（指令少、速度快，适合移动设备）；
-- 每个进程对应一个 Dalvik 实例；早期无 JIT，Android 2.2 才加入。
+- 每个进程对应一个 Dalvik 实例；早期无 JIT（Just-In-Time，即时编译），Android 2.2 才加入。
 
 #### ART 的改进（Android 5.0 起默认）
 
-- **AOT 编译**：安装时把字节码预编译成机器码（对比 Dalvik 的 JIT 运行时解释），启动更快、运行更流畅；代价是安装时间长、占用存储多（10%-20%）；
-- **GC 改进**：Dalvik 全程挂起所有线程；ART 改成部分并发（标记与回收期间多次短暂挂起），GC 效率提高约一倍；
+- **AOT 编译**（Ahead-Of-Time，提前编译）：安装时把字节码预编译成机器码（对比 Dalvik 的 JIT 运行时解释），启动更快、运行更流畅；代价是安装时间长、占用存储多（10%-20%）；
+- **GC（Garbage Collection，垃圾回收）改进**：Dalvik 全程挂起所有线程；ART 改成部分并发（标记与回收期间多次短暂挂起），GC 效率提高约一倍；
 - **内存利用**：引入 Large-Object-Space 专存大对象 + moving collector 对齐内存，缓解标记-清除的碎片化，内存利用率显著提高。
 
 > 【演进】Android 7.0 起 ART 改为 **JIT + AOT 混合编译**：安装时只做基本编译（加快安装），运行时 JIT 热点代码被记录到 Profile，空闲时按 Profile 做 AOT——兼顾安装速度、运行性能与存储占用。64 位强制（2019 起 Play 要求）、dex 字节码版本演进（D8 产出）。
 
 #### APK 编译打包流程
 
-经典流程（老工具链）：
-
-1. AAPT 打包资源文件（xml 编译为二进制、生成 R.java）；
-2. AIDL 转换为 Java 接口；
-3. Java 源码 + R.java + AIDL 接口编译为 .class；
-4. dx 把 .class 转为 classes.dex；
-5. apkbuilder 把资源 + dex 打包为 APK；
-6. jarsigner 签名；
-7. zipalign 对齐。
-
-> 【演进】现代工具链（AGP）：AAPT2（增量资源编译、可 link 静态库）、**D8** 替代 dx（更快、支持 desugar 新语法）、**R8** 默认开启（混淆 + shrink + optimize 三合一，替代 ProGuard）、AAB（Android App Bundle）作为发布格式按需分发（Split APKs / Play Feature Delivery）、**Baseline Profiles** 提前编译热点代码加速冷启动。多 dex（65535 限制）由 multidex 自动处理。
+AAPT 打包资源（xml 编译为二进制、生成 R.java）→ AIDL 转 Java 接口 → javac 编译为 .class → dx 转 dex → 打包 APK → 签名、对齐。完整流程与现代工具链详见第 18 题。
 
 ### 6. 进程保活方案
 
@@ -192,11 +182,11 @@ AsyncTask 是轻量级异步类：在线程池中执行后台任务，把进度�
 **经典手段**：
 
 - 提高优先级：1 像素 Activity（锁屏期间挂在前台）、setForeground 通知；
-- 拉活：静态注册系统广播（开机/解锁）、第三方 Top 应用广播互相唤醒、START_STICKY、Native 进程 fork 监控拉活（5.0 后失效）、JobScheduler（5.0+）、账号同步。
+- 拉活：静态注册系统广播（开机/解锁）、第三方 SDK 广播互相唤醒、START_STICKY、Native 进程 fork 监控拉活（5.0 后失效）、JobScheduler（5.0+）、账号同步。
 
 > 【现状，重要】以上手段在今天**基本全部失效或不可用**：Android 8.0 移除大多数静态广播并限制后台 Service；Doze / App Standby 分级省电；国产厂商（华为/小米/OPPO 等）激进的后台管理与自启动白名单；「双进程守护」「相互唤醒」均被针对。
 
-> **现代策略**：接受进程被杀，把正确性建立在**进程重建后的状态恢复**上（持久化 + SavedStateHandle）；确需常驻用**前台服务 + 明确通知**；延迟任务用 **WorkManager**（约束型、系统调度、Doze 友好）；消息到达依赖**推送通道**（FCM / 各厂商通道）。保活不再是技术问题而是合规与体验问题。
+> **现代策略**：接受进程被杀，把正确性建立在**进程重建后的状态恢复**上（持久化 + SavedStateHandle）；确需常驻用**前台服务 + 明确通知**；延迟任务用 **WorkManager**（约束型、系统调度、Doze 友好）；消息到达依赖**推送通道**——FCM（Firebase Cloud Messaging）或各厂商通道。保活不再是技术问题而是合规与体验问题。
 
 ### 7. Android 消息机制
 
@@ -226,19 +216,44 @@ new Thread(() -> Log.d(TAG, ""+threadLocal.get())).start(); // null
 
 ### 8. Window、Activity、DecorView以及ViewRoot之间的关系
 
-- **Activity**：控制器，不负责视图，只处理生命周期与事件，统筹视图的添加显示；
-- **Window**：视图承载器，Activity 持有其唯一实现 PhoneWindow；
-- **DecorView**：视图树的根（FrameLayout 子类），内部竖直 LinearLayout = 上（ViewStub/ ActionBar）+ 中（标题栏）+ 下（内容栏），setContentView 的布局加在内容栏；
-- **ViewRoot（ViewRootImpl）**：连接 WindowManagerService 与 DecorView 的纽带，View 三大流程（measure/layout/draw）与事件分发都由它发起；它不是 View，但实现了 ViewParent，是 DecorView 的名义父节点，且继承了 Handler。
+先分清四个角色：
+
+- **Activity**：控制器，不直接操作视图，只处理生命周期与事件，视图工作全部委托出去；
+- **Window**：视图承载器（抽象类），Activity 持有其唯一实现 **PhoneWindow**；
+- **DecorView**：视图树的根，FrameLayout 子类，内部是一个竖直 LinearLayout——上为标题栏，下为内容栏（id 为 android.R.id.content 的 FrameLayout），setContentView 的布局就加在内容栏里；
+- **ViewRoot（实现类 ViewRootImpl）**：WindowManagerService 与 DecorView 之间的纽带。它不是 View，但实现了 ViewParent，是 DecorView 的名义父节点，且继承了 Handler；View 三大流程（measure/layout/draw）与事件分发都由它发起。
+
+```mermaid
+graph LR
+    A[Activity] -- attach 创建并持有 --> W[PhoneWindow]
+    W -- installDecor 生成 --> D[DecorView]
+    D -- setContentView 装入 --> C[内容栏 content]
+    A -- resume 后 addView --> R[ViewRootImpl]
+    R -- Binder 会话 --> S[WindowManagerService]
+    R -- 三大流程与事件分发 --> D
+```
+
+建立链路：
+
+1. Activity.attach() 创建 PhoneWindow，并把自己注册为 Window.Callback，窗口事件由此回调给 Activity；
+2. setContentView() 时 PhoneWindow 若还没有 DecorView 则先生成，再把布局 inflate 进内容栏——全程只有 Window 在动手，Activity 不碰视图细节；
+3. onResume 之后 WindowManager.addView(decorView) 创建 ViewRootImpl，它通过 IWindowSession 与 WindowManagerService 通信，窗口这才真正显示到屏幕；
+4. 此后 ViewRootImpl 对 DecorView 发起 measure/layout/draw 与事件分发。
+
+一句话：Activity 是控制器、PhoneWindow 是承载器、DecorView 是视图树的根、ViewRootImpl 是这棵树与系统窗口服务之间的桥，层层委托，共同撑起一个窗口界面。
+
+> 【演进】现代 App 主题多为 NoActionBar，标题栏一级不存在，DecorView 里基本只剩内容栏；Jetpack Compose 把 View 树换成了 Compose UI，但窗口机制不变——ComposeView 仍要挂在 android.R.id.content 里。
 
 ### 9. Android事件分发机制
 
-Activity → ViewGroup → View 的责任链：
+传递链：Activity.dispatchTouchEvent → ViewGroup → View，消费不掉再从下往上回溯。
 
 - dispatchTouchEvent / onTouchEvent **return true**：事件被消费，终止传递；
-- **return false**：回传给父控件的 onTouchEvent（从下往上回溯，直到有人消费）；
-- **onInterceptTouchEvent**（仅 ViewGroup 有）：return true 拦截事件给自己的 onTouchEvent；默认不拦截（super = false）；
-- ViewGroup 的 dispatchTouchEvent 的 super 实现就是去调 onInterceptTouchEvent；View 没有 onInterceptTouchEvent，它的 dispatchTouchEvent 默认把事件交给自己的 onTouchEvent。
+- **return false**：回传给父控件的 onTouchEvent（从下往上回溯，直到有人消费，最终兜底是 Activity 的 onTouchEvent）；
+- **onInterceptTouchEvent**（仅 ViewGroup 有）：return true 拦截事件交给自己的 onTouchEvent；默认不拦截（super = false）。ViewGroup 的 dispatchTouchEvent 内部会调用它来决定是否拦截；
+- View 没有 onInterceptTouchEvent，dispatchTouchEvent 默认把事件交给自己的 onTouchEvent；
+- OnTouchListener.onTouch 返回 true 时 onTouchEvent 不会被调用（优先级：onTouch > onTouchEvent > onClick）；
+- DOWN 没被任何 View 消费时，同一序列后续的 MOVE/UP 不再下发给它。
 
 一句话：dispatch/onTouch 的 true 终结、false 回溯；ViewGroup 靠拦截器截留，View 默认自己消费。
 
@@ -259,7 +274,7 @@ int px2 = (int) (spValue * resources.getDisplayMetrics().scaledDensity + 0.5f); 
 
 选 LinearLayout。原因：
 
-- RelativeLayout 依赖子 View 之间的排列关系，需要横向、纵向**两次 measure**（先横向排序测量，再纵向测量）；横向测量时纵向结果未知，导致 measure 的"结果未变则跳过"优化失效；子 View 高度与父不同（如设了 margin）时更严重——**能用 padding 代替 margin 就用 padding**；
+- RelativeLayout 的子 View 相互依赖定位，测量要**横向、纵向各来一次**（每个子 View 被测两遍）；子 View 带 margin 时两次测量的差异与开销更明显——**能用 padding 代替 margin 就用 padding**；
 - LinearLayout 只在设置了 weight 时才会二次测量。
 
 结论：层级深度相同时优先 LinearLayout / FrameLayout。
@@ -278,7 +293,7 @@ int px2 = (int) (spValue * resources.getDisplayMetrics().scaledDensity + 0.5f); 
 
 - 配合 \<include> 使用：include 的布局若根节点是 merge，inflate 时**根节点被跳过**，其子 View 直接并入宿主容器，避免 include 自带的一层多余包裹；
 - 典型场景：自定义组合控件（根节点 merge 到外层 FrameLayout）、列表 Item 根布局；
-- 限制：merge 必须是根标签；include 指定了 inflate 时传 parent 才生效；merge 布局不能设置背景/padding（没有自己的容器）。
+- 限制：merge 必须是根标签；inflate 时必须提供 parent 才能确定并入位置（否则抛异常）；merge 本身不能设置背景/padding（它没有自己的容器）。
 
 **\<include>（布局复用）**：抽取公共布局，注意要复用 id 需要 include 上指定（android:id 会覆盖内部根节点 id）。
 
@@ -307,7 +322,7 @@ int px2 = (int) (spValue * resources.getDisplayMetrics().scaledDensity + 0.5f); 
 
 JSON：轻量级数据交换格式，编码解码快、体积小、与 JavaScript 交互方便，但描述性弱于 XML。XML：可扩展标记语言，结构化描述能力强，适合配置文件（布局、manifest）与文档。
 
-> 【演进】Android 的序列化库演进：org.json（内置）→ Gson（反射，简单）→ Moshi（注解生成，Kotlin 友好）→ kotlinx.serialization（编译期生成，无反射、支持多态与 ProtoBuf/CDATA 格式）；跨语言高性能场景直接 ProtoBuf。
+> 【演进】Android 的序列化库演进：org.json（内置）→ Gson（反射，简单）→ Moshi（注解生成，Kotlin 友好）→ kotlinx.serialization（编译期生成，无反射、支持多态与 ProtoBuf/CBOR 格式）；跨语言高性能场景直接 ProtoBuf。
 
 ### 15. Assets目录与res目录的区别
 
@@ -388,7 +403,7 @@ case MotionEvent.ACTION_MOVE:
 6. 签名（debug/release keystore）；
 7. zipalign 对齐（运行时按 4 字节边界读取资源更快）。
 
-> 【演进】现代 AGP 工具链：**AAPT2**（增量编译、资源合并 link）、**D8**（dex 编译 + desugar，把 Java 8+ 语法糖在低版本可用）、**R8**（默认开启：shrink + obfuscate + optimize，替代 ProGuard）、签名方案 v2/v3/v4（整包校验，防篡改更全面）、发布格式 **AAB**（Google Play 按设备 ABI/密度/语言生成 Split APK）、**Baseline Profile** 预编译热点路径加快启动。
+> 【演进】现代 AGP（Android Gradle Plugin）工具链：**AAPT2**（增量编译、资源合并 link）、**D8**（dex 编译 + desugar，把 Java 8+ 语法糖在低版本可用）、**R8**（默认开启：shrink + obfuscate + optimize，替代 ProGuard）、签名方案 v2/v3/v4（整包校验，防篡改更全面）、发布格式 **AAB**（Google Play 按设备 ABI/密度/语言生成 Split APK）、**Baseline Profile** 预编译热点路径加快启动；多 dex（65535 方法数限制）由 AGP 自动处理。
 
 ### 19. Android利用scheme协议进行跳转
 
@@ -517,7 +532,7 @@ public void run() {
 
 特点：Handler + Thread + Looper 组合；通过消息队列**串行复用**线程（省资源），也因此某个任务耗时会影响后续任务；必须搭配 Handler 使用（Handler 传 handlerThread.getLooper()，且要在 start() 之后才能 getLooper）；IntentService 内部就是它。
 
-> 【演进】Kotlin 时代大多直接用协程（Dispatchers.Default / 自定义单线程 dispatcher）替代，同样的"串行后台队列"语义；AndroidX 的 AsyncTaskPoolingExecutor、WorkManager 也封装了类似能力。
+> 【演进】Kotlin 时代大多直接用协程替代：Dispatchers.Default 并发执行，或 `Dispatchers.IO.limitedParallelism(1)` 得到同样的"单线程串行队列"语义；约束型后台任务用 WorkManager。
 
 ### 23. IntentService
 
@@ -549,18 +564,18 @@ public void run() {
 
 **其他坑**：第一次 getSharedPreferences 会同步读盘（放主线程会卡）；commit/apply 的写盘任务排队，频繁小写入会积压（SP 不是为高频写设计）。
 
-> 【演进】替代品：**DataStore**（Jetpack，协程 + Flow，Preferences/Proto 两种，事务性写入）适合异步小数据；**MMKV（腾讯，mmap + protobuf）** 读写性能高且支持多进程；SP 适合"少量、低频、简单"的配置。apply 的 ANR 问题：onStop 前系统会等待未完成的写盘（QueuedWork），大量积压会 ANR。
+> 【演进】替代品：**DataStore**（Jetpack，协程 + Flow，Preferences/Proto 两种，事务性写入）适合异步小数据；**MMKV（腾讯，mmap 内存映射 + protobuf 编码）** 读写性能高且支持多进程；SP 适合"少量、低频、简单"的配置。apply 的 ANR 问题：onStop 前系统会等待未完成的写盘（QueuedWork），大量积压会 ANR。
 
 ### 27. SQLite有哪些可以优化的地方？
 
 - **索引**：加快查询/排序/分组，但占空间且拖慢增删改；适合更新少、查询多、区分度高（唯一值/总数大）的字段，组合查询建复合索引；
-- **事务**：批量插入包在事务里（要么全成功要么全失败），避免每条 insert 都操作 cursor，可提速 1-2 个数量级；
+- **事务**：批量插入包在事务里（要么全成功要么全失败），避免每条 insert 都隐式起一个事务各自落盘，可提速 1-2 个数量级；
 - **只查需要的字段与行数**：减少内存与传输；
 - 其他：预编译复用 SQLiteStatement、分页 LIMIT、rowid 优于条件查询。
 
 > 【演进】**Room**（Jetpack 官方 ORM）：编译期校验 SQL、返回 Flow/LiveData 观察变化、自动迁移（Migration）与降级策略，配合 Paging 做分页；大量数据或加密场景可考虑 WCDB/Realm。
 
-### 28. 嵌滑滑动机制
+### 28. 嵌套滑动机制
 
 事件分发是"独占"的（一个 View 消费后别人拿不到），嵌套滑动（NestedScrolling）改为**协商共享**：
 
@@ -575,11 +590,11 @@ public void run() {
 
 ### 29. RecyclerView 优化
 
-1. **减少 Item 布局嵌套**：ConstraintLayout 扁平化（Px 与深度直接影响 inflate 与测量）；
+1. **减少 Item 布局嵌套**：ConstraintLayout 扁平化（层级深度与 View 数量直接影响 inflate 与测量）；
 2. **setHasFixedSize(true)**：Item 增删不影响 RecyclerView 宽高时，跳过 requestLayout（注意 notifyDataSetChanged 仍会触发）；
 3. **复用与缓存**：默认 itemViewCacheSize=2 + RecycledViewPool（多列表共享池：同一类型 item 跨列表复用）；setDrawingCacheEnabled 等 API **已废弃**，不要再用；
 4. **局部刷新**：用 notifyItemRangeInserted / notifyItemChanged 代替 notifyDataSetChanged；更进一步用 **DiffUtil**（后台计算差异，自动定向刷新）或直接继承 **ListAdapter**（内置 DiffUtil + 后台 diff）；
-5. **onBindViewHolder 减负**：不在其中创建对象（监听器放 ViewHolder 初始化或整体复用）、少逻辑判断；重载荷处理（图片）用 Glide 的 ViewHolder 尺寸感知；
-6. 其他：Recycler.prefetch（默认开启，GapWorker 预取）、setItemViewCacheSize 按场景调大、关闭无谓动画 setItemAnimator? 或 SimpleItemAnimator.setSupportsChangeAnimations(false) 减少闪烁、**ConcatAdapter** 拼接多数据源。
+5. **onBindViewHolder 减负**：不在其中创建对象（监听器放 ViewHolder 初始化或整体复用）、少逻辑判断；图片用 Glide 加载并让其感知 ViewHolder 尺寸，避免解码超过显示大小的图；
+6. 其他：Recycler.prefetch（默认开启，GapWorker 预取）、setItemViewCacheSize 按场景调大、无谓动画可关：setItemAnimator(null)，或 SimpleItemAnimator.setSupportsChangeAnimations(false)（减少闪烁）、**ConcatAdapter** 拼接多数据源。
 
 > 【演进】Compose **LazyColumn/LazyGrid**：组合复用（相同组合可复用）+ 增量重组，省去手写 ViewHolder 与刷新通知，配套 keys() 与 contentType() 进一步优化复用。

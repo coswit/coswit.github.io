@@ -263,9 +263,11 @@ irm get.scoop.sh | iex
 相关命令：
 
 ```bash
-scoop install curl
-scoop uninstall git
-scoop search ssh
+scoop install avidemux
+scoop install clash-verge-rev
+scoop install qemu
+scoop uninstall filezilla
+scoop search qemu
 scoop update
 ```
 

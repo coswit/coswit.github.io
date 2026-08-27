@@ -1,21 +1,22 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
   <title>Document</title>
   <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
   <meta name="description" content="Description">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0">
-  <!-- 主题 vue buble dark pure dolphin-->
-  <!-- <link rel="stylesheet" href="//cdn.jsdelivr.net/npm/docsify/lib/themes/vue.css"> -->
+  <!-- 第三方库已自托管到 ./vendor/（原 jsdelivr 在部分网络下 TLS 慢且频繁断连，是首屏白屏的主因） -->
+  <!-- prism autoloader 的语言组件仍按需从 CDN 加载，提前建连减少首次高亮的延迟 -->
+  <link rel="dns-prefetch" href="//cdn.jsdelivr.net">
 
   <!-- docsify-themeable 主题 theme-simple theme-simple-dark -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/docsify-themeable@0/dist/css/theme-simple.css">
+  <link rel="stylesheet" href="./vendor/theme-simple.css">
   <!-- 暗色主题（叠加在 theme-simple 之上，通过 JS 启用/禁用） -->
-  <link rel="stylesheet" id="theme-dark-link" href="https://cdn.jsdelivr.net/npm/docsify-themeable@0/dist/css/theme-simple-dark.css" disabled>
+  <link rel="stylesheet" id="theme-dark-link" href="./vendor/theme-simple-dark.css" disabled>
 
   <!-- 侧边栏文档样式 -->
-  <link rel="stylesheet" href="//cdn.jsdelivr.net/npm/docsify-sidebar-collapse/dist/sidebar-folder.min.css"/>
+  <link rel="stylesheet" href="./vendor/sidebar-folder.min.css"/>
 
   <link rel="stylesheet" href="./css/custom.css">
 
@@ -34,7 +35,13 @@
   </script>
 </head>
 <body>
-  <div id="app"></div>
+  <!-- docsify 渲染完成前显示占位内容（渲染时被整体替换），缩短感知白屏时间 -->
+  <div id="app">
+    <div class="app-loading">
+      <div class="app-loading-spinner"></div>
+      <div class="app-loading-text">加载中…</div>
+    </div>
+  </div>
 
   <!-- 主题切换按钮 -->
   <button id="theme-toggle" type="button" aria-label="切换主题" title="切换白天/黑夜模式">
@@ -76,7 +83,7 @@
       document.documentElement.classList.toggle('dark', useDark);
       updateIcon();
       // 明暗切换后用新主题重绘 mermaid 图
-      // （该函数定义时 mermaid 尚未加载，需判空调用）
+      // （mermaid 是懒加载的，该函数定义时可能尚未加载，需判空调用）
       if (window.__rerenderMermaid) window.__rerenderMermaid();
     }
 
@@ -141,24 +148,17 @@
       langPrefix: 'language-'
     },
 
-    // docsify-mermaid 插件读取的是 mermaidConfig（传给 mermaid.run），
-    // 而非 mermaid 初始化配置；mermaid 主题在页面底部脚本中跟随明暗模式设置。
-    // suppressErrors：单个损坏的图不中断其余图的渲染
-    mermaidConfig: {
-        querySelector: 'div.mermaid',
-        suppressErrors: true
-    },
-
-	copyCode: {
+    // mermaidConfig 原供 docsify-mermaid 使用；现由下方懒加载插件自行传给 mermaid.run
+    copyCode: {
       buttonText: '复制',
       errorText:  '错误',
       successText: '已复制'
     },
-    
+
     plugins: [
-      // 缓存 mermaid 图源码：docsify-mermaid 的 doneEach 随后调用 mermaid.run 渲染，
-      // 渲染后原始源码会被 SVG 替换；切换明暗主题重绘时需要源码。
-      // 必须注册在 docsify-mermaid（脚本加载时追加）之前，保证先于 mermaid.run 执行
+      // 缓存 mermaid 图源码：渲染后原始源码会被 SVG 替换；
+      // 切换明暗主题重绘时需要源码。
+      // 必须注册在懒加载插件（doneEach 调用 mermaid.run）之前，保证先于渲染执行缓存
       function(hook, vm) {
         hook.doneEach(function() {
           document.querySelectorAll('div.mermaid').forEach(function(el) {
@@ -175,7 +175,7 @@
           });
         });
       },
-          
+
       function(hook, vm) {
         hook.ready(function() {
           // 确保 KaTeX 加载完成后再初始化
@@ -207,6 +207,39 @@
             // 在下一个事件循环中执行，确保 DOM 已完全更新
             setTimeout(Prism.highlightAll, 0);
           }
+        });
+    },
+
+    // —— mermaid 懒加载（替代 docsify-mermaid 插件）——
+    // mermaid.min.js 约 3.5MB 且绝大多数页面没有图，不能阻塞首屏同步加载：
+    // afterEach 先把 ```mermaid 代码块转换成 div.mermaid（与 docsify-mermaid 行为一致），
+    // doneEach 时页面里确实出现图才按需注入脚本；渲染逻辑等价于 docsify-mermaid 的
+    // doneEach -> mermaid.run(mermaidConfig)
+    function(hook, vm) {
+        // 把 mermaid 代码块转换成 <div class="mermaid">：
+        // docsify 输出形如 <pre v-pre data-lang="mermaid"><code class="language-mermaid">
+        hook.afterEach(function (html, next) {
+          if (!/(<code[^>]*mermaid|<pre[^>]*data-lang=["']?mermaid)/.test(html)) return next(html);
+          var container = document.createElement('div');
+          container.innerHTML = html;
+          container.querySelectorAll(
+            'pre[data-lang="mermaid"], pre > code[class*="mermaid"]'
+          ).forEach(function (el) {
+            var pre = el.tagName === 'PRE' ? el : el.parentElement;
+            // 同一代码块可能被上面两条选择器同时命中：pre 先被换成 div 后，
+            // 内部 code 已随 pre 脱离文档，必须跳过（否则 replaceChild 抛错中断渲染链）
+            if (!pre || !container.contains(pre)) return;
+            var div = document.createElement('div');
+            div.className = 'mermaid';
+            div.textContent = el.textContent;
+            pre.parentNode.replaceChild(div, pre);
+          });
+          next(container.innerHTML);
+        });
+
+        hook.doneEach(function () {
+          if (!document.querySelector('div.mermaid')) return;
+          loadMermaidThenRun();
         });
     },
 
@@ -408,65 +441,87 @@
     }
     ]
   };
-  </script>
-  <!-- Docsify 核心脚本 -->
-  <script src="//cdn.jsdelivr.net/npm/docsify/lib/docsify.min.js"></script>
-  <!-- docsify-themeable 主题 -->
-  <script src="https://cdn.jsdelivr.net/npm/docsify-themeable@0/dist/js/docsify-themeable.min.js"></script>
 
-  <script src="//cdn.jsdelivr.net/npm/katex@latest/dist/katex.min.js"></script>
-  <link rel="stylesheet" href="//cdn.jsdelivr.net/npm/katex@latest/dist/katex.min.css" />
-  <script src="//cdn.jsdelivr.net/npm/marked@4"></script>
-  <!-- CDN files for docsify-katex -->
-  <script src="//cdn.jsdelivr.net/npm/docsify-katex@latest/dist/docsify-katex.js"></script>
-  <!-- or <script src="//cdn.jsdelivr.net/gh/upupming/docsify-katex@latest/dist/docsify-katex.js"></script> -->
+  // —— mermaid 懒加载实现 ——
+  // 与原 docsify-mermaid 的初始化一致：startOnLoad 关闭、主题跟随站点明暗模式，
+  // 实际渲染统一在首个图出现时或切换主题后的 run 回调中触发
+  function currentMermaidTheme() {
+    return document.documentElement.classList.contains('dark') ? 'dark' : 'default';
+  }
 
-  <!-- Mermaid 插件 -->
-  <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/docsify-mermaid@latest/dist/docsify-mermaid.min.js"></script>
-  <script>
-  // mermaid 主题跟随站点明暗模式：暗色用 dark 主题，浅色保持默认外观；
-  // 实际渲染由 docsify-mermaid 在每个页面渲染完成后调用 mermaid.run 完成
-  (function () {
-    function currentTheme() {
-      return document.documentElement.classList.contains('dark') ? 'dark' : 'default';
-    }
+  var __mermaidLoading = false;
 
-    mermaid.initialize({
-      startOnLoad: false,   // 避免与 docsify-mermaid 的 mermaid.run 重复渲染
-      theme: currentTheme(),
-      flowchart: { useMaxWidth: true }
-    });
+  function runMermaid() {
+    mermaid.run({ querySelector: 'div.mermaid', suppressErrors: true }).catch(function () {});
+  }
 
-    // 切换主题后重绘当前页所有图：恢复缓存的源码、清掉已渲染标记，再重新 run
-    window.__rerenderMermaid = function () {
-      var els = document.querySelectorAll('div.mermaid');
-      if (!els.length) return;
-      mermaid.initialize({ theme: currentTheme() });
-      els.forEach(function (el) {
-        var src = el.__mermaidSrc !== undefined ? el.__mermaidSrc : el.textContent;
-        if (!src || !src.trim()) return;
-        el.__mermaidSrc = src;
-        el.removeAttribute('data-processed');
-        el.textContent = src;
+  function loadMermaidThenRun() {
+    if (window.mermaid) { runMermaid(); return; }
+    if (__mermaidLoading) return; // 加载完成后的 onload 统一渲染当前 DOM 里的图
+    __mermaidLoading = true;
+    var s = document.createElement('script');
+    s.src = './vendor/mermaid.min.js';
+    s.onload = function () {
+      __mermaidLoading = false;
+      mermaid.initialize({
+        startOnLoad: false,   // 避免与上面的 mermaid.run 重复渲染
+        theme: currentMermaidTheme(),
+        flowchart: { useMaxWidth: true },
+        suppressErrors: true
       });
-      mermaid.run({ querySelector: 'div.mermaid', suppressErrors: true }).catch(function () {});
+      runMermaid();
     };
-  })();
+    s.onerror = function () { __mermaidLoading = false; };
+    document.head.appendChild(s);
+  }
+
+  // 切换主题后重绘当前页所有图：恢复缓存的源码、清掉已渲染标记，再重新 run。
+  // mermaid 尚未加载（本会话还没出现过图）时直接跳过——下次有图的页面会以当前主题渲染
+  window.__rerenderMermaid = function () {
+    if (!window.mermaid) return;
+    var els = document.querySelectorAll('div.mermaid');
+    if (!els.length) return;
+    mermaid.initialize({ theme: currentMermaidTheme(), suppressErrors: true });
+    els.forEach(function (el) {
+      var src = el.__mermaidSrc !== undefined ? el.__mermaidSrc : el.textContent;
+      if (!src || !src.trim()) return;
+      el.__mermaidSrc = src;
+      el.removeAttribute('data-processed');
+      el.textContent = src;
+    });
+    mermaid.run({ querySelector: 'div.mermaid', suppressErrors: true }).catch(function () {});
+  };
   </script>
 
-  <script src="https://cdn.jsdelivr.net/npm/docsify@4/lib/plugins/zoom-image.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/docsify@4/lib/plugins/search.js"></script>
+  <!-- Docsify 核心脚本（本地自托管，避免 jsdelivr 网络抖动阻塞首屏） -->
+  <script src="./vendor/docsify.min.js"></script>
+  <!-- docsify-themeable 主题 -->
+  <script src="./vendor/docsify-themeable.min.js"></script>
+
+  <script src="./vendor/marked.min.js"></script>
+
+  <!-- KaTeX 数学公式（本地自托管，字体在同目录 fonts/ 下随 CSS 相对路径加载） -->
+  <script src="./vendor/katex/katex.min.js"></script>
+  <link rel="stylesheet" href="./vendor/katex/katex.min.css" />
+  <script src="./vendor/docsify-katex.js"></script>
+
+  <script src="./vendor/zoom-image.min.js"></script>
+  <script src="./vendor/search.min.js"></script>
 
   <!-- plugins 侧边栏样式  -->
-  <script src="//cdn.jsdelivr.net/npm/docsify-sidebar-collapse/dist/docsify-sidebar-collapse.min.js"></script>
-  
-  <!-- 代码复制 -->
-  <script src="https://cdn.jsdelivr.net/npm/docsify-copy-code@2/dist/docsify-copy-code.min.js"></script>
+  <script src="./vendor/docsify-sidebar-collapse.min.js"></script>
 
-  <!-- 代码高亮 -->
-  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.30.0/plugins/autoloader/prism-autoloader.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.30.0/plugins/autoloader/prism-java.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.30.0/plugins/autoloader/prism-cpp.min.js"></script>
+  <!-- 代码复制 -->
+  <script src="./vendor/docsify-copy-code.min.js"></script>
+
+  <!-- 代码高亮：autoloader 本地化后语言组件改为指向 CDN 的 components 目录，
+       只有页面出现对应语言时才按需下载，不影响首屏。
+       （原配置里的 prism-java/prism-cpp 两个链接在 npm 包中不存在，属死链，已移除） -->
+  <script src="./vendor/prism-autoloader.min.js"></script>
+  <script>
+    if (window.Prism && Prism.plugins && Prism.plugins.autoloader) {
+      Prism.plugins.autoloader.languages_path = 'https://cdn.jsdelivr.net/npm/prismjs@1.30.0/components/';
+    }
+  </script>
 </body>
 </html>

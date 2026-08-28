@@ -226,13 +226,13 @@
     - [17-outro.md](./operating-system-in-1000-lines/17-outro.md)
   - tools
     - [Chrome快捷键.md](./tools/Chrome快捷键.md)
-    - [Windows脚本使用.md](./tools/Windows脚本使用.md)
+    - [Git常用命令.md](./tools/Git常用命令.md)
+    - [Linux环境配置.md](./tools/Linux环境配置.md)
+    - [Windows批处理脚本.md](./tools/Windows批处理脚本.md)
     - [Windows配置.md](./tools/Windows配置.md)
     - [cmake.md](./tools/cmake.md)
-    - [git常见命令.md](./tools/git常见命令.md)
     - [nodejs.md](./tools/nodejs.md)
     - [tmux常用命令.md](./tools/tmux常用命令.md)
-    - [环境配置.md](./tools/环境配置.md)
   - vim
     - [Lazyvim快捷键.md](./vim/Lazyvim快捷键.md)
     - [neovim.md](./vim/neovim.md)

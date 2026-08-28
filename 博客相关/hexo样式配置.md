@@ -1,10 +1,14 @@
-###   Front-matter
+# Hexo 样式与主题配置
+
+> 基于 Hexo 7.x + NexT 主题整理（基于模型知识更新，细节以官方文档为准）。
+
+## Front-matter
 
 ```yaml
 ---
 title: 标题
 date: 2013/7/13 20:46:25
-updated: 2013/8/18 
+updated: 2013/8/18
 description: 阅读全文描述内容
 categories:
 - Diary
@@ -13,8 +17,6 @@ tags:
 - tag2
 ---
 ```
-
-
 
 | 参数 | 描述 | 默认值 |
 | :----------- | :------------ | :---------: |
@@ -28,17 +30,15 @@ tags:
 | `permalink`  | 覆盖文章网址 |              |
 | `keywords`   | 仅用于 meta 标签和 Open Graph 的关键词（不推荐使用） |    |
 
+## 分类、标签页
 
+- 生成「分类」页并添加：
 
-### 分类、标签添加
-
-- 生成“分类”页并添加
-
-```shell
-$ hexo new page categories
+```bash
+hexo new page categories
 ```
 
-创建成功后，找到`blog/source/categories/index.md`，添加`type: "categories"`到内容中：
+创建成功后，找到 `blog/source/categories/index.md`，Front-matter 中加 `type: "categories"`：
 
 ```yaml
 ---
@@ -48,37 +48,29 @@ type: "categories"
 ---
 ```
 
-- 生成“标签”页并添加
+- 生成「标签」页并添加：
 
-```shell
-$ hexo new page tags
+```bash
+hexo new page tags
 ```
 
-  创建成功后，找到`blog/source/tags/index.md`，添加`type: "tags"`到内容中：
+创建成功后，找到 `blog/source/tags/index.md`，Front-matter 中加 `type: "tags"`：
 
 ```yaml
 ---
-title: 文章分类
+title: 文章标签
 date: 2017-05-27 13:47:40
 type: "tags"
 ---
 ```
 
-### 其他
-- 支持绘制流程图
+## 置顶功能
 
-  ```shell
-  $ npm install --save hexo-filter-flowchart
-  ```
-
-
-### 置顶功能
-
-```shell
-$ npm install hexo-generator-index-pin-top --save
+```bash
+npm install hexo-generator-index-pin-top --save
 ```
 
-然后在需要置顶的文章的`Front-matter`中加上`top: 数值` 即可(数值越大代表置顶级别越高）。
+在需要置顶的文章的 Front-matter 中加上 `top: 数值` 即可（数值越大置顶级别越高）：
 
 ```yaml
 ---
@@ -89,31 +81,42 @@ top: 4
 ---
 ```
 
-打开：`/blog/themes/next/layout/_macro` 目录下的`post.swig`文件，定位到`<div class="post-meta">`标签下，插入如下代码：
+## NexT 主题配置
 
-```javascript
-{% if post.top %}
-  <i class="fa fa-thumb-tack"></i>
-  <font color=7D26CD>置顶</font>
-  <span class="post-meta-divider">|</span>
-{% endif %}
+NexT 主题推荐用 npm 方式安装（Git 克隆方式升级麻烦）：
+
+```bash
+npm install hexo-theme-next --save
 ```
 
-### next 主题配置
+启用主题：把站点 `_config.yml` 中的 `theme:` 改为 `next`。
 
-```
+主题配置建议使用「独立配置文件」：在博客根目录新建 `_config.next.yml`，把所有主题相关的修改放在这里，升级主题时不会丢失：
+
+```yaml
+# 主题外观
+scheme: Pisces
+highlight_theme: night eighties
+
+# 头像
 avatar:
-  url: 
+  url: /images/avatar.png
 
+# mermaid 图表支持
 mermaid:
   enable: true
-  
- mathjax:
-    enable: true
-    
- #主题设置   
-scheme: Pisces  
 
-highlight_theme: night eighties
+# 数学公式支持
+mathjax:
+  enable: true
 ```
 
+> 旧版做法是直接改 `themes/next/_config.yml`，并在 `themes/next/layout/_macro/post.swig` 里改模板加置顶图标；NexT 8.x 之后已不推荐，置顶建议直接用上面的 `hexo-generator-index-pin-top` 插件。
+
+## 其他插件
+
+- mermaid 流程图渲染：
+
+```bash
+npm install hexo-filter-mermaid-diagrams --save
+```

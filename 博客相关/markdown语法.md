@@ -1,316 +1,193 @@
-### 基本语法
+# Markdown 与扩展语法
 
-```shell
-# 称行符
-<br>
-```
+## 基本语法
 
 ```markdown
-
 # 标题
-** **  加粗
-* * 斜体
-~ ~ 删除线
+**加粗**
+*斜体*
+~~删除线~~
 > 引用，多级引用 >>>
---- 或者 ****  分割线
-![图片alt](图片地址 ''图片title'') 图片alt就是显示在图片下面的文字，相当于对图片内容的解释。图片title是图片的标题，当鼠标移到图片上时显示的内容。title可加可不加
+--- 或者 ***  分割线
+![图片alt](图片地址 "图片title")
 [超链接名](超链接地址 "超链接title")
 - 或 * 或 +  无序列表
-1. 2. 有序列表
-
+1. 2.  有序列表
 ```
+
+表格与行内代码：
 
 ```markdown
 |表头|表头|表头|
 |---|:--:|---:|
-|内容|内容居中|内容|
+|内容|内容居中|内容右对齐|
 
 `单行代码`
 ```
 
+HTML 标签（如换行）也可以直接使用：
 
+```html
+<br>
+```
 
-###  mermaid语法
+## mermaid 语法
 
-#### 流程图Flowchart
+### 流程图 flowchart
 
-##### 方向控制
+#### 方向控制
 
-- TB - top to bottom
-- TD - top-down/ same as top to bottom
-- BT - bottom to top
-- RL - right to left
-- LR - left to right
-
-
+| 关键字 | 含义 |
+| --- | --- |
+| `TB` / `TD` | 自上而下 |
+| `BT` | 自下而上 |
+| `RL` | 从右到左 |
+| `LR` | 从左到右 |
 
 ```mermaid
 graph TD
     Start --> Stop
 ```
 
-
-
-```
-graph TD
-    Start --> Stop
-```
-
-
-
 ```mermaid
 graph LR
     Start --> Stop
 ```
 
+#### 节点形状
 
-
-```
-graph LR
-    Start --> Stop
-```
-
-
-
-##### 形状
-
-```mermaid
-graph LR
-    id1(圆角round edges)   
-    
-    id2([大圆角 A stadium-shaped node])
-    
-    id3[[方形 a subroutine shape]]
-     
-     id4[(cylindrical shape)]
-     
-    id5((圆形 circle))
-    
- 		id6>asymmetric shape] 
-    
-    id7{rhombus}
-    
-    
-  	
-    id9[/Parallelogram/]
-    
-    id10[\Parallelogram/]
-```
+| 语法 | 形状 |
+| --- | --- |
+| `id[文本]` | 矩形 |
+| `id(文本)` | 圆角矩形 |
+| `id([文本])` | 体育场形，两端半圆 |
+| `id[[文本]]` | 子程序形，双边框矩形 |
+| `id[(文本)]` | 圆柱形，常用于数据库 |
+| `id((文本))` | 圆形 |
+| `id>文本]` | 不对称形 |
+| `id{文本}` | 菱形，用于判断 |
+| `id[/文本/]` | 平行四边形，输入输出 |
+| `id[\文本\]` | 反向平行四边形 |
 
 ```mermaid
 graph LR
-    id1(圆角round edges)   
-    
-    id2([大圆角 A stadium-shaped node])
-    
-    id13[[方形 a subroutine shape]]
-     
-     id4[(cylindrical shape)]
-     
-    id5((圆形 circle))
-    
-  id6> asymmetric shape]    
-  
-  id7{rhombus}
-  
-    
-    
-    id9[/Parallelogram/]
-    
-    id9[\Parallelogram/]
+    id1[矩形]
+    id2(圆角矩形)
+    id3([体育场形])
+    id4[[子程序形]]
+    id5[(数据库)]
+    id6((圆形))
+    id7{菱形}
+    id8[/平行四边形/]
 ```
 
+#### 连线
 
+| 长度 | 1 | 2 | 3 |
+| --- | --- | --- | --- |
+| 普通 | `---` | `----` | `-----` |
+| 普通带箭头 | `-->` | `--->` | `---->` |
+| 粗线 | `===` | `====` | `=====` |
+| 粗线带箭头 | `==>` | `===>` | `====>` |
+| 虚线 | `-.-` | `-..-` | `-...-` |
+| 虚线带箭头 | `-.->` | `-..->` | `-...->` |
 
-##### 样式
+连线上加文字用 `-->|text|`；`o--o` 两端圆点、`x--x` 两端叉号、`<-->` 双向：
+
+```mermaid
+flowchart LR
+    A -->|text| B
+    B o--o C
+    C x--x D
+```
+
+#### 样式
+
+`style` 指定节点填充色、描边、文字颜色等：
 
 ```mermaid
 graph LR
-    id1(Start)-->id2(Stop)
+    id1(Start) --> id2(Stop)
     style id1 fill:#f9f,stroke:#333,stroke-width:4px
     style id2 fill:#bbf,stroke:#f66,stroke-width:2px,color:#fff,stroke-dasharray: 5 5
 ```
 
-```
-graph LR
-    id1(Start)-->id2(Stop)
-    style id1 fill:#f9f,stroke:#333,stroke-width:4px
-    style id2 fill:#bbf,stroke:#f66,stroke-width:2px,color:#fff,stroke-dasharray: 5 5
-```
+### 类图 classDiagram
 
+成员可见性：
 
+| 符号 | 可见性 |
+| --- | --- |
+| `+` | Public |
+| `-` | Private |
+| `#` | Protected |
+| `~` | Package / Internal |
+| `*` | Abstract，如 `someAbstractMethod()*` |
+| `$` | Static，如 `someStaticMethod()$` |
 
-
-
-##### 连线
-
-| Length            | 1      | 2       | 3        |
-| ----------------- | ------ | ------- | -------- |
-| Normal            | `---`  | `----`  | `-----`  |
-| Normal with arrow | `-->`  | `--->`  | `---->`  |
-| Thick             | `===`  | `====`  | `=====`  |
-| Thick with arrow  | `==>`  | `===>`  | `====>`  |
-| Dotted            | `-.-`  | `-..-`  | `-...-`  |
-| Dotted with arrow | `-.->` | `-..->` | `-...->` |
-
-```mermaid
-graph LR
-    A-->|text|B
-  
-```
-
-```
-graph LR
-    A-->|text|B
-```
-
-
-
-
-
-```mermaid
-flowchart LR
-    A o--o B
-    B <--> C
-    C x--x D
-```
-
-```
-flowchart LR
-    A o--o B
-    B <--> C
-    C x--x D
-```
-
-
-
-####  类图classDiagram
-
-- 类、方法、返回值定义
-
- `+` Public
- `-` Private
- `#` Protected
- `~` Package/Internal
-
- `*` Abstract e.g.: `someAbstractMethod()*`
- `$` Static e.g.: `someStaticMethod()$`
-
-显示
+类与成员定义：
 
 ```mermaid
 classDiagram
-      Animal <|-- Duck
-      Animal <|-- Fish
-      Animal : +int age
-      Animal : -String gender
-      Animal: +isMammal()
-    
-      class Duck{
-          +String beakColor
-          +swim()
-          -quack() 
-      }
-      class Fish{
-          -int sizeInFeet
-          -canEat() bool
-      }
-     
+    Animal <|-- Duck
+    Animal <|-- Fish
+    Animal : +int age
+    Animal : -String gender
+    Animal : +isMammal()
+
+    class Duck {
+        +String beakColor
+        +swim()
+        -quack()
+    }
+    class Fish {
+        -int sizeInFeet
+        -canEat() bool
+    }
 ```
-代码
-```tex
-classDiagram
-      Animal <|-- Duck
-      Animal <|-- Fish
-      Animal : +int age
-      Animal : -String gender
-      Animal: +isMammal()
-    
-      class Duck{
-          +String beakColor
-          +swim()
-          -quack() 
-      }
-      class Fish{
-          -int sizeInFeet
-          -canEat() bool
-      }
-     
-```
-- 泛型
+
+泛型用 `~` 包裹类型参数（不能直接写尖括号，会与标签语法冲突）：
 
 ```mermaid
 classDiagram
-class Square~Shape~{
-    int id
-    List~int~ position
-    setPoints(List~int~ points)
-    getPoints() List~int~
-}
-
-Square : -List~string~ messages
-Square : +setMessages(List~string~ messages)
-Square : +getMessages() List~string~
+    class Square~Shape~ {
+        +int id
+        +List~int~ position
+        +setPoints(List~int~ points)
+        +getPoints() List~int~
+    }
 ```
 
-```
-classDiagram
-class Square~Shape~{
-    int id
-    List~int~ position
-    setPoints(List~int~ points)
-    getPoints() List~int~
-}
+类之间的关系：
 
-Square : -List~string~ messages
-Square : +setMessages(List~string~ messages)
-Square : +getMessages() List~string~
-```
-
-
-
-- 关系图
-
-| Type  | Description   |
+| Type | Description |
 | ----- | ------------- |
-| <\|-- | Inheritance   |
-| *--   | Composition   |
-| o--   | Aggregation   |
-| -->   | Association   |
-| --    | Link (Solid)  |
-| ..>   | Dependency    |
-| ..\|> | Realization   |
-| ..    | Link (Dashed) |
+| <\|-- | Inheritance（继承） |
+| *-- | Composition（组合） |
+| o-- | Aggregation（聚合） |
+| --> | Association（关联） |
+| -- | Link (Solid)（实线） |
+| ..> | Dependency（依赖） |
+| ..\|> | Realization（实现） |
+| .. | Link (Dashed)（虚线） |
 
 ```mermaid
 classDiagram
-classA <|-- classB
-classB1 --|> classA1
-classA2 <|-- classB2 : implements
-classC *-- classD
-classE --o classF : Aggregation
-classG <-- classH
-classI -- classJ
-classK <.. classL
-classM <|.. classN
-classO .. classP : Link(Dashed)
+    classA <|-- classB
+    classB1 --|> classA1
+    classA2 <|-- classB2 : implements
+    classC *-- classD
+    classE --o classF : Aggregation
+    classG <-- classH
+    classI -- classJ
+    classK <.. classL
+    classM <|.. classN
+    classO .. classP : Link-Dashed
 ```
 
-```
-classDiagram
-classA <|-- classB
-classB1 --|> classA1
-classA2 <|-- classB2 : implements
-classC *-- classD
-classE --o classF : Aggregation
-classG <-- classH
-classI -- classJ
-classK <.. classL
-classM <|.. classN
-classO .. classP : Link(Dashed)
-```
+### 时序图 sequenceDiagram
 
-#### sequenceDiagram
+`autonumber` 自动编号，`->>` 实线箭头，`-->>` 虚线箭头，`loop ... end` 循环块，`Note right of` 加备注：
 
 ```mermaid
 sequenceDiagram
@@ -325,73 +202,91 @@ sequenceDiagram
     Bob-->>John: Jolly good!
 ```
 
+## KaTeX 数学公式
 
+行内公式用 `$...$`，独立公式用 `$$...$$`。
 
-### katex语法
+### 分式、根式与上下标
 
-| 最终效果 |语法|
-| ---------------------------------------- | ------------------------------------------------------ |
-| $\overline{AB}$                                      | \overline{AB}        |
-| $$\begin{pmatrix}   a & b \\   c & d \end{pmatrix}$$ | ` \begin{pmatrix}   a & b \\   c & d \end{pmatrix}  `|
-| $x_n$ | x_n |
-| $a \atop b$ | a \atop b |
-| $e^x$ | e^x |
-| $$\def\foo{x^2} \foo + \foo$$ | \def\foo{x^2} \foo + \foo |
-| $\lor  \land$ | \lor  \land |
-| $\begin{bmatrix}   a & b \\ c & d \end{bmatrix}$ | \begin{bmatrix}   a & b \\ c & d \end{bmatrix} |
-| $\to $    $\rightarrow$ | \to    \rightarrow |
-| $\gets $   $\leftarrow$ | \gets  \leftarrow |
-| $\leftrightarrow$  ↔                                         | \leftrightarrow  ↔                                           |
-| $ \ni$ | \ni |
-| $\notin$ | \notin |
-| $\in $                                                       | \in                                                          |
-| $\exists$ | \exists |
-| $\nexists $ | \nexists |
-| $\forall$                                                    | \forall                                                      |
-| $\mid$ | \mid |
-| $\div  \times$ | \div    \times  × |
-| $\implies  \Rightarrow$ | \implies    \Rightarrow |
-| $\impliedby   \Leftarrow$ | \impliedby   \Leftarrow |
-| $\iff$  $ \eqcirc$    $ \Leftrightarrow  \Harr  \Lrarr  \lrArr$ | \iff           \eqcirc    \Leftrightarrow     \Harr  \Lrarr   \lrArr |
-| $\neg$ | \neg |
-| $\subset$ | \subset |
-| $\supset$ | \supset |
-| $\sum$  $\displaystyle\sum_{i=1}^n$  $\textstyle\sum_{i=1}^n$ | \sum    `\displaystyle\sum_{i=1}^n`   `\textstyle\sum_{i=1}^n` |
-| $\frac{a}{b}$ | \frac{a}{b} |
-| $\int$ | \int |
-| $\sqrt{x}$ | \sqrt{x} |
-| $\sqrt[3]{x}$ | \sqrt[3]{x} |
-| $\not =$  ≠ | \not =  ≠ |
-| $x=\frac{-b\pm\sqrt{b^2-4ac}}{2a}$ | x=\frac{-b\pm\sqrt{b^2-4ac}}{2a} |
-| $\oplus$  $ \ominus$ | \oplus     \ominus |
-| $\binom{n}{k}$   $\dbinom{n}{k}  {n\brace k}$ | \binom{n}{k}   \dbinom{n}{k}   {n \brace k} |
-| $\uparrow$   $\downarrow$  $\updownarrow$ | \uparrow   \downarrow   \updownarrow |
-| $a'$ | a' |
-| $\ge  \geq \geqslant $ | \ge   \geq    \geqslant |
-| $\le \leq   \leqslant$ | \le    \leq    \leqslant   ≤ |
-| $\frac{a}{b}$   ${a \over b} $ | \frac{a}{b}    {a \over b} |
-| $\displaystyle\sum_{i=1}^n$ $\textstyle\sum_{i=1}^n$ | \displaystyle\sum_{i=1}^n    \textstyle\sum_{i=1}^n |
-| $\underline{A}$ | \underline{A} |
-| $\subseteq  \sube$ $\nsubseteq $ | \subseteq    \sube  \nsubseteq |
-| $ \supseteq  \supe   \nsupseteq$ | \supseteq            \supe    \nsupseteq |
-| $\subset \supset$ | \subset    \supset |
-| $ \emptyset  \empty \varnothing$ | \emptyset   \empty  \varnothing |
-| $\bigcap  \cap$ | \bigcap   \cap |
-| $\bigcup \cup$ | \bigcup   \bigcup |
-| $ n \atop {\bigcap  \atop{i=1}} $ | n \atop { \bigcap  \atop{i=1}} |
-| $\thicksim$   $\oplus  \bigoplus$ | \thicksim   \oplus   \bigoplus |
-| $\circ  \restriction$ | \circ   \restriction |
-| π | π |
-| $\cdot \cdot \cdot$ | \cdot |
-| $\infty  \infin$ | \infty \infin |
-| $\pm  \plusmn$ | \pm  \plusmn |
+| 效果 | 语法 |
+| --- | --- |
+| $x_n$ | `x_n` |
+| $e^x$ | `e^x` |
+| $\frac{a}{b}$ | `\frac{a}{b}` 或 `{a \over b}` |
+| $\sqrt{x}$ | `\sqrt{x}` |
+| $\sqrt[3]{x}$ | `\sqrt[3]{x}` |
+| $a \atop b$ | `a \atop b` |
+| $\binom{n}{k}$ | `\binom{n}{k}`、`\dbinom{n}{k}`、`{n \brace k}` |
+| $x=\frac{-b\pm\sqrt{b^2-4ac}}{2a}$ | `x=\frac{-b\pm\sqrt{b^2-4ac}}{2a}` |
 
+### 求和、积分与运算符
 
+| 效果 | 语法 |
+| --- | --- |
+| $\sum$ | `\sum` |
+| $\displaystyle\sum_{i=1}^n$ | `\displaystyle\sum_{i=1}^n` |
+| $\textstyle\sum_{i=1}^n$ | `\textstyle\sum_{i=1}^n` |
+| $\int$ | `\int` |
+| $\pm$ | `\pm` 或 `\plusmn` |
+| $\times$ | `\times` |
+| $\div$ | `\div` |
+| $\cdot$ | `\cdot` |
+| $\infty$ | `\infty` 或 `\infin` |
+| $\oplus$ $\ominus$ | `\oplus`、`\ominus` |
+| $\bigoplus$ | `\bigoplus` |
+| $\circ$ | `\circ` |
+| $\thicksim$ | `\thicksim` |
 
+### 集合与逻辑
 
-```
-$x=\frac{-b\pm\sqrt{b^2-4ac}}{2a}$
-```
+| 效果 | 语法 |
+| --- | --- |
+| $\in$ | `\in` |
+| $\notin$ | `\notin` |
+| $\ni$ | `\ni` |
+| $\subset$ | `\subset` |
+| $\subseteq$ | `\subseteq`，`\nsubseteq` 取反 |
+| $\supset$ | `\supset` |
+| $\supseteq$ | `\supseteq`，`\nsupseteq` 取反 |
+| $\emptyset$ | `\emptyset` 或 `\varnothing` |
+| $\cap$ | `\cap`、`\bigcap` |
+| $\cup$ | `\cup`、`\bigcup` |
+| $\land$ | `\land` |
+| $\lor$ | `\lor` |
+| $\neg$ | `\neg` |
+| $\forall$ | `\forall` |
+| $\exists$ | `\exists`，`\nexists` 取反 |
+| $\mid$ | `\mid` |
 
+### 比较与推理
 
+| 效果 | 语法 |
+| --- | --- |
+| $\le$ | `\le`、`\leq`、`\leqslant` |
+| $\ge$ | `\ge`、`\geq`、`\geqslant` |
+| $\ne$ | `\not =` |
+| $\implies$ | `\implies`、`\Rightarrow` |
+| $\impliedby$ | `\impliedby`、`\Leftarrow` |
+| $\iff$ | `\iff`、`\Leftrightarrow` |
 
+### 箭头
+
+| 效果 | 语法 |
+| --- | --- |
+| $\to$ | `\to`、`\rightarrow` |
+| $\gets$ | `\gets`、`\leftarrow` |
+| $\leftrightarrow$ | `\leftrightarrow` |
+| $\uparrow$ | `\uparrow` |
+| $\downarrow$ | `\downarrow` |
+| $\updownarrow$ | `\updownarrow` |
+
+### 上划线、矩阵与宏定义
+
+| 效果 | 语法 |
+| --- | --- |
+| $\overline{AB}$ | `\overline{AB}` |
+| $\underline{A}$ | `\underline{A}` |
+| $a'$ | `a'` |
+| $\begin{pmatrix} a & b \\ c & d \end{pmatrix}$ | `\begin{pmatrix} a & b \\ c & d \end{pmatrix}` |
+| $\begin{bmatrix} a & b \\ c & d \end{bmatrix}$ | `\begin{bmatrix} a & b \\ c & d \end{bmatrix}` |
+| $\def\foo{x^2} \foo + \foo$ | `\def\foo{x^2} \foo + \foo` |

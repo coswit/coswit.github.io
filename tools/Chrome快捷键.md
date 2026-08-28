@@ -1,4 +1,4 @@
-**标签页和窗口**
+## 标签页和窗口
 
 - Ctrl + T: 打开新标签页
 - Ctrl + W: 关闭当前标签页
@@ -10,16 +10,16 @@
 - Ctrl + N: 打开新窗口
 - Ctrl + Shift + N: 打开无痕模式窗口
 
-**导航**
+## 导航
 
 - Alt + ←: 后退
 - Alt + →: 前进
 - F5 或 Ctrl + R: 刷新页面
-- Ctrl + Shift + R: 强制刷新(清除缓存)
+- Ctrl + Shift + R: 强制刷新（清除缓存）
 - Esc: 停止加载页面
 - Ctrl + L 或 Alt + D: 跳转到地址栏
 
-**页面操作**
+## 页面操作
 
 - Ctrl + F: 在页面中查找
 - Ctrl + P: 打印
@@ -30,21 +30,34 @@
 - Ctrl + -: 缩小页面
 - Ctrl + 0: 重置缩放
 
-**页面滚动**
+## 页面滚动
 
-- Space(空格键): 向下滚动一屏
+- Space（空格键）: 向下滚动一屏
 - Shift + Space: 向上滚动一屏
 - Home: 滚动到页面顶部
 - End: 滚动到页面底部
-- Page Down(PgDn): 向下滚动一屏
-- Page Up(PgUp): 向上滚动一屏
+- Page Down（PgDn）: 向下滚动一屏
+- Page Up（PgUp）: 向上滚动一屏
 - ↑/↓ 方向键: 向上/向下小幅滚动
-- ←/→ 方向键: 向左/向右滚动(适用于有横向滚动条的页面)
+- ←/→ 方向键: 向左/向右滚动（适用于有横向滚动条的页面）
 
-**其他常用**
+## 其他常用
 
 - Ctrl + H: 打开历史记录
 - Ctrl + J: 打开下载内容
 - Ctrl + Shift + Delete: 清除浏览数据
 - F12 或 Ctrl + Shift + I: 打开开发者工具
 - Ctrl + Shift + B: 显示/隐藏书签栏
+
+## DevTools 快捷键（开发者工具内）
+
+- Ctrl + Shift + C: 检查元素（鼠标悬停选中文本对应的 DOM 节点）
+- Ctrl + Shift + M: 切换设备模拟（移动端视图、屏幕尺寸、触摸事件）
+- Ctrl + P: 按文件名快速打开源文件（Sources 面板）
+- Ctrl + F: 在当前面板内查找（Elements 内搜节点、Sources 内搜代码）
+- Ctrl + Shift + F: 全局搜索所有源文件中的文本
+- F8: 暂停/恢复 JavaScript 执行（断点处常用）
+- F10: 单步跳过（step over）
+- F11: 单步进入（step into）
+- Ctrl + L: 清空 Console
+- Esc: 显示/隐藏 Console 抽屉

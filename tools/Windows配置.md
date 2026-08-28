@@ -2,43 +2,77 @@
 
 ### 安装
 
-以管理员身份打开windows terminal
+以管理员身份打开 Windows Terminal：
 
-```bash
-# 开启VM组件 开启后需要重启电脑
+```powershell
+# 开启 VM 组件，开启后需要重启电脑
 Enable-WindowsOptionalFeature -Online -FeatureName VirtualMachinePlatform
 
 # 查看可用版本
 wsl --list --online
 
-# 安装Ubuntu指定版本
-wsl --install -d Ubuntu-20.04 
+# 安装 Ubuntu 指定版本
+wsl --install -d Ubuntu-20.04
 
-# 设置为wsl2
+# 设置为 wsl2
 wsl --set-default-version 2
 ```
 
 ### 配置
 
-wsl使用adb
+wsl 使用 adb：
 
 ```bash
 sudo ln -s /home/user_name/platform-tools/adb.exe /usr/bin/adb
 sudo ln -s /home/user_name/platform-tools/fastboot.exe /usr/bin/fastboot
+```
 
-#查看wsl版本
+```powershell
+# 查看 wsl 版本
 wsl --list --verbose
 ```
+
+### 备份与迁移
+
+```powershell
+# 查看已安装的发行版名称
+wsl --list
+
+# 导出为 tar 备份
+wsl --export Ubuntu-20.04 D:\backup\ubuntu.tar
+
+# 导入到新位置（迁移到其他磁盘时也用这个）
+wsl --import Ubuntu-new D:\wsl\Ubuntu-new D:\backup\ubuntu.tar
+
+# 注销（删除）发行版，注意先备份
+wsl --unregister Ubuntu-20.04
+```
+
+### .wslconfig 资源限制
+
+WSL2 默认可能占用过多内存，在 `%USERPROFILE%\.wslconfig` 中限制：
+
+```bash
+[wsl2]
+# 分配给 WSL2 的最大内存
+memory=8GB
+# CPU 核数
+processors=4
+# 交换空间大小，设为 0 禁用 swap
+swap=2GB
+```
+
+修改后需 `wsl --shutdown` 重启 WSL 生效。
 
 ## 开发配置
 
 ### git
 
-下载，前往 https://git-scm.com/download/win
+下载：前往 <https://git-scm.com/download/win>
 
-wsl中配置git-bash中乱码问题，将commandline位置从`$GIT_INSTALL_DIR\\bin\\bash.exe`修改为了`$GIT_INSTALL_DIR\\usr\\bin\\bash.exe --login -i`
+wsl 中配置 git-bash 中乱码问题，将 commandline 位置从 `$GIT_INSTALL_DIR\\bin\\bash.exe` 修改为 `$GIT_INSTALL_DIR\\usr\\bin\\bash.exe --login -i`。
 
-#### wls2中的显示问题
+wsl2 中的显示问题：
 
 ```bash
 # 修复 git status 等命令的中文路径显示
@@ -50,39 +84,37 @@ git config --global i18n.commitEncoding utf-8
 
 ### Java
 
-安装Java：https://www.oracle.com/hk/java/technologies/downloads/
+安装 Java：<https://www.oracle.com/hk/java/technologies/downloads/>
 
 ### python
 
-```bash
-https://github.com/adang1345/PythonWindows
-https://www.python.org/downloads/
-```
+- <https://github.com/adang1345/PythonWindows>
+- <https://www.python.org/downloads/>
 
-### 代理
+## 代理
 
-#### widows-vpn
+### windows 防火墙放开代理端口
 
-window 防火墙 7890 端口放开。 在cmd 命令行执行：
+将 Clash 的代理端口（如 7897）在防火墙放开，在 cmd 命令行执行：
 
-```bash
+```powershell
 netsh advfirewall firewall add rule name="Open Port 7897" dir=in action=allow protocol=TCP localport=7897
 ```
 
-powershell代理：
+Clash 配置：
 
-```bash
+1. Windows 客户端开启 `Allow LAN`（允许局域网连接）
+2. 端口查看：Clash 设置 → 端口设置（默认 HTTP: 7897, SOCKS5: 7891）
+
+scoop 代理：
+
+```powershell
 scoop config proxy 127.0.0.1:7897
 ```
 
- Clash 配置
+### Windows 11 镜像模式
 
-1. Windows 客户端开启 `Allow LAN`（允许局域网连接）
-2. 端口查看：Clash 设置 → 端口设置（默认 HTTP:7897, SOCKS5:7891）
-
-#### Windows11
-
-在 Windows 下打开记事本，创建或编辑文件：%USERPROFILE%\.wslconfig（例如 `C:\Users\你的用户名\.wslconfig`）  写入以下内容并保存：
+在 Windows 下打开记事本，创建或编辑文件 `%USERPROFILE%\.wslconfig`（例如 `C:\Users\你的用户名\.wslconfig`），写入以下内容并保存：
 
 ```bash
 [wsl2]
@@ -92,46 +124,83 @@ autoProxy=true
 
 这是官方目前最推荐、体验最丝滑的方式。开启后，WSL2 与 Windows 共享网络栈，在 WSL 中使用 `127.0.0.1` 即可直接访问 Windows 的代理端口。
 
-## powershell7 
+## Windows Terminal
+
+安装（Win11 一般自带，Win10 手动装）：
+
+```powershell
+winget install Microsoft.WindowsTerminal
+```
+
+基础配置：打开设置（`Ctrl+,`）→ 选择 JSON 文件，或直接编辑 `%LOCALAPPDATA%\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json`。常用配置项：
+
+- **默认配置文件**：`defaultProfile` 指定启动时打开哪个 shell（如 PowerShell 7、bash）
+- **默认起始目录**：profile 中的 `startingDirectory`
+- **外观**：`colorScheme`（配色方案）、字号、`useAcrylic`（亚克力透明）
+- **快捷键**：`keybindings` / `actions` 自定义按键
+
+## winget
+
+Windows 官方包管理器，常用命令：
+
+```powershell
+# 搜索
+winget search <name>
+# 安装
+winget install <name>
+# 升级单个包
+winget upgrade <name>
+# 列出可升级的包
+winget upgrade
+# 全部升级
+winget upgrade --all
+# 卸载
+winget uninstall <name>
+# 列出已安装
+winget list
+# 代理
+winget install <name> --proxy http://127.0.0.1:7897
+```
+
+## powershell7
 
 ### 安装
 
-- 方式一：从 Releases 下载对应 msi 文件进行安装 ：https://github.com/PowerShell/PowerShell/releases
-
-- 方式二：通过 winget 进行安装：winget install Microsoft.PowerShell。
+- 方式一：从 Releases 下载对应 msi 文件进行安装：<https://github.com/PowerShell/PowerShell/releases>
+- 方式二：通过 winget 进行安装：`winget install Microsoft.PowerShell`
 
 更新使用：
 
-```bash
+```powershell
 winget upgrade Microsoft.PowerShell
 
 # winget 代理
 winget upgrade Microsoft.PowerShell --proxy http://127.0.0.1:7897
 ```
 
-或者直接使用微软提供的在线安装角本，`-UseMSI`会下载并运行标准的Windows程序，并自动替换旧版保留所有设置：
+或者直接使用微软提供的在线安装脚本，`-UseMSI` 会下载并运行标准的 Windows 程序，并自动替换旧版保留所有设置：
 
-```bash
+```powershell
 iex "& { $(irm https://aka.ms/install-powershell.ps1) } -UseMSI"
 ```
 
 ### 快捷键配置
 
-在PowerShell7中实现Linux bash的快捷键。因为PowerShell中用的是Windows模式，Linux用的是Emacs模式，切换Emacs模式：在终端输入`notepad $PROFILE`，在文件中加入：
+在 PowerShell7 中实现 Linux bash 的快捷键。因为 PowerShell 中用的是 Windows 模式，Linux 用的是 Emacs 模式，切换 Emacs 模式：在终端输入 `notepad $PROFILE`，在文件中加入：
 
-```bash
+```powershell
 Set-PSReadLineOption -EditMode Emacs
 ```
 
-如果只想在当前shell中生效，则执行上述命令。如果只想修改单个命令，则使用：
+如果只想在当前 shell 中生效，则执行上述命令。如果只想修改单个命令，则使用：
 
-```bash
+```powershell
 Set-PSReadLineKeyHandler -Key "Ctrl+e" -Function EndOfLine
 ```
 
-如果想要让ohmyposh也实现一样的功能，需要增加如下配置：
+如果想要让 oh-my-posh 也实现一样的功能，需要增加如下配置：
 
-```bash
+```powershell
 oh-my-posh init pwsh | Invoke-Expression
 
 # 1. 确保使用的是 Emacs 模式（提供 Ctrl+A, Ctrl+E 等基础体验）
@@ -139,7 +208,7 @@ Set-PSReadLineOption -EditMode Emacs
 
 # 2. 重新定义 Ctrl+e：强制接受所有预测并跳转行尾
 Set-PSReadLineKeyHandler -Key "Ctrl+e" -ScriptBlock {
-    # 尝试采纳当前的预测建议 (全量采纳)
+    # 尝试采纳当前的预测建议（全量采纳）
     [Microsoft.PowerShell.PSConsoleReadLine]::AcceptSuggestion()
     # 强制将光标移动到整行的末尾
     [Microsoft.PowerShell.PSConsoleReadLine]::EndOfLine()
@@ -152,7 +221,7 @@ Set-PSReadLineOption -PredictionSource History
 Set-PSReadLineOption -PredictionViewStyle InlineView
 
 # 设置常用别名
-Set-Alias grep findstr            
+Set-Alias grep findstr
 Set-Alias touch New-Item
 Set-Alias cat Get-Content
 Set-Alias rm Remove-Item
@@ -160,7 +229,7 @@ Set-Alias mv Move-Item
 Set-Alias mkdir New-Item
 
 function wk { cd D:\workspaces }
-function gs { git status}
+function gs { git status }
 
 function proxy {
     $env:HTTP_PROXY = "http://127.0.0.1:7897"
@@ -175,20 +244,20 @@ function unproxy {
 }
 ```
 
-### ohmyposh
+### oh-my-posh
 
-参考文档：https://ohmyposh.dev/docs
+参考文档：<https://ohmyposh.dev/docs>
 
-配置 powershell，安装powershell插件
+配置 powershell，安装 powershell 插件：
 
-```bash
-# 允许运行Install-Module脚本
+```powershell
+# 允许运行 Install-Module 脚本
 set-executionpolicy remotesigned
 
-# 更新最新版本的PSReadLine，为了自动补全
+# 更新最新版本的 PSReadLine，为了自动补全
 Install-Module PSReadLine -Force
 
-# 创建powershell 的初始化脚本，点击确认创建即可
+# 创建 powershell 的初始化脚本，点击确认创建即可
 notepad $profile
 
 # 安装几个插件
@@ -196,64 +265,37 @@ Install-Module posh-git
 Install-Module Terminal-Icons
 ```
 
-安装ohmyposh：
+安装 oh-my-posh：
 
-```bash
+```powershell
 winget install JanDeDobbeleer.OhMyPosh --source winget --scope machine --force
-
- winget install JanDeDobbeleer.OhMyPosh -s winget
 ```
 
 字体安装：
 
-```bash
+```powershell
 oh-my-posh font install meslo
 ```
 
-在PowerShell7中使用下面命令创建空白配置文件：
+在 PowerShell7 中使用下面命令创建空白配置文件：
 
 ```powershell
 New-Item -Path $PROFILE -Type File -Force
-# 
- ~\Documents\PowerShell
+# 配置文件位于 ~\Documents\PowerShell
 ```
 
-找到`~\Documents\PowerShell\Microsoft.PowerShell_profile.ps1`文件，编辑打开，写入
+找到 `~\Documents\PowerShell\Microsoft.PowerShell_profile.ps1` 文件，编辑打开，写入：
 
-```
+```powershell
 oh-my-posh init pwsh | Invoke-Expression
 ```
-
-#### powerlevel10k主题
-
-https://github.com/romkatv/powerlevel10k
-
-- 下载
-
-  ```shell
-  git clone --depth=1 https://github.com/romkatv/powerlevel10k.git ${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/themes/powerlevel10k
-  ```
-
-- 在`~/.zshrc`中配置
-
-  ```shell
-  ZSH_THEME="powerlevel10k/powerlevel10k"
-  ```
-
-- 重新进入配置向导：
-
-  ```shell
-  p10k configure
-  ```
-
-参考：https://www.poloxue.com/posts/2023-10-20-zsh-theme-powerlevel10k/
 
 ## scoop
 
 安装：
 
-```bash
-# 要求powershell版本5.1以上，查看版本
+```powershell
+# 要求 powershell 版本 5.1 以上，查看版本
 $PSVersionTable.PSVersion
 
 # 安装
@@ -262,7 +304,7 @@ irm get.scoop.sh | iex
 
 相关命令：
 
-```bash
+```powershell
 scoop install avidemux
 scoop install clash-verge-rev
 scoop install qemu
@@ -273,7 +315,7 @@ scoop update
 
 版本相关：
 
-```bash
+```powershell
 # 安装指定版本
 scoop install git@2.19.0.windows.1
 # 切换版本
@@ -282,8 +324,8 @@ scoop reset terraform@0.12.11
 
 源：
 
-```bash
-# 增加main外的源
+```powershell
+# 增加 main 外的源
 scoop bucket add extras
 
 scoop bucket add java
@@ -291,7 +333,7 @@ scoop bucket add java
 
 代理：
 
-```bash
+```powershell
 # 配置代理
 scoop config proxy 127.0.0.1:7897
 # 查看代理
@@ -300,41 +342,8 @@ scoop config
 scoop config rm proxy
 ```
 
-### help
+帮助：
 
-```bash
+```powershell
 scoop help <command>
-```
-
-The current commands are (output from `scoop help`):
-
-```bash
-alias      Manage scoop aliases
-bucket     Manage Scoop buckets
-cache      Show or clear the download cache
-cat        Show content of specified manifest. If available, `bat` will be used to pretty-print the JSON.
-checkup    Check for potential problems
-cleanup    Cleanup apps by removing old versions
-config     Get or set configuration values
-create     Create a custom app manifest
-depends    List dependencies for an app, in the order they'll be installed
-download   Download apps in the cache folder and verify hashes
-export     Exports installed apps, buckets (and optionally configs) in JSON format
-help       Show help for a command
-hold       Hold an app to disable updates
-home       Opens the app homepage
-import     Imports apps, buckets and configs from a Scoopfile in JSON format
-info       Display information about an app
-install    Install apps
-list       List installed apps
-prefix     Returns the path to the specified app
-reset      Reset an app to resolve conflicts
-search     Search available apps
-shim       Manipulate Scoop shims
-status     Show status and check for new app versions
-unhold     Unhold an app to enable updates
-uninstall  Uninstall an app
-update     Update apps, or Scoop itself
-virustotal Look for app's hash or url on virustotal.com
-which      Locate a shim/executable (similar to 'which' on Linux)
 ```

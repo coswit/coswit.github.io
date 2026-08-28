@@ -244,6 +244,49 @@ function unproxy {
 }
 ```
 
+### 历史与预测
+
+历史记忆由 PSReadLine 模块提供（PowerShell 7 内置），跨会话持久保存。
+
+历史预测——输入时显示灰色的历史建议：
+
+```powershell
+# 预测来源：历史记录
+Set-PSReadLineOption -PredictionSource History
+
+# 显示方式：InlineView 单行灰字（类似 fish）/ ListView 下拉列表
+Set-PSReadLineOption -PredictionViewStyle InlineView
+```
+
+- InlineView：灰色建议出现在光标右侧，`→` 或 `End` 整条采纳，`Ctrl+→` 逐词采纳
+- ListView：下方弹出历史列表，`↓` 进入列表选择，`→` 采纳；`F2` 在两种视图间切换
+
+插件预测——在历史之外挂载预测插件（PSReadLine 2.2+）：
+
+```powershell
+# CompletionPredictor 把 Tab 补全候选也变成灰色预测
+Install-Module CompletionPredictor
+Set-PSReadLineOption -PredictionSource HistoryAndPlugin
+```
+
+历史搜索：
+
+- `Ctrl+r` 向后搜索历史，`Ctrl+s` 向前搜索
+- 输入 `#关键字` 后按 Tab，从历史记录中补全整条命令
+
+历史文件——跨会话“记忆”的载体：
+
+```powershell
+# 查看历史文件路径
+Get-PSReadLineOption | select HistorySavePath
+# 默认在 %APPDATA%\Microsoft\Windows\PowerShell\PSReadLine\ConsoleHost_history.txt
+
+# 历史条数上限（默认 4096）
+Set-PSReadLineOption -MaximumHistoryCount 8192
+```
+
+注意 `Get-History`（别名 `h`）只显示**当前会话**执行过的命令，`Invoke-History 5`（别名 `r 5`）重跑第 5 条；它与 PSReadLine 的交互历史是两套体系。`Clear-History` 只清当前会话，要彻底清空记忆需删除历史文件。
+
 ### oh-my-posh
 
 参考文档：<https://ohmyposh.dev/docs>
@@ -347,3 +390,19 @@ scoop config rm proxy
 ```powershell
 scoop help <command>
 ```
+
+### scoop update 报 dubious ownership 错误
+
+`scoop update` 报 `fatal: detected dubious ownership in repository at 'C:/Users/xxx/scoop/apps/scoop/current'`，原因是 scoop 目录（主程序或 buckets）被管理员用户所有，git 的安全检查拒绝操作。给对应目录加 `safe.directory` 例外即可：
+
+```powershell
+# 主程序目录
+git config --global --add safe.directory C:/Users/用户名/scoop/apps/scoop/current
+
+# 各 bucket 目录（按实际报错的路径添加）
+git config --global --add safe.directory C:/Users/用户名/scoop/buckets/main
+git config --global --add safe.directory C:/Users/用户名/scoop/buckets/extras
+git config --global --add safe.directory C:/Users/用户名/scoop/buckets/nerd-fonts
+```
+
+这种所有权状态通常是某次用管理员权限运行 scoop 造成的，平时建议用普通用户权限使用 scoop。

@@ -447,9 +447,12 @@ html.dark body {
 }
 
 /*============================================
- * 桌面端 — 内容区右侧为 TOC 预留空间
+ * 宽屏 — 内容区右侧为 TOC 预留空间
+ * 1280px 以下（平板等）若仍预留 332px 右边距，
+ * 正文会被挤到不足 300px 宽，因此 TOC 与右边距
+ * 只在足够宽的屏幕上启用
  *============================================*/
-@media screen and (min-width: 769px) {
+@media screen and (min-width: 1280px) {
     .content {
         margin-right: calc(var(--toc-width) + 32px);
     }
@@ -543,14 +546,42 @@ body .sidebar-toggle:hover span {
 }
 
 /*============================================
- * 移动端适配：隐藏 TOC，切换按钮回到右上角
+ * 响应式适配
+ *
+ * docsify-themeable 的断点是 47.99em(约 768px)：
+ * 以下为抽屉式侧边栏，以上为固定侧边栏。
+ * 本站在两个区间分别收紧尺寸：
+ *   手机(<768px)：抽屉最宽 340px，防止比视口还宽、
+ *                 关闭按钮(x=抽屉宽度)被推出屏幕；
+ *   平板(768~1279px)：侧边栏缩到 300px，且不显示
+ *                 TOC、不预留右边距，保证正文可读宽度；
+ *   宽屏(>=1280px)：完整布局（380px 侧边栏 + 右侧 TOC）
  *============================================*/
-@media screen and (max-width: 768px) {
+@media screen and (max-width: 1279.98px) {
     .toc-panel {
         display: none;
     }
     #theme-toggle {
         right: 14px;
+    }
+}
+
+/* 平板：缩窄固定侧边栏 */
+@media screen and (min-width: 768px) and (max-width: 1279.98px) {
+    :root {
+        --sidebar-width: 300px;
+    }
+}
+
+/* 手机：抽屉宽度上限 340px，正文/代码块边距收紧 */
+@media screen and (max-width: 767.98px) {
+    :root {
+        --sidebar-width: min(85vw, 340px);
+        --code-block-padding: 1.25em 1em 1em 1em;
+    }
+
+    .markdown-section {
+        padding: 1.5rem 16px 2rem;
     }
 }
 

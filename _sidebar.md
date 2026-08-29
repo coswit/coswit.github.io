@@ -2,6 +2,7 @@
     - [AI工具使用.md](./AI/AI工具使用.md)
     - [OpenCode使用.md](./AI/OpenCode使用.md)
     - oh-my-openagent
+      - [00-导读.md](./AI/oh-my-openagent/00-导读.md)
       - [01-项目简介与核心理念.md](./AI/oh-my-openagent/01-项目简介与核心理念.md)
       - [02-整体架构与多模型编排机制.md](./AI/oh-my-openagent/02-整体架构与多模型编排机制.md)
       - [03-安装与环境配置.md](./AI/oh-my-openagent/03-安装与环境配置.md)

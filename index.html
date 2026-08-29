@@ -381,8 +381,47 @@
     // 且侧边栏按路由重新拉取/渲染是异步的，单次延时修正跑不赢。
     // 这里用 MutationObserver 监听侧边栏重写，任何一次重写后都重新应用 active
     function(hook, vm) {
+        // docsify 每次路由切换都会整体重建侧边栏 DOM（subMaxLevel 需要重挂子目录），
+        // 所有文件夹的 open 状态随之丢失并被插件按 sidebarDisplayLevel 全部折叠。
+        // 这里以文件夹标题链接的 href 为标识，记下用户展开过的所有文件夹，
+        // 侧边栏每次重建后统一恢复，实现“多个文件夹同时展开且切换页面不收起”
+        var openFolders = new Set();
+        var snapshotOpen = function () {
+            openFolders.clear();
+            document.querySelectorAll('.sidebar-nav li.folder.open').forEach(function (li) {
+                var a = li.querySelector('a');
+                if (a) openFolders.add(a.getAttribute('href'));
+            });
+        };
+        var restoreOpen = function () {
+            document.querySelectorAll('.sidebar-nav li.folder').forEach(function (li) {
+                var a = li.querySelector('a');
+                if (a && openFolders.has(a.getAttribute('href'))) {
+                    li.classList.remove('collapsed');
+                    li.classList.add('open');
+                }
+            });
+        };
+        // 立即版恢复：不依赖插件渲染后打上的 .folder 标记，直接按结构判断文件夹
+        // （li 含直接子 ul 即文件夹）。在 MutationObserver 回调里同步调用——回调是
+        // 微任务、先于浏览器绘制执行，重建后的侧边栏不会以“全收起”的中间状态上屏，
+        // 消除“先收起、防抖 50ms 后再恢复”造成的闪烁
+        var restoreOpenNow = function () {
+            document.querySelectorAll('.sidebar-nav li').forEach(function (li) {
+                var hasUl = false;
+                for (var i = 0; i < li.children.length; i++) {
+                    if (li.children[i].tagName === 'UL') { hasUl = true; break; }
+                }
+                if (!hasUl) return;
+                var a = li.querySelector('a');
+                if (a && openFolders.has(a.getAttribute('href'))) {
+                    li.classList.remove('collapsed');
+                    li.classList.add('open');
+                }
+            });
+        };
         var applyActive = function () {
-            window.__SIDEBAR_FIX__ = 'v4';   // 版本标记：控制台输入 __SIDEBAR_FIX__ 可查当前运行的修复版本（v4=自动展开文件夹）
+            window.__SIDEBAR_FIX__ = 'v6';   // 版本标记：控制台输入 __SIDEBAR_FIX__ 可查当前运行的修复版本（v6=消除侧边栏重建时的展开状态闪烁）
             // 两侧都要安全解码：hash 是百分号编码，而侧边栏 href 里含手写的 %20
             // （如 "Effective Java" 目录），只解码一边会导致含空格的条目永远匹配不上；
             // decode 遇到非法 % 序列会抛 URIError，需要 try/catch 兜底。
@@ -408,9 +447,10 @@
                 if (isCur) activeLi = li;
             });
 
-            // 展开当前条目的祖先文件夹（sidebar-collapse 插件在路由切换后会按
-            // sidebarDisplayLevel 重置为折叠，当前条目虽然高亮但被藏在文件夹里看不见），
-            // 并把侧边栏滚动到该条目可见
+            // 先恢复用户手动展开过的其他文件夹，再展开当前条目的祖先文件夹
+            // （sidebar-collapse 插件在路由切换后会按 sidebarDisplayLevel 重置为折叠，
+            // 当前条目虽然高亮但被藏在文件夹里看不见），并把侧边栏滚动到该条目可见
+            restoreOpen();
             if (activeLi) {
                 var node = activeLi.parentElement;
                 while (node && !node.classList.contains('sidebar-nav')) {
@@ -426,12 +466,19 @@
                 // 滚动侧边栏让当前条目进入视野（block:nearest 只滚动必要的祖先容器）
                 try { activeLi.scrollIntoView({block: 'nearest', behavior: 'smooth'}); } catch (e) {}
             }
+            // 快照最终的展开状态：含插件自动展开的当前页祖先，供下次重建后恢复
+            snapshotOpen();
         };
         var scheduled = false;
         hook.mounted(function () {
             var sidebar = document.querySelector('.sidebar');
             if (!sidebar || typeof MutationObserver === 'undefined') return;
+            // 侧边栏 DOM 会被整体重建，这里把点击委托挂在不会被重建的 .sidebar 容器上；
+            // 插件的切换监听挂在更深的 .sidebar-nav 上，冒泡先到达，因此这里同步
+            // 快照读到的已是插件展开/收起切换后的最终状态，且早于路由触发的重建
+            sidebar.addEventListener('click', snapshotOpen);
             new MutationObserver(function () {
+                restoreOpenNow();   // 绘制前同步恢复，防止闪一下；下方防抖只负责 active 高亮等完整修正
                 if (scheduled) return;
                 scheduled = true;
                 setTimeout(function () { scheduled = false; applyActive(); }, 50);

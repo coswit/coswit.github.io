@@ -1,22 +1,16 @@
-### 简介
+## 简介
 
 SSH: Secure Shell protocol,传输加密技术，通过非对称加密来实现，使用公钥与私钥(Public and Private Key)来进行加密与解密，包含：
 
 - 公钥(public key)：提供给远端主机进行加密
 - 私钥(private key)：远端主机使用你提供的公钥进行加密后，在本地端就能够使用私钥来进行解密。
 
-```c
-$ ssh user@hostname //登录远程linux服务器,user为linux 服务器的管理员名称,hostname 为 linux 服务器的IP
-$ ctrl+c // stop process
-$ ctrl+d // end of file
-```
-命令格式
 ```bash
-$ command  [-options]  parameter1  parameter2 ...
-                 指令        选项        参数（1）     参数（2）
+#登录远程linux服务器,user为linux 服务器的账号名称,hostname 为 linux 服务器的IP
+$ ssh user@hostname
 ```
 
-### 连接
+## 连接
 
 1. 服务器**建立公钥档案**：每一次启动sshd服务时，该服务会主动去找`/etc/ssh/ssh_host*`的档案，若系统刚刚安装完成时，由于没有这些公钥档案，因此sshd会主动去计算出这些需要的公钥档案，同时也会计算出自己需要的私钥档
 
@@ -26,7 +20,7 @@ $ command  [-options]  parameter1  parameter2 ...
 
 4. 客户端**比对公私钥**：若用户端第一次连接到此服务器，则会将服务器的公钥资料记录到用户端的目录内的`~/.ssh/known_hosts` 。若是已经记录过服务器的公钥资料，则用户端会去比对此次接收到的与之前的记录是否有差异。若接受此公钥资料，则开始计算客户端自己的公私钥资料；
 
-   > 用户端的秘钥是随机运算产生于本次连线当中的，所以这次的连线与下次的连线的秘钥可能就会不一样！此外在用户端的使用者家目录下的~/.ssh/known_hosts 会记录曾经连线过的主机的public key ，用以确认我们是连接上正确的服务器
+   > 用户端的密钥是随机运算产生于本次连线当中的，所以这次的连线与下次的连线的密钥可能就会不一样！此外在用户端的使用者家目录下的~/.ssh/known_hosts 会记录曾经连线过的主机的public key ，用以确认我们是连接上正确的服务器
 
 5. 客户端**回传公钥**到服务器：客户端将自己的公钥传送给服务器。此时服务器『具有服务器的私钥与用户端的公钥』，而用户端则： 『具有服务器的公钥以及用户端自己的私钥』，你会看到，在此次连线的服务器与用户端的密钥系统(公钥+私钥)并不一样，所以才称为非对称式加密
 
@@ -36,7 +30,7 @@ $ command  [-options]  parameter1  parameter2 ...
 
    (2)客户端到服务器：客户端传送资料时，拿服务器的公钥加密后送出。服务器接收后，用服务器的私钥解密
 
-### 启动
+## 启动
 
 Linux系统都会默认预设启动ssh，直接启动就是以 `SSH daemon` ，简称为 `sshd` 来启动的
 
@@ -47,15 +41,16 @@ tcp        0      0 0.0.0.0:22              0.0.0.0:*               LISTEN      
 tcp6       0      0 :::22                   :::*                    LISTEN      14700/sshd
 ```
 
-使用systemctl时 
+现代发行版使用 systemctl（`netstat` 也已被 `ss` 取代）：
 
 ```bash
 $ systemctl restart sshd
+$ ss -tlnp | grep ssh
 ```
 
-### 登录
+## 登录
 
-#### 直接登录
+### 直接登录
 
 ```bash
 $ ssh [-f] [-o 参数项目] [-p 端口] [账号@]IP [指令]
@@ -69,19 +64,13 @@ $ ssh [-f] [-o 参数项目] [-p 端口] [账号@]IP [指令]
 [指令] ：不登入远程主机，直接发送指令过去。但与 -f 意义不太相同。
 ```
 
-##### 公钥记录文件： `~/.ssh/known_hosts`
+#### 公钥记录文件： `~/.ssh/known_hosts`
 
 当登入远程服务器时，本机会主动的用接收到的服务器的 public key 去比对 ~/.ssh/known_hosts 有无相关的公钥：
 
 - 若接收的公钥尚未记录，则询问用户是否记录。若要记录则写入 `~/.ssh/known_hosts` 且继续登入的后续工作；若不记录 (回答 no) 则不写入该档案，并且终止登录
 - 若接收到的公钥已有记录，则比对记录是否相同，若相同则继续；若不相同，则出现警告信息， 且终止登录。这是客户端的自我保护功能，避免服务器是被别人伪装的。
-
-如：删除原有服务器的系统公钥，重新启动 ssh 让公钥更新
-
-```bash
-$ rm  /etc/ssh/ssh_host*
-$ /etc/init.d/sshd restart
-```
+- 服务器重装/换 IP 后公钥变了导致连不上时，用 `ssh-keygen -R hostname` 删除旧记录即可
 
 在客户端进行登录：
 
@@ -89,7 +78,7 @@ $ /etc/init.d/sshd restart
 $ ssh root@服务器IP或地址
 ```
 
-#### 免密登录
+### 免密登录
 
 具体步骤：
 
@@ -97,11 +86,15 @@ $ ssh root@服务器IP或地址
 - 客户端私钥档案保存：将 Private Key 放在 Client 上面的home目录，即 `$HOME/.ssh/` ， 且要注意权限
 - 公钥放置于服务器端的正确目录与文件名下：将Public Key 放在任何一个你想要用来登入的服务器端的某 User 的home目录内之 `.ssh`/ 里面的认证档案`authorized_keys`即可完成整个程序
 
-##### 客户端秘钥生成
+#### 客户端密钥生成
 
 ```bash
-$ ssh-keygen [-t rsa|dsa]  <==可选rsa或dsa 
-$ ssh-keygen   <==用预设的方法建立密钥
+# -t 指定算法。dsa 已废弃(OpenSSH 7.0 起默认禁用)；现代推荐 ed25519，兼容性差的老设备再退回 rsa
+$ ssh-keygen -t ed25519
+# rsa 需要指定足够长度
+$ ssh-keygen -t rsa -b 4096
+# 不加参数则使用默认算法，交互式提示保存路径与口令
+$ ssh-keygen
 ```
 
 查看
@@ -123,27 +116,77 @@ total 4
 
 ~/.ssh/目录必须要是700的权限才行，id_rsa的必须要是-rw-------且属于自己
 
-##### 公钥上传到服务器
+#### 公钥上传到服务器
+
+最方便的方式是一条 `ssh-copy-id`（自动完成上传、追加到 authorized_keys、设置权限）：
+
+```bash
+$ ssh-copy-id -i ~/.ssh/id_ed25519.pub user@服务器IP
+```
+
+手动方式则先用 scp 上传：
 
 ```bash
 $ scp ~/.ssh/id_rsa.pub zj@zhengjing.life:~ 
 ```
 
-##### 上传的公钥放到正确的目录下
+#### 上传的公钥放到正确的目录下
 
 > `/etc/ssh/sshd_config`的AuthorizedKeysFile属性用于指定公钥文件放置的位置
 
-```bash 
-#在~/.ssh/目录下创建authorized_keys文件
-$touch  authorized_keys 
-$chmod 644 authorized_keys
+```bash 
+#在~/.ssh/目录下创建authorized_keys文件，并追加公钥内容
+$ touch authorized_keys 
+$ chmod 644 authorized_keys
+$ cat id_rsa.pub >> authorized_keys
 ```
 
 id_rsa.pub复制到远程主机对应账号下的.ssh/authorized_keys
 
-### 配置
+## 客户端配置 ~/.ssh/config
 
-#### 配置新的连接秘钥
+将常用的连接参数写在客户端的 `~/.ssh/config` 里，之后 `ssh 别名` 一条命令直连：
+
+```bash
+Host myserver
+    HostName 192.168.1.100
+    User root
+    Port 22
+    IdentityFile ~/.ssh/id_ed25519
+    ServerAliveInterval 60   # 每60秒发一次心跳，防止空闲断连
+```
+
+```bash
+$ ssh myserver   # 等价于 ssh -i ~/.ssh/id_ed25519 -p 22 root@192.168.1.100
+$ scp file myserver:/tmp/
+```
+
+## 端口转发
+
+```bash
+#本地转发 -L：把本机 8080 的流量经 ssh 服务器转到目标的 80
+#访问本机 http://localhost:8080 等于访问远程的 localhost:80
+$ ssh -L 8080:localhost:80 user@host
+
+#远程转发 -R：把远程主机的 9000 端口转发到本机的 3000（内网穿透常用）
+$ ssh -R 9000:localhost:3000 user@host
+
+#动态转发 -D：在本机 1080 建立 SOCKS 代理
+$ ssh -D 1080 user@host
+```
+
+## ssh-agent 免口令重复输入
+
+私钥设置了口令(passphrase)时，agent 可以缓存口令：
+
+```bash
+$ eval $(ssh-agent)
+$ ssh-add ~/.ssh/id_ed25519
+```
+
+## 配置
+
+### 配置新的连接密钥
 
 ```bash
 $ rm /etc/ssh/ssh_host*   <==删除
@@ -184,7 +227,7 @@ root@localhost's password:
 # 如上所示，不会问你yes 或no 啦！直接会写入~/.ssh/known_hosts 当中！
 ```
 
-#### 配置参数
+### 配置参数
 
 所有的 sshd 服务器详细设定位于`/etc/ssh/sshd_config` 
 
@@ -199,9 +242,9 @@ root@localhost's password:
 # SSH预设使用22这个port，也可以使用多个port，即重复使用port这个设定项目！
 # 例如想要开放sshd 在22 与443 ，则多加一行内容为：『 Port 443 』
 
-Protocol 2 
-#选择的SSH协定版本，可以是1也可以是2 ，CentOS 5.x预设是仅支援V2。
-# 如果想要支援旧版V1 ，就得要使用『 Protocol 2,1 』才行。
+# Protocol 2 
+#选择的SSH协定版本。SSH version 1 已被废弃，OpenSSH 7.6 起完全移除 v1 支持，
+# 该配置项也已删除，新版无需也无法设置
 
 # ListenAddress 0.0.0.0 
 #监听,如：你有两个IP，分别是192.168.1.100及192.168.100.254，假设你只想要让192.168.1.100 可以监听sshd ，那就这样写：『 ListenAddress 192.168.1.100 』预设值是监听所有介面的SSH 要求
@@ -310,10 +353,11 @@ X11Forwarding yes
 # 在这个情况下，任何一端死掉后，SSH可以立刻知道！而不会有僵尸程序的发生！
 # 但如果你的网路或路由器常常不稳定，那么可以设定为no！
 
-UsePrivilegeSeparation yes 
+# UsePrivilegeSeparation yes 
 #是否使用权限较低的程序来提供使用者操作。我们知道sshd启动在port 22 ，
 # 因此启动的程序是属于root 的身份。那么当student 登入后，这个设定值
 # 会让sshd 产生一个属于sutdent 的sshd 程序来使用，对系统较安全
+# 注：权限分离现已强制开启，该选项已从新版 OpenSSH 中移除
 
 MaxStartups 10 
 #同时允许几个尚未登入的连线？当我们连上SSH ，但是尚未输入密码时，
@@ -340,7 +384,7 @@ Subsystem sftp /usr/lib/ssh/sftp-server
 ```
 
 
-### sftp、scp
+## sftp、scp
 
 - 文件传输
 
@@ -352,7 +396,7 @@ $ sftp> put /etc/hosts    <==上传该文件
 Uploading /etc/hosts to /home/root/hosts
 /etc/hosts 100% 243 0.2KB/s 00:00
 
-$ sftt> lcd /tmp          <==切换本机目录到/tmp 
+$ sftp> lcd /tmp          <==切换本机目录到/tmp 
 $ sftp> lpwd              <==查看本机所在目录
 Local working directory: /tmp
 $ sftp> get .bashrc       <==下载该文件到本地

@@ -1,4 +1,4 @@
-### gradleCompile
+## gradleCompile
 
 ```shell
 #!/usr/bin/env bash
@@ -147,7 +147,7 @@ if [ -d $temp_dir ];then
 fi
 ```
 
-### 日志
+## 日志
 
 ```shell
 RedPrint(){

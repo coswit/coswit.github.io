@@ -1,6 +1,6 @@
 ## 文件属性
 
-<img src="./Linux基础/images/linux文件权限.png" alt="img" style="zoom:60%;" />
+<img src="./Linux基础/images/linux-file-permission.png" alt="img" style="zoom:60%;" />
 
 - 第一个字符代表这个文件是“目录、文件或链接文件等等”:
 
@@ -17,7 +17,7 @@
 - [ r ]代表可读（read）4、[ w ]代表可写（write）2、[ x ]代表可执行（execute）1、[-]无权限0
 
 
-```
+```text
  [-]     [rwx]       [r-x]          [r--]  
 [类型]  [拥有者权限] [组账号权限]  [其他账号权限] 
 ```
@@ -28,11 +28,11 @@ rwx = 4+2+1 = 7
 --- = 0+0+0 = 0
 ```
 
-##  目录配置
+## 目录配置
 
 <img src="./Linux基础/images/linux-catalog.png" alt="image" style="zoom:40%;" />
 
-Filesystem Hierarchy Standard (FHS):FSH依据文件系统使用的频繁与否与是否允许使用者随意更动， 而将目录定义成为四种交互作用的形态
+Filesystem Hierarchy Standard (FHS)：FHS依据文件系统使用的频繁与否与是否允许使用者随意更动， 而将目录定义成为四种交互作用的形态
 
 |                    | 可分享的(shareable)        | 不可分享的(unshareable) |
 | ------------------ | -------------------------- | ----------------------- |
@@ -122,7 +122,7 @@ cp 源(source)  目标(destination)
 -r  ：递归复制
 
 #复制前询问
-$cp -i ~/.bashrc /tmp/bashrc
+$ cp -i ~/.bashrc /tmp/bashrc
 
 # -a将文件的所有特性一同复制，相当于 -pdr
 $ cp -a /var/log/wtmp wtmp_2
@@ -192,7 +192,7 @@ $ cat -A /etc/xinetd.conf
 
 一页一页的显示文件内容
 
-```
+```text
 空格：下翻一页；
 Enter ：代表向下翻『一行』；
 /字串：查询对应字串
@@ -205,6 +205,15 @@ b 或 [ctrl]-b ：回翻页
 
 与 more 类似，但是比 more 更好的是，他可以往前翻页！
 
+```shell
+空格     ：下翻一页；
+b 或 Ctrl+b ：回翻页；
+/字串    ：向下查询对应字串，n 下一个匹配，N 上一个匹配；
+g/G      ：跳到文件开头/结尾；
+v        ：调用默认编辑器编辑当前文件；
+q        ：退出
+```
+
 ### head 
 
 只看头几行
@@ -212,30 +221,36 @@ b 或 [ctrl]-b ：回翻页
 ```shell
 # 默认显示前面十行！-n 可以指定行数
 $ head -n 20 /etc/man.config
+# -c 指定字节数
+$ head -c 100 file.bin
 ```
 
 ### tail 
 
 ```shell
-# 默认最后10行 -n 指定最后几行； -n +k 从k行开始输出
+# 默认最后10行 -n 指定最后几行；-n +k 从k行开始输出
 adb devices | tail -n +2
+# -f 持续输出新增内容（跟踪日志常用），Ctrl+C 退出
+$ tail -f app.log
+# -F 在文件被轮转(重命名/重建)后仍继续跟踪，比 -f 更可靠
+$ tail -F app.log
 ```
 
 ### od   
 
-以二进位的方式读取文件内容，非存文本文件
+以二进位的方式读取文件内容，非纯文本文件
 
 ### file
 
 查看文件类型
 
-### 搜索
+## 搜索
 
 ### whereis (寻找特定文件)
 
 ```shell
 -b    :只找 binary 格式的文件
--m    : manual，寻找指定路径下的文件
+-m    : 只找在说明文件 manual 路径下的文件
 -s    :只找 source 来源文件
 -u    :搜寻不在上述三个项目当中的其他特殊文件
 ```
@@ -261,8 +276,28 @@ $ sort -n file.txt
 $ sort -r file.txt
 #合并两个已排序过的文件
 $ sort -m sorted1 sorted2
+#去重（等价于 sort file | uniq）
+$ sort -u file.txt
+#-t 指定分隔符，-k 指定按第几列排序（按第2列数字逆序）
+$ sort -t ':' -k 2 -nr file.txt
+#-o 将结果写入文件（重定向到原文件时必须用 -o）
+$ sort file.txt -o file.txt
+
 #找出排序文档中的不重复行
 $ sort file1.txt file2.txt | uniq
+```
+
+### uniq
+
+去除**相邻**的重复行，一般与 sort 配合使用：
+
+```shell
+#-c 在每行前标注出现次数
+$ sort access.log | uniq -c
+#-d 只显示重复的行，-u 只显示出现一次的行
+$ sort access.log | uniq -d
+#统计访问次数最多的前10个 IP
+$ sort access.log | uniq -c | sort -rn | head -n 10
 ```
 
 ## 字符串替换tr
@@ -280,7 +315,8 @@ hello who is this
 
 ```shell
 mount -t type device directory
-umount directory device
+#umount 后面接设备名或挂载点之一即可
+umount [device | directory]
 ```
 
 如：
@@ -318,7 +354,8 @@ Filesystem      Size  Used Avail Use% Mounted on
 #统计当前目录的大小
 $ du -sh
 #统计当前目录下的所有文件大小，包含隐藏文件，并按大小排序
-$ du -sh * .* | sort -rh
+#（.* 会包含 . 与 ..，用 .[!.]* 只匹配隐藏文件）
+$ du -sh * .[!.]* 2>/dev/null | sort -rh
 #统计当前目录下一级子目录，并排序
 $ du -h --max-depth=1 | sort
 ```
@@ -330,7 +367,7 @@ $ du -h --max-depth=1 | sort
 ```shell
 #解压后会将原gz文件删除, decompress
 $ gzip -d file.gz
-#保留原文件keep
+#解压并保留原gz文件 keep
 $ gzip -dk file.gz
 #gunzip 等同于 gzip -d
 $ gunzip file.gz
@@ -338,14 +375,13 @@ $ gunzip file.gz
 #解压到指定目录
 $ for f in *.gz; do gunzip -c "$f" > ./test/"${f%.*}" ; done
 
-#压缩,保留原文件
-$ gzip -dk file.gz
-$ gunzip -k file.gz
+#压缩，保留原文件
+$ gzip -k file
 ```
 
 ### tar文件
 
-tar命令只归档，不压缩。起选项支持压缩
+tar命令只归档，不压缩。其选项支持压缩
 
 ```shell
 -c, -t, -x 不可同时出现在一串命令行中。
@@ -363,14 +399,16 @@ tar命令只归档，不压缩。起选项支持压缩
 -f filename：-f 后面要立刻接要被处理的文件名, -f 可以单独写一个选项
 -C 目录，解压缩时指定特定目录
 
-#归档
-$ tar cvf file.tar
+#归档（将 file1、file2 打包为 file.tar）
+$ tar cvf file.tar file1 file2
 #解包
 $ tar xvf file.tar
 
-#压缩
-$ tar zxvf file.tar.gz fileName
+#压缩（-z 经 gzip 压缩为 .tar.gz）
+$ tar zcvf file.tar.gz fileName
 #解压
 $ tar zxvf file.tar.gz
+#解压到指定目录
+$ tar zxvf file.tar.gz -C /tmp
 ```
 

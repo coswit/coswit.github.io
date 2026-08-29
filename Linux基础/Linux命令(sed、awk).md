@@ -1,5 +1,3 @@
-
-
 ## sed
 
 stream editor，不同于交互式文本编辑（如vim），流编辑器会在处理数据前会基于预先提供的规则来编辑数据流。
@@ -7,8 +5,8 @@ stream editor，不同于交互式文本编辑（如vim），流编辑器会在�
 |   选项    | 描述                                     |
 | :-------: | :--------------------------------------- |
 | -e script | 在已有命令上加上script命令，执行多个命令 |
-|  -f file  | 指定文件                                 |
-|    -n     | 使用print完成输出                        |
+|  -f file  | 从指定文件读取编辑命令                   |
+|    -n     | 抑制默认输出，配合 p 命令只打印需要的行  |
 
 ### 行命令
 
@@ -51,7 +49,7 @@ $ sed -n '{1!G; h; $p}' data1.txt
   - p：print the result if match
   - n：number，只替换第n个匹配
   - w file：替换结果写入文件
-  - e：excute PatSpace to PatSpace，执行替换后的命令
+  - e：execute，将替换后模式空间的内容当作 shell 命令执行
 
 ```shell 
 # 替换
@@ -73,7 +71,7 @@ $ sed '/zhengjing/s/zsh/tsh/' /etc/passwd
 行命令：
 
 ```shell
-# 将包含first字串的所上行和下一行合并为一行
+# 将包含first字串的所在行和下一行合并为一行
 sed '/first/{N; s/\n/ /}' data1.txt
 
 $ cat data2.txt
@@ -87,7 +85,7 @@ On Tuesday, the Linux Desktop User's group meeting will be held.
 All System Administrators should attend.
 
 # 解决上面问题，将单行命令放在N命令前面，将多行命令放在N命令后面
-$ 's/System Administrator/Desktop User/
+$ sed 's/System Administrator/Desktop User/
 > N
 > s/System\nAdministrator/Desktop\nUser/' data2.txt
 
@@ -121,7 +119,7 @@ $ sed '/target/{n ; d}' data.txt
 # 多行删除时，d会将所在的行都删掉
 $ sed 'N; /System\nAdministrator/d' data2.txt
 # D则会删除到换行符就停止，不会删除到下一行
-$ sed 'N; /System\nAdministrator/d' data2.txt
+$ sed 'N; /System\nAdministrator/D' data2.txt
 ```
 
 ### 插入i、增加a、修改c
@@ -270,11 +268,11 @@ $ gawk options program file
 |     选项     | 描述                                                      |
 | :----------: | --------------------------------------------------------- |
 |    -F fs     | 指定字段分隔符，默认分格符为空格或制表符，field-separator |
-|   -f file    | 从指定文件中读取                                          |
+|   -f file    | 从指定文件中读取程序脚本                                  |
 | -v var=value | 定义变量及默认值                                          |
-|    -mf N     | 指定要处理数据文件中的最大字段数                          |
-|    -mr N     | 指定数据中的最大数据行数                                  |
-|  -W keyword  | 指定兼容模式或警告等级                                    |
+|  -W keyword  | 指定兼容模式或警告等级（gawk 扩展，基本用不到）           |
+
+（旧资料中的 `-mf N`/`-mr N` 用于指定最大字段数/记录数，是早期 gawk 的扩展选项，现代版本已无意义。）
 
 ### 变量
 
@@ -302,5 +300,128 @@ $ echo "1234567890" | gawk 'BEGIN{FS="3|8"; OFS="-"} {print $1,$2,$3,$4}'
 
 $ echo "1234567890" | gawk 'BEGIN{FIELDWIDTHS="2 3 2"} {print $1,$2,$3,$4}'
 12 345 67
+```
+
+### 内置变量
+
+（FS/OFS/FIELDWIDTHS 见上节，此处不再重复）
+
+|     变量      | 描述                                       |
+| :-----------: | ------------------------------------------ |
+|    RS/ORS     | 输入/输出记录（行）分隔符                  |
+|      NF       | 当前行的字段数量，`$NF` 表示最后一个字段   |
+|      NR       | 当前行号（多文件时累计）                   |
+|     FNR       | 当前文件内的行号（多文件时各自计数）       |
+|   FILENAME    | 当前输入文件名                             |
+|   ARGC/ARGV   | 命令行参数个数/参数数组                    |
+
+```shell
+#打印行号与字段数
+$ gawk -F: '{print NR, NF, $1}' /etc/passwd
+
+#输出每行的最后一个字段
+$ gawk -F: '{print $NF}' /etc/passwd
+```
+
+### 匹配模式
+
+awk 程序结构为 `pattern { action }`，pattern 可省略（对所有行执行）：
+
+```shell
+#正则匹配行：/regex/
+$ gawk -F: '/^root/{print $1, $7}' /etc/passwd
+
+#关系匹配：$n ~ /regex/ 与 $n !~ /regex/
+$ gawk -F: '$7 ~ /nologin/{print $1}' /etc/passwd
+
+#数字比较
+$ gawk -F: '$3 >= 1000 {print $1}' /etc/passwd
+
+#BEGIN/END：处理数据前/后执行，常用于打印表头与汇总
+$ gawk 'BEGIN{print "开始"} {print} END{print "共" NR "行"}' data.txt
+```
+
+### printf 格式化
+
+```shell
+$ gawk 'BEGIN{
+> printf "%-10s %s\n", "名称", "值"
+> printf "%-10s %d\n", "count", 42
+> }'
+名称       值
+count      42
+```
+
+常用格式符：`%d` 整数、`%f` 浮点（`%.2f` 保留两位）、`%s` 字符串、`%c` 字符，`-` 左对齐，默认右对齐。
+
+### 流程控制
+
+```shell
+#if-else
+$ gawk -F: '{if ($3 < 1000) print $1" 是系统用户"; else print $1" 是普通用户"}' /etc/passwd
+
+#while
+$ gawk '{i = 1; while (i <= NF) {print $i; i = i + 1}}' data.txt
+
+#for
+$ gawk -F: '{for (i = 1; i <= NF; i++) print i": "$i}' /etc/passwd
+```
+
+### 数组
+
+awk 的数组是关联数组（associative array），下标可以是任意字符串，常用于统计计数：
+
+```shell
+#统计第1列每个值出现的次数
+$ gawk '{count[$1]++} END{for (key in count) print key, count[key]}' data.txt
+
+#反序遍历
+$ gawk 'BEGIN{
+> var["a"] = 1
+> var["b"] = 2
+> for (test in var) print test, var[test]
+> }'
+```
+
+### 字符串函数
+
+|    函数     | 描述                                             |
+| :---------: | ------------------------------------------------ |
+| length(str) | 返回字符串长度                                   |
+| substr(s,p) | 返回 s 从位置 p 开始的后缀（可选长度参数）       |
+| index(s,t)  | 返回 t 在 s 中的起始位置，不含则返回 0          |
+| split(s,a)  | 按 FS 将 s 拆到数组 a，返回元素个数             |
+|  sub(r,s)   | 将当前行中第一个匹配 r 的部分替换为 s           |
+|  gsub(r,s)  | 将当前行中所有匹配 r 的部分替换为 s             |
+
+```shell
+$ echo "Hello World" | gawk '{print length($0)}'
+11
+
+$ echo "2026-08-29" | gawk '{split($0, d, "-"); print d[1]" 年 "d[2]" 月 "d[3]" 日"}'
+2026 年 08 月 29 日
+
+#将 bash 替换为 sh（仅替换每行第一个匹配）
+$ gawk '{sub(/bash/, "sh"); print}' /etc/passwd
+```
+
+### 常用一行式
+
+```shell
+#打印文件第一列的和
+$ gawk '{sum += $1} END{print sum}' data.txt
+
+#统计文件行数（空行除外）
+$ gawk 'NF{count++} END{print count}' data.txt
+
+#打印指定行
+$ gawk 'NR == 5' data.txt
+$ gawk 'NR >= 2 && NR <= 5' data.txt
+
+#字段数大于 4 的行
+$ gawk 'NF > 4' data.txt
+
+#去重（保留第一次出现）
+$ gawk '!seen[$0]++' data.txt
 ```
 

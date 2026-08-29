@@ -1,21 +1,20 @@
-
-
 ## find
 
 ```bash
--iname 区分大小写
+# -name 区分大小写，-iname 忽略大小写
 
 #查找/目录下与passwd名称相关的文件
 $ find / -name passwd
 #列出目录
 $ find . -maxdepth 1 -type d  -print
 #搜寻文件当中含有 SGID 或 SUID 或 SBIT 的属性，7000 就是 ---s--s--t
-$ find / -perm +7000
+# 旧写法 +7000 已废弃，GNU find 推荐用 /7000（任一匹配位）；-7000 则表示全部匹配
+$ find / -perm /7000
 #找出系统中大于1MB 的文件
 $ find / -size +1000k
 
 #-exec后面要执行的命令，{}表示find查找到的内容，执行命令以;结束，需要\转义
-$ find . type f  -exec ls -l {} \;
+$ find . -type f  -exec ls -l {} \;
 ```
 
 与时间有关的选项：共有 -atime, -ctime 与 -mtime ，以 -mtime 说明
@@ -49,7 +48,7 @@ $ find / -nouser
 
 ## xargs
 
-从标准stdin读取参数，然后执行指定命令。xargs默认会执行echo命令，类似于find的-exec。
+从标准输入(stdin)读取参数，然后执行指定命令。xargs默认会执行echo命令，类似于find的-exec。
 
 ```bash
 #从c源码文件中搜索字符串main
@@ -78,7 +77,7 @@ $ ls | xargs rm
 #6 7 8
 
 #会将输入数字分割成多行，每行n个
-$ cat example.txt | -n 4
+$ cat example.txt | xargs -n 4
 # 1 2 3 4
 # 5 6 7 8
 ```
@@ -149,36 +148,37 @@ one two three
 |      参数      | 作用               |
 | :------------: | ------------------ |
 |       -i       | 忽略大小写         |
-|       -v       | 反选               |
+|       -v       | 反选（输出不匹配的行） |
 |     -H/-h      | 显示/隐藏文件名    |
 |     -R/-r      | 递归搜索           |
-|       -o       | 只输出到匹配的文本 |
+|       -o       | 只输出匹配到的文本 |
 |       -e       | 匹配多个模式       |
 | --color=always | 高亮关键词         |
-|    -A/-B n     | 显示匹配 后/前 n行 |
-|      -C n      | 显示匹配前后n行    |
+|    -A/-B n     | 显示匹配行之后/之前 n 行    |
+|      -C n      | 显示匹配行前后 n 行    |
 |       -n       | 显示所在行数       |
-|       -c       | 文本匹配到的次数   |
+|       -c       | 统计每个文件匹配到的行数   |
 
 ```bash
-#匹配特定模式,默认使用基础正则表达式，可加-E进行扩展,或者使用egre
+#匹配特定模式,默认使用基础正则表达式，可加-E进行扩展,或者使用egrep
+# egrep/fgrep 已被标记废弃，推荐统一使用 grep -E / grep -F
 $ grep  -E "patten" filename
-$ egrep "[a-z]+" filename
+$ grep -E "[a-z]+" filename
 
 #-e 匹配多个模式
 $ grep -e "pattern1" -e "pattern2"
 
 #在多个文件中搜索，也可匹配正则
 $ grep "match_text" file1 file2
-$ egrep -i "fatal|AndroidRuntime"  -h ./logs/android_logs/applog/applog*
+$ grep -E -i "fatal|AndroidRuntime"  -h ./logs/android_logs/applog/applog*
 
 #使用-o只输出到匹配的文本
-$ echo this is a line. | egrep -o "[a-z]+\."
+$ echo this is a line. | grep -E -o "[a-z]+\."
 line.
 
 #-v输出不匹配的行
 $ grep -v match_pattern file
-$ adb shell logcat | egrep  -v "removeDirectiveWithoutDialogFinished" | egrep "SmartSummaryService"
+$ adb shell logcat | grep -E -v "removeDirectiveWithoutDialogFinished" | grep -E "SmartSummaryService"
 
 #递归搜索多个文件
 $ grep "text" . -R -n
@@ -187,7 +187,7 @@ $ grep "test_function()" . -R -n
 $ find . -type f | xargs grep "test_function()" 
 
 #使用通配符include或exclude指定文件
-$ grep "main()" . -r --inclue *.{c,cpp} --exclude "README" -exclude-dir build
+$ grep "main()" . -r --include=*.{c,cpp} --exclude="README" --exclude-dir=build
 
 #打印匹配后的之前或之后的行
 $ grep -A3 "Exception" log.txt
@@ -239,7 +239,7 @@ split -t '|' file.csv
 
 | 字段名  | 含义说明                                                     |
 | ------- | ------------------------------------------------------------ |
-| `USER`  | 户名或 UID（如 `root`、`system`、`u0_a123`，`u0_aXX` 为普通应用 UID） |
+| `USER`  | 用户名或 UID（如 `root`、`system`、`u0_a123`，`u0_aXX` 为普通应用 UID） |
 | `PID`   | 进程ID                                                       |
 | `PPID`  | 父进程 ID                                                    |
 | `VSZ`   | 进程使用的虚拟内存大小（单位：KB）。                         |
@@ -248,7 +248,7 @@ split -t '|' file.csv
 | `PC`    | 进程当前执行的程序计数器（内存地址）。                       |
 | `NAME`  | 进程名称                                                     |
 | `STAT`  | 进程状态（与 Linux 一致，如 `R` 运行、`S` 睡眠、`Z` 僵尸等，`-f` 选项时显示）。 |
-| `TID`   | 线和ID                                                       |
+| `TID`   | 线程ID                                                       |
 
 参数：
 

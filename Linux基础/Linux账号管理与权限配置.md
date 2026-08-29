@@ -2,9 +2,11 @@
 
 账号与身份使用者记录在`/etc/passwd`文件内，密码则是记录在`/etc/shadow`，组名都纪录在`/etc/group`。
 
-每个用户在登入系统时都是通过ID来标识的，一般至少包含两个ID：UID（User ID）、ID（Group ID)，系统会依据 `/etc/passwd` 与 `/etc/group`找到对应的ID。
+每个用户在登入系统时都是通过ID来标识的，一般至少包含两个ID：UID（User ID）、GID（Group ID)，系统会依据 `/etc/passwd` 与 `/etc/group`找到对应的ID。
 
 UID：0是系统管理员，1-499保留给系统使用，500-65535给一般使用者用
+
+> 时效注解：以上为较早发行版（如 CentOS 6）的划分。CentOS 7 及多数现代发行版中系统用户范围为 1-999，普通用户从 1000 开始。
 
 ```shell
 #/etc/passwd
@@ -20,14 +22,14 @@ zhengjing:$6$:19667:0:99999:7:::
 
 `/etc/passwd` ：账号名称（对应UID）：口令：UID ：GID ：用户信息说明栏 ：家目录 ：shell。
 
-/etc/group ：组名：群组口令：GID：改组支持的账号名称
+/etc/group ：组名：群组口令：GID：该组支持的账号名称
 
 `/etc/shadow` ：账号名称 ：口令：最近口令变动日期 ：口令不可变动天数（基于前述日期） ：口令需要重新变更天数 ：口令需要变更期限前的警告天数 ： 口令过期后的账号宽限时间(口令失效日) ：账号失效日期 ：保留
 
 登录过程：
 
 1. 在`/etc/passwd` 里查找账号，如果有，则将该账号对应的 UID 与 GID (在 `/etc/group` 中) 读出来，该账号的**home**目录与 shell 配置也一并读出
-2. 核对口令表，入 `/etc/shadow` 里面找出对应的账号与 UID，然后核对一下你刚刚输入的口令与里面的口令是否相符
+2. 核对口令表，到 `/etc/shadow` 里面找出对应的账号与 UID，然后核对一下你刚刚输入的口令与里面的口令是否相符
 3. 一切相符则进入shell管控
 
 ## 文件权限
@@ -48,8 +50,8 @@ $ ls -l
 范例：将install.log的拥有者与群组改回为root：
 #owner和群组都改为root
 $ chown root:root file
-#将owner改为root，组为shared
-$ chown root.shared file
+#将owner改为root，组为shared（老写法用 . 分隔，推荐用 : ）
+$ chown root:shared file
 ```
 
 `chmod` ：改变文件的权限, SUID, SGID, SBIT等等的特性，-R : 递归(recursive)变更，
@@ -101,7 +103,7 @@ $ umask 002
 
 ## 隐藏权限
 
-chattr:设置文件的隐藏数学
+chattr:设置文件的隐藏属性
 
 > +:增加一个特殊参数，-：删除
 > i:让文件不能被删除，以让一个文件无法被更动
@@ -175,6 +177,8 @@ $ ls -l /usr/bin/passwd
 -u 指定UID
 -d 指定home目录
 -g 指定组名
+-G 指定附加组
+-m 创建家目录（Debian/Ubuntu 默认不创建，需要显式加上）
 
 $ useradd username
 ```
@@ -184,6 +188,18 @@ $ useradd username
 - 在 /etc/group 里面加入一个与账号名称一模一样的组名；
 - 在 /home 底下创建一个与账号同名的目录作为用户家目录，且权限为 700
 
+### 修改 usermod
+
+```shell
+#修改用户的主组
+$ usermod -g group username
+#-aG 将用户加入附加组（-a 必须配合 -G，否则会覆盖已有的附加组）
+$ usermod -aG docker username
+#锁定/解锁账号
+$ usermod -L username
+$ usermod -U username
+```
+
 ### 删除
 
 ```shell
@@ -191,7 +207,7 @@ $ useradd username
  $ userdel -r username
 ```
 
-### 修改
+### 口令与信息查询 passwd / finger / id
 
 - passwd
 
@@ -236,6 +252,9 @@ uid=0(root) gid=0(root) groups=0(root)
 #离开root
 $ exit
 
+#注意 su 与 su - 的区别：
+# su 不加 - 保留当前用户的环境变量与工作目录（non-login shell）
+# su - 加 - 会重新加载目标用户的环境（login shell），更干净彻底，推荐
 $ su - username
 ```
 
@@ -256,10 +275,20 @@ $ sudo -u sshd touch /tmp/mysshd
 
 - visudo 与 /etc/sudoers
 
+`/etc/sudoers` 不要直接用 vim 编辑，应使用 `visudo`（保存时会做语法检查，写错不至于把 sudo 弄坏）。规则格式：
+
+```shell
+用户  主机=(可切换的身份)  可执行的命令
+```
+
 ```shell
 $ visudo
 #会进入文档编辑
 ...
 root    ALL=(ALL)       ALL 
+#允许 wheel 组的所有用户使用 sudo（% 开头表示群组）
+%wheel  ALL=(ALL)       ALL
+#dev 组用户以 root 身份执行 systemctl 时免密
+%dev    ALL=(root)      NOPASSWD: /bin/systemctl
 ....
 ```

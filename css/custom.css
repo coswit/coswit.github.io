@@ -633,3 +633,101 @@ html.dark .app-loading-spinner {
 @media (prefers-reduced-motion: reduce) {
     .app-loading-spinner { animation-duration: 2s; }
 }
+
+/*============================================
+ * Mermaid 图 — 页内适应容器宽度 + 点击放大
+ * 页内保持 useMaxWidth 默认行为（缩到容器宽度，
+ * 版面紧凑）；横向滚动仅作个别溢出图的兜底。
+ * 点击图进入全屏灯箱，以 100% 自然尺寸浏览
+ *============================================*/
+.markdown-section div.mermaid {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.markdown-section div.mermaid svg {
+    display: block;
+    margin: 0 auto;      /* 窄于容器的图居中，超宽图靠左滚动 */
+    max-width: none;
+    cursor: zoom-in;
+}
+
+/* 正文图片：点击进入灯箱（链接内图片与 .no-zoom 除外） */
+.markdown-section img:not(.no-zoom) {
+    cursor: zoom-in;
+}
+
+/* —— 灯箱（全屏查看 mermaid 图） —— */
+.mermaid-lightbox {
+    position: fixed;
+    top: 0; right: 0; bottom: 0; left: 0;
+    z-index: 1000;
+    background: rgba(0, 0, 0, 0.85);
+    display: none;
+    flex-direction: column;
+}
+.mermaid-lightbox.open { display: flex; }
+
+.mermaid-lightbox-stage {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+    touch-action: none;   /* 拖动/捏合交给脚本，屏蔽浏览器默认手势 */
+    cursor: grab;
+    user-select: none;
+}
+.mermaid-lightbox-stage.dragging { cursor: grabbing; }
+
+/* 图的画布：跟随站点明暗背景色，避免浅色主题的图贴在黑底上看不清 */
+.mermaid-lightbox-box {
+    position: absolute;
+    left: 0;
+    top: 0;
+    transform-origin: 0 0;
+    background: var(--vp-c-bg);
+    border-radius: 8px;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+    will-change: transform;
+}
+
+.mermaid-lightbox-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 13px;
+}
+.mermaid-lightbox-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    padding: 4px 6px;
+}
+.mermaid-lightbox-btn {
+    min-width: 30px;
+    height: 30px;
+    padding: 0 8px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+}
+.mermaid-lightbox-btn:hover { background: rgba(255, 255, 255, 0.15); }
+.mermaid-lightbox-bar .mermaid-lightbox-btn:last-child { font-size: 20px; }
+.mermaid-lightbox-zoom {
+    min-width: 44px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+    color: rgba(255, 255, 255, 0.75);
+}
+.mermaid-lightbox-hint {
+    flex: 1;
+    text-align: center;
+    color: rgba(255, 255, 255, 0.45);
+}

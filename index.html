@@ -167,6 +167,17 @@
         });
       },
 
+      // 正文图片挂“点击放大”悬浮提示（与 mermaid 图共用灯箱）；
+      // 链接内的图片保留跳转行为、.no-zoom 明确排除，都不加提示
+      function(hook, vm) {
+        hook.doneEach(function() {
+          document.querySelectorAll('.markdown-section img').forEach(function(img) {
+            if (img.title || img.closest('a') || img.classList.contains('no-zoom')) return;
+            img.title = '点击放大：滚轮缩放 · 拖动平移 · 双击复位';
+          });
+        });
+      },
+
       function(hook, vm) {
         hook.beforeEach(function(content) {
           // 预处理中文加粗问题
@@ -496,10 +507,26 @@
     return document.documentElement.classList.contains('dark') ? 'dark' : 'default';
   }
 
+  // 页内图保持 mermaid 默认的 useMaxWidth:true（缩到容器宽度，版面紧凑），
+  // 不再另做压缩/放大；需要看清细节时点击图打开灯箱，
+  // 灯箱按 viewBox 恢复自然尺寸（100%）浏览，可缩放/平移
+  function mermaidInitConfig() {
+    return {
+      startOnLoad: false,   // 避免与上面的 mermaid.run 重复渲染
+      theme: currentMermaidTheme(),
+      suppressErrors: true
+    };
+  }
+
   var __mermaidLoading = false;
 
   function runMermaid() {
-    mermaid.run({ querySelector: 'div.mermaid', suppressErrors: true }).catch(function () {});
+    mermaid.run({ querySelector: 'div.mermaid', suppressErrors: true }).then(function () {
+      // 渲染成功的图加悬浮提示，告知可点击放大
+      document.querySelectorAll('div.mermaid').forEach(function (el) {
+        if (el.querySelector('svg')) el.title = '点击放大：滚轮缩放 · 拖动平移 · 双击复位';
+      });
+    }).catch(function () {});
   }
 
   function loadMermaidThenRun() {
@@ -510,12 +537,7 @@
     s.src = './vendor/mermaid.min.js';
     s.onload = function () {
       __mermaidLoading = false;
-      mermaid.initialize({
-        startOnLoad: false,   // 避免与上面的 mermaid.run 重复渲染
-        theme: currentMermaidTheme(),
-        flowchart: { useMaxWidth: true },
-        suppressErrors: true
-      });
+      mermaid.initialize(mermaidInitConfig());
       runMermaid();
     };
     s.onerror = function () { __mermaidLoading = false; };
@@ -528,7 +550,7 @@
     if (!window.mermaid) return;
     var els = document.querySelectorAll('div.mermaid');
     if (!els.length) return;
-    mermaid.initialize({ theme: currentMermaidTheme(), suppressErrors: true });
+    mermaid.initialize(mermaidInitConfig());
     els.forEach(function (el) {
       var src = el.__mermaidSrc !== undefined ? el.__mermaidSrc : el.textContent;
       if (!src || !src.trim()) return;
@@ -538,6 +560,272 @@
     });
     mermaid.run({ querySelector: 'div.mermaid', suppressErrors: true }).catch(function () {});
   };
+
+  // —— 图片 / mermaid 灯箱：点击整屏放大阅读（滚轮缩放 / 拖动平移 / 双指捏合 / 双击复位）——
+  // 正文图片与 mermaid 图共用同一灯箱（替代 medium-zoom，其只能整体缩放、无法平移/继续缩放）。
+  // 页内一律保持原有大小（图片可能被 zoom/max-width 缩小、mermaid 被压到容器宽度），
+  // 点击后按原始尺寸（图片 naturalWidth、svg viewBox）100% 展示；
+  // svg 需克隆并改写内部 id 引用，避免与页面原图的同 id 元素互相干扰
+  (function () {
+    var overlay = null, stage = null, box = null, zoomLabel = null;
+    var curW = 0, curH = 0;              // 图的自然尺寸（px）
+    var scale = 1, tx = 0, ty = 0;       // box 的 transform 状态
+    var MIN_SCALE = 0.05, MAX_SCALE = 24;
+    var pointers = new Map();            // 指针按下时才进入，支持单指拖动 / 双指捏合
+    var pinch = null, moveDist = 0, downOnEmpty = false;
+    var savedOverflow = '';
+
+    function midOf(a, b)  { return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }; }
+    function distOf(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+
+    // 克隆 svg 并同步改写内部 id 与 url(#…)/href="#…" 引用：
+    // 页面原图携带同批 id，直接克隆会导致引用解析到原图
+    // （切换主题原图被重建后，灯箱里的箭头/渐变会整体失效）
+    function cloneSvg(svg) {
+      var clone = svg.cloneNode(true);
+      var idMap = {};
+      clone.querySelectorAll('[id]').forEach(function (n) {
+        var old = n.getAttribute('id');
+        idMap[old] = old + '-lb';
+        n.setAttribute('id', idMap[old]);
+      });
+      clone.querySelectorAll('*').forEach(function (n) {
+        for (var i = 0; i < n.attributes.length; i++) {
+          var a = n.attributes[i];
+          if (a.value.indexOf('url(#') !== -1) {
+            a.value = a.value.replace(/url\(#([^)'"]+)\)/g, function (m, id) {
+              return idMap[id] ? 'url(#' + idMap[id] + ')' : m;
+            });
+          } else if ((a.name === 'href' || a.name === 'xlink:href') &&
+                     a.value.charAt(0) === '#' && idMap[a.value.slice(1)]) {
+            a.value = '#' + idMap[a.value.slice(1)];
+          }
+        }
+      });
+      return clone;
+    }
+
+    function apply() {
+      box.style.transform = 'translate(' + tx + 'px, ' + ty + 'px) scale(' + scale + ')';
+      zoomLabel.textContent = Math.round(scale * 100) + '%';
+    }
+
+    // 适应屏幕：完整可见（且不超过 100%），居中
+    function fit() {
+      var pad = 64;
+      scale = Math.max(Math.min((stage.clientWidth - pad) / curW,
+                                (stage.clientHeight - pad) / curH, 1), MIN_SCALE);
+      tx = (stage.clientWidth  - curW * scale) / 2;
+      ty = (stage.clientHeight - curH * scale) / 2;
+      apply();
+    }
+
+    // 原始大小（100%）：打开灯箱的默认视图，文字为设计的字号；
+    // 溢出方向对齐起点（横向超宽从左往右读、纵向超高从上往下读），放得下则居中
+    function showActual() {
+      scale = 1;
+      var pad = 32;
+      tx = curW <= stage.clientWidth  ? (stage.clientWidth  - curW) / 2 : pad;
+      ty = curH <= stage.clientHeight ? (stage.clientHeight - curH) / 2 : pad;
+      apply();
+    }
+
+    // 以 stage 内 (cx, cy) 为不动点缩放 factor 倍
+    function zoomAt(cx, cy, factor) {
+      var ns = Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale * factor));
+      var k = ns / scale;
+      tx = cx - (cx - tx) * k;
+      ty = cy - (cy - ty) * k;
+      scale = ns;
+      apply();
+    }
+
+    function stagePoint(e) {
+      var r = stage.getBoundingClientRect();
+      return { x: e.clientX - r.left, y: e.clientY - r.top };
+    }
+
+    function build() {
+      overlay = document.createElement('div');
+      overlay.className = 'mermaid-lightbox';
+
+      stage = document.createElement('div');
+      stage.className = 'mermaid-lightbox-stage';
+      box = document.createElement('div');
+      box.className = 'mermaid-lightbox-box';
+      stage.appendChild(box);
+
+      var bar = document.createElement('div');
+      bar.className = 'mermaid-lightbox-bar';
+      function btn(label, title, fn) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'mermaid-lightbox-btn';
+        b.textContent = label;
+        b.title = title;
+        b.addEventListener('click', fn);
+        return b;
+      }
+      function center() { return { x: stage.clientWidth / 2, y: stage.clientHeight / 2 }; }
+
+      var group = document.createElement('div');
+      group.className = 'mermaid-lightbox-group';
+      zoomLabel = document.createElement('span');
+      zoomLabel.className = 'mermaid-lightbox-zoom';
+      group.appendChild(btn('−', '缩小', function () { var c = center(); zoomAt(c.x, c.y, 1 / 1.25); }));
+      group.appendChild(zoomLabel);
+      group.appendChild(btn('+', '放大', function () { var c = center(); zoomAt(c.x, c.y, 1.25); }));
+      group.appendChild(btn('1:1', '原始大小', showActual));
+      group.appendChild(btn('⤢', '适应屏幕', fit));
+      var hint = document.createElement('span');
+      hint.className = 'mermaid-lightbox-hint';
+      hint.textContent = '滚轮缩放 · 拖动平移 · 双击复位';
+
+      bar.appendChild(group);
+      bar.appendChild(hint);
+      bar.appendChild(btn('×', '关闭 (Esc)', close));
+
+      overlay.appendChild(stage);
+      overlay.appendChild(bar);
+      document.body.appendChild(overlay);
+
+      // —— 交互（全部挂在不会随路由重建的灯箱元素上）——
+      stage.addEventListener('wheel', function (e) {
+        e.preventDefault();
+        // 触控板捏合（ctrl+wheel）事件更密集，用更小的步长，避免缩放过冲
+        var step = e.deltaY < 0 ? (e.ctrlKey ? 1.06 : 1.2) : (e.ctrlKey ? 1 / 1.06 : 1 / 1.2);
+        var p = stagePoint(e);
+        zoomAt(p.x, p.y, step);
+      }, { passive: false });
+
+      stage.addEventListener('pointerdown', function (e) {
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
+        pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        if (pointers.size === 1) {
+          moveDist = 0;
+          downOnEmpty = (e.target === stage);  // 点击空白处（非图上）松开时关闭
+        } else if (pointers.size === 2) {
+          var arr = Array.from(pointers.values());
+          pinch = { mid: midOf(arr[0], arr[1]), dist: distOf(arr[0], arr[1]) };
+        }
+        try { stage.setPointerCapture(e.pointerId); } catch (err) {}
+        stage.classList.add('dragging');
+      });
+
+      stage.addEventListener('pointermove', function (e) {
+        var p = pointers.get(e.pointerId);
+        if (!p) return;
+        var dx = e.clientX - p.x, dy = e.clientY - p.y;
+        p.x = e.clientX; p.y = e.clientY;
+
+        if (pointers.size === 1) {
+          moveDist += Math.abs(dx) + Math.abs(dy);
+          tx += dx; ty += dy;
+          apply();
+        } else if (pointers.size === 2 && pinch) {
+          // 双指：按距离比缩放 + 按中点位移平移
+          var arr = Array.from(pointers.values());
+          var mid = midOf(arr[0], arr[1]), dist = distOf(arr[0], arr[1]);
+          if (pinch.dist > 0) zoomAt(mid.x, mid.y, dist / pinch.dist);
+          tx += mid.x - pinch.mid.x;
+          ty += mid.y - pinch.mid.y;
+          apply();
+          pinch = { mid: mid, dist: dist };
+          moveDist = 9;  // 捏合视为拖动，松手不触发关闭
+        }
+      });
+
+      function release(e) {
+        pointers.delete(e.pointerId);
+        if (pointers.size < 2) pinch = null;
+        if (!pointers.size) stage.classList.remove('dragging');
+        if (e.type === 'pointerup' && downOnEmpty && moveDist < 5) close();
+      }
+      stage.addEventListener('pointerup', release);
+      stage.addEventListener('pointercancel', release);
+
+      stage.addEventListener('dblclick', function (e) { e.preventDefault(); showActual(); });
+    }
+
+    // 页内图被 useMaxWidth 压缩过，自然尺寸从 viewBox 取：
+    // 没有 viewBox 时退回 width/height 属性，最后兜底当前显示尺寸
+    function naturalSize(svg) {
+      var vb = svg.viewBox && svg.viewBox.baseVal;
+      if (vb && vb.width && vb.height) return { w: vb.width, h: vb.height };
+      var w = parseFloat(svg.getAttribute('width')) || 0;
+      var h = parseFloat(svg.getAttribute('height')) || 0;
+      if (w && h) return { w: w, h: h };
+      var r = svg.getBoundingClientRect();
+      return { w: r.width, h: r.height };
+    }
+
+    // mermaid svg 与正文图片共用一个灯箱：
+    // 图片用 naturalWidth/Height 取原始尺寸（页内可能被 zoom/max-width 缩小），
+    // svg 走 viewBox
+    function openContent(node) {
+      if (!overlay) build();
+      pointers.clear();
+      pinch = null;
+      box.innerHTML = '';
+      var el, size;
+      if (node.tagName === 'IMG') {
+        size = {
+          w: node.naturalWidth || node.getBoundingClientRect().width,
+          h: node.naturalHeight || node.getBoundingClientRect().height
+        };
+        el = new Image();
+        el.src = node.currentSrc || node.src;
+        el.alt = node.alt || '';
+        el.draggable = false;
+      } else {
+        size = naturalSize(node);
+        el = cloneSvg(node);
+      }
+      curW = Math.max(1, Math.round(size.w));
+      curH = Math.max(1, Math.round(size.h));
+      el.style.maxWidth = 'none';
+      el.style.width = curW + 'px';
+      el.style.height = curH + 'px';
+      el.style.display = 'block';
+      box.appendChild(el);
+      overlay.classList.add('open');
+      savedOverflow = document.documentElement.style.overflow;
+      document.documentElement.style.overflow = 'hidden';  // 锁住页面滚动
+      requestAnimationFrame(showActual);  // 灯箱显示后再量尺寸，默认 100% 原始大小
+    }
+
+    function close() {
+      if (!overlay || !overlay.classList.contains('open')) return;
+      overlay.classList.remove('open');
+      box.innerHTML = '';
+      pointers.clear();
+      pinch = null;
+      document.documentElement.style.overflow = savedOverflow;
+    }
+    window.__closeMermaidLightbox = close;
+
+    window.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') close();
+    });
+    window.addEventListener('hashchange', close);  // 灯箱开着时切换页面直接关闭
+
+    // 事件委托：docsify 每次路由都重建正文，挂在 document 上不用反复绑
+    document.addEventListener('click', function (e) {
+      var t = e.target;
+      if (!t || !t.closest) return;
+      // 正文图片：未包在链接里（链接图保留跳转）、未标记 .no-zoom 的才开灯箱
+      var img = t.closest('.markdown-section img');
+      if (img && !img.closest('a') && !img.classList.contains('no-zoom')) {
+        openContent(img);
+        return;
+      }
+      var div = t.closest('div.mermaid');
+      if (!div) return;
+      var svg = div.querySelector('svg');
+      if (!svg) return;  // 未渲染成功（语法错误）的图不开灯箱
+      openContent(svg);
+    });
+  })();
   </script>
 
   <!-- Docsify 核心脚本（本地自托管，避免 jsdelivr 网络抖动阻塞首屏） -->
@@ -552,7 +840,6 @@
   <link rel="stylesheet" href="./vendor/katex/katex.min.css" />
   <script src="./vendor/docsify-katex.js"></script>
 
-  <script src="./vendor/zoom-image.min.js"></script>
   <script src="./vendor/search.min.js"></script>
 
   <!-- plugins 侧边栏样式  -->

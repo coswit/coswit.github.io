@@ -657,6 +657,11 @@ html.dark .app-loading-spinner {
     cursor: zoom-in;
 }
 
+/* 链接内的图片点击是跳转（不开灯箱），光标用 pointer 与行为一致 */
+.markdown-section a img {
+    cursor: pointer;
+}
+
 /* —— 灯箱（全屏查看 mermaid 图） —— */
 .mermaid-lightbox {
     position: fixed;

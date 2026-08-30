@@ -747,13 +747,15 @@
       stage.addEventListener('dblclick', function (e) { e.preventDefault(); showActual(); });
     }
 
-    // 页内图被 useMaxWidth 压缩过，自然尺寸从 viewBox 取：
+    // 页内图被 useMaxWidth 压缩过，自然尺寸从 viewBox 取；
     // 没有 viewBox 时退回 width/height 属性，最后兜底当前显示尺寸
     function naturalSize(svg) {
       var vb = svg.viewBox && svg.viewBox.baseVal;
       if (vb && vb.width && vb.height) return { w: vb.width, h: vb.height };
-      var w = parseFloat(svg.getAttribute('width')) || 0;
-      var h = parseFloat(svg.getAttribute('height')) || 0;
+      // 属性值只认纯数字/px："100%" 这类用 parseFloat 会静默得到 100，导致尺寸错误
+      var wAttr = svg.getAttribute('width'), hAttr = svg.getAttribute('height');
+      var w = /^[\d.]+px$/i.test(wAttr || '') ? parseFloat(wAttr) : (/^[\d.]+$/.test(wAttr || '') ? +wAttr : 0);
+      var h = /^[\d.]+px$/i.test(hAttr || '') ? parseFloat(hAttr) : (/^[\d.]+$/.test(hAttr || '') ? +hAttr : 0);
       if (w && h) return { w: w, h: h };
       var r = svg.getBoundingClientRect();
       return { w: r.width, h: r.height };
@@ -802,8 +804,6 @@
       pinch = null;
       document.documentElement.style.overflow = savedOverflow;
     }
-    window.__closeMermaidLightbox = close;
-
     window.addEventListener('keydown', function (e) {
       if (e.key === 'Escape') close();
     });

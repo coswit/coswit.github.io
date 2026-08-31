@@ -226,6 +226,8 @@
     - [17-outro.md](./operating-system-in-1000-lines/17-outro.md)
   - thinking-in-java
     - [05  初始化与清理.md](./thinking-in-java/05%20%20初始化与清理.md)
+    - [06  访问权限控制.md](./thinking-in-java/06%20%20访问权限控制.md)
+    - [07  复用类.md](./thinking-in-java/07%20%20复用类.md)
     - [13  字符串.md](./thinking-in-java/13%20%20字符串.md)
     - [14  类型信息.md](./thinking-in-java/14%20%20类型信息.md)
     - [15-1  泛型.md](./thinking-in-java/15-1%20%20泛型.md)

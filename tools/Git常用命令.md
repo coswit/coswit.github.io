@@ -151,6 +151,10 @@ git checkout -- CONTRIBUTING.md
 git checkout -- ./
 # 清除未跟踪的新加文件
 git clean -df
+# 排除多个文件夹
+git clean -df -e node_modules -e dist -e .vscode
+# 在执行删除前，先用 -n（dry-run）看看到底会删什么
+git clean -dfn -e <文件夹名>
 
 # 恢复某个 commit 的指定文件到暂存区和工作区
 git checkout [commit] [file]

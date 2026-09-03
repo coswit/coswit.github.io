@@ -65,6 +65,8 @@
       - [05-深入理解ActivityManagerService.md](./Android/深入理解Android卷II/05-深入理解ActivityManagerService.md)
       - [06-深入理解ContentProvider.md](./Android/深入理解Android卷II/06-深入理解ContentProvider.md)
       - [07-深入理解ContentService和AccountManagerService.md](./Android/深入理解Android卷II/07-深入理解ContentService和AccountManagerService.md)
+      - [08-深入理解ActivityManagerService源码版.md](./Android/深入理解Android卷II/08-深入理解ActivityManagerService源码版.md)
+      - [09-深入理解Service源码版.md](./Android/深入理解Android卷II/09-深入理解Service源码版.md)
   - CSAPP
     - [00-导读.md](./CSAPP/00-导读.md)
     - [01-计算机系统漫游.md](./CSAPP/01-计算机系统漫游.md)

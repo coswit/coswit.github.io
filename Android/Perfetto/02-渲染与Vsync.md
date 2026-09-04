@@ -25,13 +25,13 @@ flowchart LR
 
 两者关系：FPS 低于刷新率时屏幕复用上一帧内容；FPS 高于刷新率时多余的帧被丢弃，白白浪费算力。**稳定的帧率比波动的高帧率体验更好**——稳定 60fps 优于在 90~120fps 间波动。另外内容类型也影响感知：电影 24fps 因为自然运动模糊看起来仍流畅，而滑动列表从 120fps 掉到 110fps 就可能被感知为卡顿。
 
-120Hz 成为旗舰标配的驱动因素：视觉信息量翻倍、输入到显示的延迟从 16.67ms 降到 8.33ms、SoC（System on Chip，片上系统）性能过剩、LTPO（Low Temperature Polycrystalline Oxide，低温多晶氧化物）等自适应刷新率技术缓解功耗。后面「120Hz 的收益与代价」一节展开。
+至于 120Hz 为何成为旗舰标配，可以拆成「收益」与「条件成熟」两侧：体验上，视觉信息量是 60Hz 的两倍，输入到显示的延迟从 16.67ms 减半到 8.33ms；条件上，主流 SoC（System on Chip，片上系统）的性能已足以支撑 120Hz 稳定输出，LTPO（Low Temperature Polycrystalline Oxide，低温多晶氧化物）等自适应刷新率技术又缓解了高刷新率的功耗压力。具体收益与代价在后面「120Hz 的收益与代价」一节展开。
 
 ## 主线程的本质与 Choreographer 的角色
 
 **Android 主线程运行的本质就是 Message 处理**：包括每一帧渲染在内的各种操作，都以 Message 形式投递到主线程的 MessageQueue，处理完继续等下一条。在 Perfetto 上看主线程，就是一段段 doFrame 与其他 Message 交替：
 
-<img src="./images/05-02.webp" width="760" alt="主线程 Message 处理循环的 Perfetto 视图" />
+<img src="/Android/Perfetto/images/05-02.webp" width="760" alt="主线程 Message 处理循环的 Perfetto 视图" />
 
 引入 Vsync 之前，渲染 Message 是连续处理的：上一帧画完下一帧立刻开始，帧率忽高忽低。由于屏幕按固定刷新周期消耗 Buffer，App 会卡在 dequeueBuffer 上，帧率不稳定且容易掉帧。Android 的解法是 **Vsync + TripleBuffer + Choreographer**，Android 11 起再加入 **BlastBufferQueue**，让软件生产与硬件消耗以共同节拍工作。
 
@@ -40,9 +40,11 @@ flowchart LR
 - 承上：等 Vsync 到来时统一处理 Input、Animation、Insets Animation、Traversal（measure/layout/draw）等回调，记录帧耗时与掉帧
 - 启下：通过 FrameDisplayEventReceiver 请求（scheduleVsync）与接收（onVsync）Vsync 信号
 
-<img src="./images/05-06.webp" width="800" alt="滑动设置界面时完整的多帧预览：每个 VSYNC-app 区间为一帧" />
+<img src="/Android/Perfetto/images/05-06.webp" width="800" alt="滑动设置界面时完整的多帧预览：每个 VSYNC-app 区间为一帧" />
 
-每一帧的处理顺序固定为：Vsync 回调 → UI Thread → RenderThread → SurfaceFlinger。即使 UI Thread + RenderThread 干得很快，每一帧也会等到 Vsync 才开始——这就是稳定帧率的来源。
+每一帧的处理顺序固定为：Vsync 回调 → UI Thread → RenderThread → SurfaceFlinger。即使 UI Thread + RenderThread 干得很快，每一帧也会等到 Vsync 才开始——这就是稳定帧率的来源。把其中一帧放大，Choreographer 如何组织一帧一目了然：Vsync 到达后 doFrame 依次处理 animation、traversal 等回调，随后唤醒 RenderThread 同步帧状态（sync frame state），渲染完成 queueBuffer（GPU 同时开始工作），最后 Buffer 提交 SurfaceFlinger 合成：
+
+<img src="/Android/Perfetto/images/05-07.webp" width="800" alt="放大一帧：Vsync 到达、doFrame 回调、唤醒 RenderThread、queueBuffer、提交 SF 的完整时序" />
 
 ## Choreographer 工作流程与源码
 
@@ -84,7 +86,7 @@ private Choreographer(Looper looper, int vsyncSource) {
 
 FrameDisplayEventReceiver 继承 DisplayEventReceiver，三个关键方法：`onVsync`（Vsync 回调）、`run`（执行 doFrame）、`scheduleVsync`（请求下一个 Vsync）。初始化链最终走到 native 层 `nativeInit`：通过 ISurfaceComposer 拿到 IDisplayEventConnection，建立 **BitTube**（本质是 socket pair）作为事件通道，并用 Looper 监听其文件描述符。这条链路的末端在 MethodTrace 上清晰可见：事件送达后回调 onVsync，经 run 进入 doFrame 开始一帧绘制。
 
-<img src="./images/05-09.webp" width="720" alt="MethodTrace 视角：FrameDisplayEventReceiver 回调 onVsync，经 run 进入 doFrame 开始一帧绘制" />
+<img src="/Android/Perfetto/images/05-09.webp" width="720" alt="MethodTrace 视角：FrameDisplayEventReceiver 回调 onVsync，经 run 进入 doFrame 开始一帧绘制" />
 
 这个设计避开了用 Binder 传高频 Vsync 事件：socket 通道实时性好，文件描述符又能无缝接入 Looper 的事件驱动模型。
 
@@ -164,7 +166,7 @@ private final Choreographer.FrameCallback mFrameCallback =
 
 下图是滑动列表时一帧的完整 Perfetto 截图，对照下表逐步对应：
 
-<img src="./images/07-01.webp" width="800" alt="滑动列表场景下一帧的完整渲染流程" />
+<img src="/Android/Perfetto/images/07-01.webp" width="800" alt="滑动列表场景下一帧的完整渲染流程" />
 
 | 步骤 | Perfetto 中的表现 | 说明 |
 |---|---|---|
@@ -198,7 +200,7 @@ Android 5.0 之前所有 UI 工作都在主线程：输入、measure/layout/draw
 - 主线程：处理 Message 与业务逻辑、执行 measure/layout/draw、构建 DisplayList、与渲染线程同步数据
 - 渲染线程：接收 DisplayList、执行 OpenGL/Vulkan 渲染命令、管理纹理资源、通过 BlastBufferQueue 与 SurfaceFlinger 交互
 
-<img src="./images/07-02.webp" width="720" alt="硬件加速下的双线程分工：UI 线程执行 traversal/draw，RenderThread 执行 DrawFrame" />
+<img src="/Android/Perfetto/images/07-02.webp" width="720" alt="硬件加速下的双线程分工：UI 线程执行 traversal/draw，RenderThread 执行 DrawFrame" />
 
 硬件加速下使用 DisplayList（抽象为 RenderNode）间接绘制的收益：可按需重绘而无需重走业务逻辑；translation/scale 等属性可作用于整棵 DisplayList；全部绘制指令已知后可整体优化；处理可转移到 RenderThread，主线程 sync 完即可处理下一条 Message。
 
@@ -235,7 +237,7 @@ RenderThread 在第一次真正 draw 时才初始化（`ThreadedRenderer.initial
 
 120Hz 下的 Perfetto 截图里能看到两个 Buffer 指标：
 
-<img src="./images/06-01.webp" width="780" alt="120Hz 下的渲染流程与 QueuedBuffer、BufferTX 轨道" />
+<img src="/Android/Perfetto/images/06-01.webp" width="780" alt="120Hz 下的渲染流程与 QueuedBuffer、BufferTX 轨道" />
 
 | 指标 | 所在进程 | 含义 | 变化时机 |
 |---|---|---|---|
@@ -263,7 +265,7 @@ RenderThread 在第一次真正 draw 时才初始化（`ThreadedRenderer.initial
 
 Perfetto 里 Vsync 用 **Counter 类型**呈现，这是个反直觉的点：**0→1 和 1→0 的每次数值变化都代表一个 Vsync 信号**，不是只有变成 1 才算。
 
-<img src="./images/08-01.webp" width="760" alt="SurfaceFlinger 进程中的 vsync-app counter，0 与 1 之间的每次跳变都是一个信号" />
+<img src="/Android/Perfetto/images/08-01.webp" width="760" alt="SurfaceFlinger 进程中的 vsync-app counter，0 与 1 之间的每次跳变都是一个信号" />
 
 App 侧对应的观测点是 `FrameDisplayEventReceiver.onVsync` slice；**判断 App 是否真的收到 Vsync，要看 App 进程里有没有 onVsync 事件，而不是只看 SF 里的 vsync-app counter**——那个 counter 可能因其他 App 的申请而活跃。
 
@@ -302,9 +304,11 @@ Native 侧的完整时序链：HWC 产生硬件 Vsync → SurfaceFlinger Schedul
 
 **超一个 Vsync 周期就一定掉帧吗？** 不一定。三缓冲机制下 App 端与 SF 端都有 Buffer 冗余，单帧超时可以被后续帧掩盖；但如果之前没有 Buffer 堆积，超时就会直接表现为掉帧。
 
-<img src="./images/08-11.webp" width="760" alt="App 端与 SF 端 Buffer 均有冗余时，单帧超时并未导致掉帧" />
+<img src="/Android/Perfetto/images/08-11.webp" width="760" alt="App 端与 SF 端 Buffer 均有冗余时，单帧超时并未导致掉帧" />
 
-**CPU 与 GPU 怎么协同？** GPU 渲染异步流水，即使主线程按时完成，GPU 耗时过长仍会掉帧。关键同步点：acquire fence 表示 Buffer 何时可安全读取，present fence 表示该帧何时真正送显；配合上一节的 Latch Unsignaled 策略，SF 可在特定条件下先推进再等 fence。
+**CPU 与 GPU 怎么协同？** GPU 渲染异步流水，即使主线程按时完成，GPU 耗时过长仍会掉帧。关键同步点：acquire fence 表示 Buffer 何时可安全读取，present fence 表示该帧何时真正送显；配合上一节的 Latch Unsignaled 策略，SF 可在特定条件下先推进再等 fence。Trace 上能直接看到这个等待：RenderThread 的 queueBuffer 之后跟着 waitForever，GPU completion 轨道上的 waiting for GPU completion 就是渲染线程在等 GPU 完成：
+
+<img src="/Android/Perfetto/images/08-12.webp" width="720" alt="RenderThread 的 waitForever 与 GPU completion 轨道：在 fence 上等待 GPU 完成" />
 
 **相位差（Offset）的真正作用？** 一是提升跟手性：调整 sf 相位可让「开始绘制到上屏」从 3 个 Vsync 缩到 2 个；二是绘制超时时为 App 争取更多处理时间。
 
@@ -319,7 +323,7 @@ Offset 的效果以 120Hz（8.33ms 周期）为例：
 | 无 Offset | App 与 SF 同时被唤醒，App 用 3ms 画完后要等到下一个 Vsync SF 才合成 | 约 16.67ms |
 | 有 Offset | App 提前 1ms 收到 vsync-app，3ms 画完；SF 在 4ms 收到 vsync-sf 立即合成 | 约 8.33ms |
 
-<img src="./images/08-13.webp" width="760" alt="某机型的 app offset 实测约 13.3ms" />
+<img src="/Android/Perfetto/images/08-13.webp" width="760" alt="某机型的 app offset 实测约 13.3ms" />
 
 注意上图中的 app offset 已达 13.3ms——**不同厂商机型配置差异极大，workDuration 口径下甚至能超过一个 Vsync 周期，不要拿别的机器的数值直接对比**。
 
@@ -329,7 +333,7 @@ Offset 的效果以 120Hz（8.33ms 周期）为例：
 
 FrameTimeline 是 Perfetto 相比 Systrace 的核心优势，为每个有帧上屏的进程添加两条轨道（需要 Android 12+）：
 
-<img src="./images/07-07.webp" width="760" alt="Expected Timeline 与 Actual Timeline 两条轨道" />
+<img src="/Android/Perfetto/images/07-07.webp" width="760" alt="Expected Timeline 与 Actual Timeline 两条轨道" />
 
 - **Expected Timeline**：系统分配给应用的渲染时间窗口，起点是 Choreographer 回调被调度的时间
 - **Actual Timeline**：应用实际完成一帧的时间（含 GPU 工作），终点是 max（GPU 时间，提交到 SurfaceFlinger 的 post 时间）
@@ -344,7 +348,7 @@ FrameTimeline 是 Perfetto 相比 Systrace 的核心优势，为每个有帧上�
 | 黄色 | 应用无责任卡顿（SurfaceFlinger 导致） |
 | 蓝色 | 丢帧：SF 丢弃该帧选择了更新的帧 |
 
-<img src="./images/07-09.webp" width="720" alt="点击红色 Actual Timeline 后信息栏给出具体卡顿原因" />
+<img src="/Android/Perfetto/images/07-09.webp" width="720" alt="点击红色 Actual Timeline 后信息栏给出具体卡顿原因" />
 
 JankType 分两端：应用端 AppDeadlineMissed（超时）、BufferStuffing（前一帧未呈现就发新帧，Buffer 堆积）；SF 端 SurfaceFlingerCpuDeadlineMissed、SurfaceFlingerGpuDeadlineMissed、DisplayHAL（HAL 层呈现延迟）、PredictionError（预测偏差）。
 

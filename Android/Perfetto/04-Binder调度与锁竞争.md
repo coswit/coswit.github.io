@@ -24,7 +24,7 @@ system_server Stub 侧：ActivityManagerService 被唤醒，读取参数进入�
 
 在 Trace 上的指纹：Android Binder / Transactions 轨道上出现事务切片（能解析到 AIDL 信息时名为 `AIDL::java::IActivityManager::attachApplication::client/server`）；App 线程在 thread_state 上处于 S（同步调用等待返回），blocked_function 多为 binder_thread_read / epoll_wait / ioctl(BINDER_WRITE_READ)；system_server 侧对应 Binder 线程出现 Running 切片；Perfetto 还会用 **Flow 箭头**把 Client 的 transact 与 Server 的处理线程连起来：
 
-<img src="./images/10-01.webp" width="800" alt="一次同步 Binder 调用在 Perfetto 中的完整呈现" />
+<img src="/Android/Perfetto/images/10-01.webp" width="800" alt="一次同步 Binder 调用在 Perfetto 中的完整呈现" />
 
 ## 观测准备：数据源与推荐配置
 
@@ -132,7 +132,7 @@ ORDER BY client_dur DESC
 LIMIT 20;
 ```
 
-<img src="./images/10-02.webp" width="760" alt="SQL 拆解最慢事务的三段耗时" />
+<img src="/Android/Perfetto/images/10-02.webp" width="760" alt="SQL 拆解最慢事务的三段耗时" />
 
 三段耗时的关系决定深挖方向：**client_dur 长而 server_dur 短**，慢在派发/排队（dispatch_dur 大），去看服务端线程池与调度（步骤二）；**server_dur 本身就长**，跳到服务端 Binder 线程看它在干嘛——跑业务、等锁还是等 I/O（步骤三）。
 
@@ -158,17 +158,17 @@ LIMIT 20;
 
 Oneway 的两个关注点：服务端队列深度（同一 IBinder 上的 Oneway 堆积，后续请求执行时机被不断延后）；批量发送尖峰（短时间大量 Oneway 在服务端 Binder 线程上形成密集短切片）：
 
-<img src="./images/10-03.webp" width="760" alt="Oneway 请求在服务端排队" />
+<img src="/Android/Perfetto/images/10-03.webp" width="760" alt="Oneway 请求在服务端排队" />
 
 特别注意：system_server 的 Binder 线程还要处理系统内部调用（ActivityManagerService 调 WindowManagerService、后者再调 SurfaceFlinger 等）。某个「行为不端」的 App 短时间疯狂发 Oneway，可能塞满某个系统服务的 Oneway 队列，拖慢其他 App 的异步回调，造成全局性卡顿。
 
 ## 步骤三：排查锁竞争
 
-服务端 Binder 线程处理你的请求期间长时间处于 S/D，说明它在等资源——等锁或等 I/O。SystemServer 里大量服务共享全局状态（WindowManagerService 的 mGlobalLock、AMS 的内部锁等），都用 synchronized 保护，锁竞争是 SystemServer 最常见的瓶颈来源。
+服务端 Binder 线程处理你的请求期间长时间处于 S/D，说明它在等资源——等锁或等 I/O。SystemServer 里大量服务共享全局状态（WindowManagerService 的 mGlobalLock、ActivityManagerService 的内部锁等），都用 synchronized 保护，锁竞争是 SystemServer 最常见的瓶颈来源。
 
-**Java 锁（Monitor Contention）**：Binder 线程状态为 S 且 blocked_function 含 futex_wait（如 futex_wait），基本可确定在等 Java 锁。Lock contention 轨道会把竞争可视化：连线标出 Owner（持锁线程，如 android.display）与 Waiter（等锁线程，如 Binder:123_1），点击 Contention slice 还能在 Details 看到锁对象的类名（如 com.android.server.wm.WindowManagerGlobalLock）：
+**Java 锁（Monitor Contention）**：Binder 线程状态为 S 且 blocked_function 含 futex 相关符号（如 futex_wait），基本可确定在等 Java 锁。Lock contention 轨道会把竞争可视化：连线标出 Owner（持锁线程，如 android.display）与 Waiter（等锁线程，如 Binder:123_1），点击 Contention slice 还能在 Details 看到锁对象的类名（如 com.android.server.wm.WindowManagerGlobalLock）：
 
-<img src="./images/10-04.webp" width="760" alt="Lock contention 轨道标出 Owner 与 Waiter" />
+<img src="/Android/Perfetto/images/10-04.webp" width="760" alt="Lock contention 轨道标出 Owner 与 Waiter" />
 
 用标准库的 android_monitor_contention 表做统计（由 ART 的 monitor contention slice 解析而来，别手工解析 slice 名字符串）：
 
@@ -190,7 +190,7 @@ ORDER BY dur DESC
 LIMIT 50;
 ```
 
-<img src="./images/10-05.webp" width="760" alt="monitor contention 统计结果" />
+<img src="/Android/Perfetto/images/10-05.webp" width="760" alt="monitor contention 统计结果" />
 
 查不到数据时确认两点：抓取配置的 atrace_categories 包含 dalvik；问题场景中确实发生了 monitor contention。
 

@@ -2,7 +2,7 @@
 
 Perfetto 的 CPU 相关轨道位于界面顶部，是性能分析的起点，包含三部分：**CPU Scheduling**（每个核上正在运行哪个线程）、**CPU Frequency**（每个核或频率簇的频率变化）、**CPU Idle**（各核进入的低功耗状态，即 C-States）：
 
-<img src="./images/09-01.webp" width="780" alt="Perfetto 顶部的 CPU 三类轨道" />
+<img src="/Android/Perfetto/images/09-01.webp" width="780" alt="Perfetto 顶部的 CPU 三类轨道" />
 
 这三条轨道组合起来可以回答一批关键问题：应用主线程为什么没在执行、被谁抢占；某个任务为什么慢、是不是被调度到了小核；特定场景下 CPU 频率是否受限；应用在后台时 CPU 有没有有效进入深度睡眠。
 
@@ -54,11 +54,11 @@ data_sources {
 
 ## 核心架构：big.LITTLE
 
-现代移动 SoC 普遍采用 big.LITTLE 异构架构或其变种，典型拓扑有三种：4+4（四小核 + 四大核）、4+3+1（三超大核配置，见天玑 9500/9400 与骁龙高端系列）、5+2（8 Elite 阉割版；标准版为 6+2）。Perfetto 的 CPU 轨道从 0 编号，典型八核下 CPU 0-3 为小核、4-6 为大核、7 为超大核，具体以 CPU spec 或对应 sysfs 节点为准。
+现代移动 SoC 普遍采用 big.LITTLE 异构架构或其变种，典型拓扑有三种：4+4（四小核 + 四大核）、4+3+1（四小核 + 三大核 + 一颗超大核，见天玑 9500/9400 与骁龙高端系列）、5+2（五小核 + 两大核，8 Elite 阉割版；标准版为 6+2）。Perfetto 的 CPU 轨道从 0 编号，典型八核下 CPU 0-3 为小核、4-6 为大核、7 为超大核，具体以 CPU spec 或对应 sysfs 节点为准。
 
-<img src="./images/09-02.webp" width="720" alt="典型的 4+4 拓扑" />
+<img src="/Android/Perfetto/images/09-02.webp" width="720" alt="典型的 4+4 拓扑" />
 
-<img src="./images/09-03.webp" width="720" alt="典型的 4+3+1 拓扑" />
+<img src="/Android/Perfetto/images/09-03.webp" width="720" alt="典型的 4+3+1 拓扑" />
 
 小核面向低功耗处理后台任务，大核面向交互与重负载，超大核应对最严苛的单核挑战。**识别核类型对分析很关键**：计算密集型任务长时间跑在小核上，耗时必然远超预期。分析时要把线程运行所在的核与其任务属性匹配，判断调度器行为是否符合预期。
 
@@ -91,7 +91,7 @@ CPU Scheduling 轨道数据来自 ftrace 的 `sched/sched_switch` 事件，每�
 
 线程间依赖是分析难点——一个线程长 Sleep，关键是找出它在「等谁」。在 CPU 区域点击选中一个 Running 状态的 Task，Perfetto 会自动画出从唤醒者到被唤醒者的依赖箭头并高亮唤醒源：
 
-<img src="./images/09-13.webp" width="720" alt="选中 Running Task 后显示唤醒关系箭头" />
+<img src="/Android/Perfetto/images/09-13.webp" width="720" alt="选中 Running Task 后显示唤醒关系箭头" />
 
 底层依赖内核的 sched_wakeup ftrace 事件：T1 释放资源（解锁、完成 Binder 调用）而 T2 正在等待时，内核把 T2 标记为 R 并记录这次唤醒，Perfetto 据此构建依赖链。典型链路如：UI 线程等 Binder → Binder 线程执行任务 → Binder 线程等另一把锁 → 持锁线程释放并唤醒它 → Binder 线程完成并唤醒 UI 线程，瓶颈点一目了然。
 
@@ -105,7 +105,7 @@ Running 的绿色切片未必都是应用代码在忙。若线程陷入单个长
 
 另一个实用口径是 **Wall 时间与 CPU 时间**：
 
-<img src="./images/09-15.webp" width="640" alt="Wall 与 CPU 时间的组成关系" />
+<img src="/Android/Perfetto/images/09-15.webp" width="640" alt="Wall 与 CPU 时间的组成关系" />
 
 - 关系：Wall = CPU + Runnable + Sleep
 - 选中目标切片（如 Choreographer#doFrame）对比两者：Wall ≈ CPU 说明计算过重，用火焰图定位热点；Wall 远大于 CPU 说明在等调度或依赖，回去看 R/S/D 分布与唤醒关系
@@ -114,7 +114,7 @@ Running 的绿色切片未必都是应用代码在忙。若线程陷入单个长
 
 CPU Frequency 轨道显示每个核（或频率簇，Android 设备常以簇为单位同步变频）的当前频率。带颜色表示该核有 Task 在跑，不带颜色表示空闲：
 
-<img src="./images/09-16.webp" width="680" alt="CPU Frequency 轨道" />
+<img src="/Android/Perfetto/images/09-16.webp" width="680" alt="CPU Frequency 轨道" />
 
 频率由四类因素博弈决定，优先级从低到高：
 

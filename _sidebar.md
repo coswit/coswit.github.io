@@ -47,6 +47,16 @@
       - [Surface.md](./Android/Android视频/Surface.md)
     - Android音频
       - [AudioTrack.md](./Android/Android音频/AudioTrack.md)
+    - Perfetto
+      - [00-系列导读.md](./Android/Perfetto/00-系列导读.md)
+      - [01-工具上手.md](./Android/Perfetto/01-工具上手.md)
+      - [02-渲染与Vsync.md](./Android/Perfetto/02-渲染与Vsync.md)
+      - [03-CPU调度解读.md](./Android/Perfetto/03-CPU调度解读.md)
+      - [04-Binder调度与锁竞争.md](./Android/Perfetto/04-Binder调度与锁竞争.md)
+      - [05-SQL与Trace质量.md](./Android/Perfetto/05-SQL与Trace质量.md)
+      - [06-埋点与内存.md](./Android/Perfetto/06-埋点与内存.md)
+      - [07-现场采集与硬件.md](./Android/Perfetto/07-现场采集与硬件.md)
+      - [08-专项与响应实战.md](./Android/Perfetto/08-专项与响应实战.md)
     - 深入理解Android卷I
       - [01-深入理解JNI.md](./Android/深入理解Android卷I/01-深入理解JNI.md)
       - [02-深入理解init.md](./Android/深入理解Android卷I/02-深入理解init.md)
@@ -67,6 +77,7 @@
       - [07-深入理解ContentService和AccountManagerService.md](./Android/深入理解Android卷II/07-深入理解ContentService和AccountManagerService.md)
       - [08-深入理解ActivityManagerService源码版.md](./Android/深入理解Android卷II/08-深入理解ActivityManagerService源码版.md)
       - [09-深入理解Service源码版.md](./Android/深入理解Android卷II/09-深入理解Service源码版.md)
+      - [10-深入理解WindowManagerService.md](./Android/深入理解Android卷II/10-深入理解WindowManagerService.md)
   - CSAPP
     - [00-导读.md](./CSAPP/00-导读.md)
     - [01-计算机系统漫游.md](./CSAPP/01-计算机系统漫游.md)

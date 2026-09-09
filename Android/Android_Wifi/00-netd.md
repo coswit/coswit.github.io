@@ -1,8 +1,10 @@
-# netd：Android 的网络守护进程
+本篇对应原书第 2 章「深入理解 Netd」，是本系列第一个登场的系统组件。netd 是 Android 平台的网络守护进程，本篇主线一句话：**netd 是 Framework 网络管理与 Linux 内核之间的桥梁——只做"执行者"不做决策，命令与参数由 Framework 决策后下发，netd 负责落地为路由表、iptables/eBPF 规则与 DNS 配置，并把内核事件回传给 Framework。** 下文按「启动流程 → 四个对外入口 → 多网络路由与 fwmark 选路 → DNS 链路 → 防火墙与流量控制 → 内核事件上报」推进，最后以一次 Wi-Fi 连接串联全程。
 
-> 本文以现行 AOSP 源码为主线（示例基于 Android 10 前后，节选简化并标注路径），老版本（4.x）的差异单独标注；分析思路参考邓凡平《深入理解Android：Wi-Fi、NFC和GPS卷》的 netd 章节。完整源码可在文末链接中按 tag 查看。
+> 版本注意：原书基于 Android 4.x，当时 netd 只有一个文本命令入口（`/dev/socket/netd`）。本篇以现行 AOSP（Android 10 前后）为主线，4.x 差异在正文单独标注，文末附版本演进速查表——「netd 作为执行桥梁」的骨架从 4.x 至今未变。
 
-### netd 概述
+> 摘编声明：文中代码为摘编版——保留主干、省略日志与样板代码，并标注 AOSP 路径，可对照源码阅读。
+
+## 1.1 netd 概述
 
 netd（network daemon）是 Android 平台的网络守护进程，运行在 native 层，是 Framework 网络管理与 Linux 内核之间的桥梁，职责包括：
 
@@ -24,28 +26,26 @@ netd 对外提供四个入口（理解架构的关键）：
 
 整体架构（数据流）：
 
-```
-Framework 层   ConnectivityService / NetworkManagementService
-                    ↕ binder（INetd，主通道） + socket netd（兼容命令）
-native 层      netd
-                 ├─ NetdNativeService（INetd binder 实现）
-                 ├─ CommandListener（文本命令分发，兼容）
-                 ├─ FwmarkServer（fwmarkd，socket 选路打标）
-                 ├─ DnsProxyListener（dnsproxyd，DNS 查询代理）
-                 ├─ Controllers（功能控制器集合）
-                 │    ├─ InterfaceController / RouteController（接口与多网络路由）
-                 │    ├─ FirewallController（iptables） / TrafficController（eBPF）
-                 │    ├─ BandwidthController / IdletimerController
-                 │    ├─ NatController / TetherController / TunnelController
-                 │    └─ ResolverController（→ resolv 解析器）
-                 └─ NetlinkManager（NETLINK_ROUTE，接收内核事件后广播）
-                    ↕ 系统调用 / netlink / BPF
-内核           路由表 + ip rule / iptables / eBPF / 网卡驱动
+```mermaid
+flowchart TD
+    FW["Framework 层<br/>ConnectivityService / NetworkManagementService"]
+    NETD[netd 进程]
+    FW <-- "binder：INetd 主通道<br/>socket netd：兼容命令" --> NETD
+    NETD --> NNS["NetdNativeService<br/>INetd binder 实现"]
+    NETD --> CL["CommandListener<br/>文本命令分发，兼容"]
+    NETD --> FS["FwmarkServer<br/>fwmarkd，socket 选路打标"]
+    NETD --> DPL["DnsProxyListener<br/>dnsproxyd，DNS 查询代理"]
+    NETD --> CTL["Controllers<br/>功能控制器集合"]
+    CTL --> IC["InterfaceController / RouteController<br/>接口与多网络路由"]
+    CTL --> FC["FirewallController iptables<br/>TrafficController eBPF"]
+    CTL --> BC["BandwidthController / IdletimerController<br/>NatController / TetherController 等"]
+    NETD --> NLM["NetlinkManager<br/>NETLINK_ROUTE，接收内核事件后广播"]
+    NLM <--> KER["内核：路由表 + ip rule / iptables / eBPF / 网卡驱动"]
 ```
 
 关键点：**netd 只做"执行者"，不做决策**。要不要联网、默认网络是谁、DNS 是多少、限不限速，都是 Framework 层决策后下发给 netd 执行的。
 
-### 启动流程源码：main.cpp
+## 1.2 启动流程源码：main.cpp
 
 ```cpp
 // system/netd/server/main.cpp（Android 10 前后，节选）
@@ -86,7 +86,7 @@ Controllers 中主要的控制器（标 ★ 的是 4.x 之后新增或重写的�
 | ★ ProcessController / StrictCtrl | 按进程/uid 的网络权限、严格模式（配合 BPF） |
 | ResolverController | DNS 配置入口，下发给解析器（resolv） |
 
-### binder 主通道：NetdNativeService 与多网络路由
+## 1.3 binder 主通道：NetdNativeService 与多网络路由
 
 NetdNativeService 实现 INetd.aidl（`system/netd/binder/android/net/INetd.aidl`），常用方法：
 
@@ -116,7 +116,7 @@ int RouteController::setDefaultNetwork(unsigned netId) {
 
 **与 4.x 对比**：4.x 只有一个全局路由表，切换网络就是改默认路由（`interface newroute`）；5.0 起 Wi-Fi 和蜂窝可同时在线，各自一张表，通过 ip rule + socket 标记（fwmark）决定每个包查哪张表。
 
-### fwmarkd：socket 如何决定走哪个网络
+## 1.4 fwmarkd：socket 如何决定走哪个网络
 
 多网络并存后，"某个 App 的连接走哪个网络"由 socket 上的 **fwmark**（firewall mark）决定，mark 中编码了 netId 和权限位。打标的动作就发生在 netd 的 FwmarkServer：
 
@@ -141,7 +141,7 @@ int FwmarkServer::onDataAvailable(SocketClient* client) {
 
 配合链路：bionic 的 connect() 钩子（libnetd_client）把 fd 发到 fwmarkd → netd 回写 SO_MARK → 内核按 `ip rule fwmark <netId> lookup <table>` 把包导入对应网络的路由表。这样同一家 App 里，绑定了蜂窝的 socket 走蜂窝、其余走默认 Wi-Fi，互不干扰。
 
-### DNS 链路：配置与查询
+## 1.5 DNS 链路：配置与查询
 
 **配置段**（Framework → binder → 解析器）：
 
@@ -184,7 +184,7 @@ void DnsProxyListener::GetAddrInfoHandler::run() {
 
 **与 4.x 对比**：早期 DNS 服务器是全局的 `net.dns1 / net.dns2` 系统属性，所有网络共用；现在每个 netId 一套参数与缓存，还支持按网络的 DoT（DNS over TLS，Private DNS）。
 
-### 兼容通道：CommandListener（文本命令）
+## 1.6 兼容通道：CommandListener（文本命令）
 
 老命令通道的框架从 4.x 至今基本未变（system/core/libsysutils 的 SocketListener/FrameworkListener）：
 
@@ -225,7 +225,7 @@ Framework 侧对应 NativeDaemonConnector：发送一行文本命令，按响应
 | tether / nat | `tether start`、`nat enable <in> <out>` | 网络共享与 NAT |
 | ipf | `ipf enable` | 内核 IP 转发开关 |
 
-### 防火墙与流量控制：iptables → eBPF
+## 1.7 防火墙与流量控制：iptables → eBPF
 
 - **FirewallController**：维护 `bw_INPUT / bw_OUTPUT / bw_COSTLY_SHARED / bw_penalty_box` 等 iptables 链，实现按 uid 的联网黑白名单、待机省电等特性，`adb shell iptables -L -n` 可直接查看；
 - **BandwidthController**：流量配额（超限触发 6xx 事件上报，Framework 提示并断网）；
@@ -249,7 +249,7 @@ netdutils::Status TrafficController::updateUidOwnerMap(uid_t uid, OwnerMatchType
 }
 ```
 
-### 内核事件上报：NetlinkManager → 6xx 广播
+## 1.8 内核事件上报：NetlinkManager → 6xx 广播
 
 这部分从 4.x 至今保持稳定：
 
@@ -284,7 +284,7 @@ void NetlinkHandler::onEvent(NetlinkEvent *evt) {
 
 Framework 侧收到 6xx 后由 NetworkManagementService 分发：接口增删通知 ConnectivityService 调整网络，链路状态用于跟踪 wlan0 等物理接口的 up/down。
 
-### 一次 Wi-Fi 连接中 netd 的参与（现代流程）
+## 1.9 一次 Wi-Fi 连接中 netd 的参与（现代流程）
 
 1. Wi-Fi 关联成功，IpClient 完成 DHCP（基于 netlink），拿到 IP 与 DNS；
 2. ConnectivityService 为该网络分配 netId，创建 NetworkAgent，随后通过 INetd 下发：
@@ -292,7 +292,7 @@ Framework 侧收到 6xx 后由 NetworkManagementService 分发：接口增删通
 3. netd 执行的同时更新防火墙/限流规则；内核产生 netlink 事件（地址、路由变化），NetlinkManager 广播 6xx 给 NMS，进而更新 LinkProperties，`ConnectivityManager` 发出网络回调；
 4. 此后 App 的每次 `connect()` 都会经 fwmarkd 打上默认网络（或显式绑定网络）的 mark，`getaddrinfo` 经 dnsproxyd 由 netd 按 netId 解析——控制面全在 netd，数据面由内核按 mark 和路由表直接转发。
 
-### 版本演进速查
+## 1.10 版本演进速查
 
 | 版本 | netd 相关变化 |
 | --- | --- |
@@ -303,7 +303,7 @@ Framework 侧收到 6xx 后由 NetworkManagementService 分发：接口增删通
 | 10~11 | DNS 解析器拆分为 netd_resolv（system/netd/resolv），缓存与参数按网络隔离 |
 | 12+ | NetworkManagementService 并入 ConnectivityService；Tethering 等持续模块化（APEX） |
 
-### 调试命令
+## 1.11 调试命令
 
 ```bash
 adb shell ps -A | grep netd            # 确认 netd / netd_resolv 进程存活
@@ -316,7 +316,7 @@ adb shell dumpsys connectivity         # 网络状态（含各 netId）
 adb logcat | grep -iE "netd|NetworkManagement"
 ```
 
-### 参考文档
+## 1.12 参考来源
 
 - 《深入理解Android：Wi-Fi、NFC和GPS卷》邓凡平著，机械工业出版社（4.x 时代的 netd 与网络管理分析思路）；
 - 现行源码：[aosp-mirror/platform_system_netd](https://github.com/aosp-mirror/platform_system_netd)，官方上游 [android.googlesource.com/platform/system/netd](https://android.googlesource.com/platform/system/netd/)；

@@ -97,11 +97,27 @@ int main() {
     }
     // 通过往 /sys/block 目录下对应的 uevent 文件写 "add\n" 来触发内核发送 Uevent 消息
     coldboot("/sys/block");
+    {
+        FILE *fp;
+        char state[255];
+        /*
+          Android 支持把手机上的外部存储设备作为磁盘挂载到电脑上。下面的代码查看
+          是否打开了磁盘挂载功能，涉及 UMS（USB Mass Storage，USB 大容量存储）
+        */
+        if ((fp = fopen("/sys/devices/virtual/switch/usb_mass_storage/state", "r"))) {
+            if (fgets(state, sizeof(state), fp)) {
+                if (!strncmp(state, "online", 6)) {
+                    // ⑦VM 通过 CL 向感兴趣的模块（如 MountService）通知 UMS 的状态
+                    vm->notifyUmsConnected(true);
+                } else {
+                    vm->notifyUmsConnected(false);
+                }
+            }
+            ......
+            fclose(fp);
+        }
     ......
-    // ⑦检查 UMS（USB Mass Storage，USB 大容量存储）开关状态，
-    // VM 通过 CL 向感兴趣的模块（如 MountService）通知 UMS 的状态
-    ......
-    vm->notifyUmsConnected(......);
+    }
     // ⑧启动 CL
     if (cl->startListener()) {
         exit(1);
@@ -168,7 +184,37 @@ start 分两步：创建 PF_NETLINK socket 并 bind（此后内核的 Uevent 就
 
 ![NLH 的派生关系图](./images/ch0157_img01.jpg)
 
-三个构造函数一条链：NetlinkHandler 把 socket 交给 NetlinkListener，后者再以 `listen = false` 交给 SocketListener（SocketListener 的构造保存 socket 描述符、初始化 mClientsLock 互斥量，并创建 SocketClient 列表 mClients——看来会有多个线程存在）。NLH 的 start 只是转调基类的 startListener。startListener 的关键差异由构造时传入的 mListen 决定：
+三个构造函数一条链：NetlinkHandler 把 socket 交给 NetlinkListener，后者再以 `listen = false` 交给 SocketListener：
+
+```cpp
+[--> NetlinkListener.cpp / SocketListener.cpp / NetlinkHandler.cpp]
+NetlinkListener::NetlinkListener(int socket) :
+                SocketListener(socket, false) {
+    // 调用基类 SocketListener 的构造函数，第二个参数为 false
+}
+
+SocketListener::SocketListener(int socketFd, bool listen) {
+    mListen = listen;       // 这个参数是 false
+    mSocketName = NULL;
+    mSock = socketFd;       // 保存和内核通信的 socket 描述符
+    // 初始化一个 mutex，看来会有多个线程存在
+    pthread_mutex_init(&mClientsLock, NULL);
+    /*
+      SocketClientCollection 的声明如下，它是一个列表容器
+      typedef android::List<SocketClient *> SocketClientCollection
+      其中 SocketClient 代表和 socket 服务端通信的客户端
+    */
+    mClients = new SocketClientCollection();
+}
+
+NetlinkHandler::NetlinkHandler(int listenerSocket) :
+                NetlinkListener(listenerSocket) {
+    // 调用基类 NetlinkListener 的构造函数
+    // 注意传入的参数是和内核通信的 socket 句柄
+}
+```
+
+NLH 的 start 只是转调基类的 startListener（`return this->startListener();`）。startListener 的关键差异由构造时传入的 mListen 决定：
 
 ```cpp
 [--> SocketListener.cpp::startListener，摘编]
@@ -243,9 +289,18 @@ void SocketListener::runListener() {
         if (FD_ISSET(mCtrlPipe[0], &read_fds))
             break;
         if (mListen && FD_ISSET(mSock, &read_fds)) {
-            // 如果是 listen 端，mSock 可读表示有客户端 connect 上：
-            // accept 后构造 SocketClient 对象加入 list
-            ......
+            // 如果是 listen 端，mSock 可读表示有客户端 connect 上
+            struct sockaddr addr;
+            socklen_t alen = sizeof(addr);
+            int c;
+            // 调用 accept 接受客户端的连接，返回用于和客户端通信的 socket 描述符
+            if ((c = accept(mSock, &addr, &alen)) < 0) {
+                ......
+            }
+            pthread_mutex_lock(&mClientsLock);
+            // 根据返回的客户端 socket 描述符构造 SocketClient 对象并加入 list
+            mClients->push_back(new SocketClient(c));
+            pthread_mutex_unlock(&mClientsLock);
         }
 
         do {
@@ -682,21 +737,58 @@ handleDiskAdded 把 Uevent 转换成 Vold 自己的协议消息，经 CL 的 sen
 
 ### 1.7.3 第二段：MountService 下发 volume mount
 
-MountService 在 onEvent 中收到 VolumeDiskInserted——它解析出 label（"sdcard"）、path（"/mnt/sdcard"）与设备号后，单独启动一个线程调用 doMountVolume：
+MountService 在 onEvent 中收到 VolumeDiskInserted：
 
 ```java
-[--> MountService.java::onEvent/doMountVolume，摘编]
+[--> MountService.java::onEvent，摘编]
+public boolean onEvent(int code, String raw, String[] cooked) {
+    Intent in = null;
+    // NativeDaemonConnector 收到来自 Vold 的数据后都会调用这个 onEvent 函数
+    ......
+    if (code == VoldResponseCode.VolumeStateChange) {
+        ......
+    } else if (code == VoldResponseCode.ShareAvailabilityChange) {
+        ......
+    } else if ((code == VoldResponseCode.VolumeDiskInserted) ||
+               (code == VoldResponseCode.VolumeDiskRemoved) ||
+               (code == VoldResponseCode.VolumeBadRemoval)) {
+
+        final String label = cooked[2];   // label 值为 "sdcard"
+        final String path = cooked[3];    // path 值为 "/mnt/sdcard"
+        int major = -1;
+        int minor = -1;
+
+        try {
+            String devComp = cooked[6].substring(1, cooked[6].length() - 1);
+            String[] devTok = devComp.split(":");
+            major = Integer.parseInt(devTok[0]);
+            minor = Integer.parseInt(devTok[1]);
+        } catch (Exception ex) {
+            ......
+        }
         if (code == VoldResponseCode.VolumeDiskInserted) {
             // 收到 handleDiskAdded 发送的 VolumeDiskInserted 消息了，
             // 单独启动一个线程来处理
             new Thread() {
                 public void run() {
-                    // 调用 doMountVolume 处理
-                    int rc = doMountVolume(path);
+                    try {
+                        int rc;
+                        // 调用 doMountVolume 处理
+                        if ((rc = doMountVolume(path)) !=
+                                  StorageResultCode.OperationSucceeded) {
+                        }
+                    } catch (Exception ex) {
+                        ......
+                    }
                 }
             }.start();
         }
+```
 
+doMountVolume 通过 NativeDaemonConnector 给 Vold 发送请求，请求内容为字符串 `volume mount /mnt/sdcard`：
+
+```java
+[--> MountService.java::doMountVolume，摘编]
 private int doMountVolume(String path) {
     int rc = StorageResultCode.OperationSucceeded;
     try {
@@ -849,7 +941,24 @@ createBindMounts 的效果：存储卡上的 .android_secure 被一个空的只�
 
 ### 1.7.5 第四段：状态上报与广播
 
-mountVol 完成后调用 setState(Volume::State_Mounted)，状态变化会经 CL 发送 VolumeStateChange 给 MountService，后者依然在 onEvent 中接收——状态变化由 notifyVolumeStateChange 函数处理，由于 Volume 的状态被置成了 Mounted，它会发送 ACTION_MEDIA_MOUNTED 这个广播。
+mountVol 完成后调用 setState(Volume::State_Mounted)，状态变化会经 CL 发送 VolumeStateChange 给 MountService，后者依然在 onEvent 中接收：
+
+```java
+[--> MountService.java::onEvent 状态通知分支，摘编]
+public boolean onEvent(int code, String raw, String[] cooked) {
+    Intent in = null;
+    ......
+    if (code == VoldResponseCode.VolumeStateChange) {
+        /*
+          状态变化由 notifyVolumeStateChange 函数处理。由于 Volume 的状态
+          被置成了 Mounted，notifyVolumeStateChange 会发送
+          ACTION_MEDIA_MOUNTED 这个广播
+        */
+        notifyVolumeStateChange(
+                cooked[2], cooked[3], Integer.parseInt(cooked[7]),
+                Integer.parseInt(cooked[10]));
+    }
+```
 
 至此整条链路闭合：应用监听到的 ACTION_MEDIA_MOUNTED 广播，源头是内核的一条 Uevent。原书用一张流程图总结 mountVol 在挂载方面的处理（原图 9-6）：
 
@@ -1182,7 +1291,34 @@ static void *readerLoop(void *arg)
 }
 ```
 
-readerLoop 从串口读出的数据可能是 solicitedResponse（processLine 处理），也可能是 unsolicitedResponse（SMS 走 s_unsolHandler，其余经 processLine 分发）——具体处理在 1.12 的实例中见到。再看超时任务这条线。RIL_requestTimedCallback 是 RefRil 库里的一个宏，封装了对 RIL_Env 中 RequestTimedCallback 的调用（`#define RIL_requestTimedCallback(a,b,c) s_rilenv->RequestTimedCallback(a,b,c)`）。Rild 侧的实现是构造一个 ril_event 加入 timer_list 并触发 eventLoop（internalRequestTimedCallback：malloc 一个 UserCallbackInfo 保存回调与参数，`ril_event_set(&(p_info->event), -1, false, userTimerCallback, p_info)` 后 `ril_timer_add` 入队、triggerEvLoop 唤醒）。
+readerLoop 从串口读出的数据可能是 solicitedResponse（processLine 处理），也可能是 unsolicitedResponse（SMS 走 s_unsolHandler，其余经 processLine 分发）——具体处理在 1.12 的实例中见到。再看超时任务这条线。RIL_requestTimedCallback 是 RefRil 库里的一个宏，封装了对 RIL_Env 中 RequestTimedCallback 的调用（`#define RIL_requestTimedCallback(a,b,c) s_rilenv->RequestTimedCallback(a,b,c)`）。Rild 侧的实现是构造一个 ril_event 加入 timer_list 并触发 eventLoop：
+
+```cpp
+[--> Ril.cpp::internalRequestTimedCallback，摘编]
+static UserCallbackInfo * internalRequestTimedCallback (
+                                RIL_TimedCallback callback, void *param,
+                                const struct timeval *relativeTime)
+{
+    struct timeval myRelativeTime;
+    UserCallbackInfo *p_info;
+
+    p_info = (UserCallbackInfo *) malloc (sizeof(UserCallbackInfo));
+    p_info->p_callback = callback;
+    p_info->userParam = param;
+    if (relativeTime == NULL) {
+        memset (&myRelativeTime, 0, sizeof(myRelativeTime));
+    } else {
+        memcpy (&myRelativeTime, relativeTime, sizeof(myRelativeTime));
+    }
+
+    ril_event_set(&(p_info->event), -1, false, userTimerCallback, p_info);
+    // 将该任务添加到 timer_list 中去
+    ril_timer_add(&(p_info->event), &myRelativeTime);
+    // 触发 eventLoop 线程
+    triggerEvLoop();
+    return p_info;
+}
+```
 
 于是 mainLoop 提交的 initializeCallback 会在 eventLoop 中到期执行，它的内容就是**向 BP 发送一组 AT 指令来初始化无线通信 Modem**：
 
@@ -1264,7 +1400,46 @@ extern "C" void RIL_register (const RIL_RadioFunctions *callbacks) {
 }
 ```
 
-注意 persist 参数的差异：监听 rild socket 的任务 persist 为 false——**accept 一次之后任务即从监控表移除，Rild 只支持一个客户端连接**；debug socket 的任务 persist 为 true，可反复接受测试命令。当有客户端 connect 上 rild socket 时，eventLoop 被触发，listenCallback 执行：accept 得到 s_fdCommand，做权限检查后设为非阻塞，创建 RecordStream（内部维护接收缓冲区），再构造一个 s_commands_event 任务（处理函数 processCommandsCallback）加入监控表——**此后来自客户端的数据就由 eventLoop 调用 processCommandsCallback 处理了**。
+注意 persist 参数的差异：监听 rild socket 的任务 persist 为 false——**accept 一次之后任务即从监控表移除，Rild 只支持一个客户端连接**；debug socket 的任务 persist 为 true，可反复接受测试命令。当有客户端 connect 上 rild socket 时，eventLoop 被触发，listenCallback 执行：
+
+```cpp
+[--> Ril.cpp::listenCallback，摘编]
+static void listenCallback (int fd, short flags, void *param) {
+    int ret;
+    int is_phone_socket;
+    RecordStream *p_rs;
+
+    struct sockaddr_un peeraddr;
+    socklen_t socklen = sizeof (peeraddr);
+
+    struct ucred creds;
+    socklen_t szCreds = sizeof(creds);
+
+    struct passwd *pwd = NULL;
+
+    // 接收一个客户端的连接，并将返回的 socket 保存在 s_fdCommand 中
+    s_fdCommand = accept(s_fdListen, (sockaddr *) &peeraddr, &socklen);
+
+    ......
+
+    is_phone_socket = 0;  // 权限控制，判断连接的客户端有没有对应的权限
+    ......                // 如果没有对应的权限则中止后面的流程
+    // 设置这个 socket 为非阻塞，所以后续的 send/recv 调用都不会阻塞
+    ret = fcntl(s_fdCommand, F_SETFL, O_NONBLOCK);
+    /*
+      p_rs 为 RecordStream 类型，它内部会分配一个缓冲区来存储客户端发来的数据
+    */
+    p_rs = record_stream_new(s_fdCommand, MAX_COMMAND_BYTES);
+    /*
+      构造一个新的非超时任务，这样在收到来自客户端的数据后就会由 eventLoop
+      调用对应的处理函数 processCommandsCallback 了
+    */
+    ril_event_set (&s_commands_event, s_fdCommand, 1,
+                          processCommandsCallback, p_rs);
+    rilEventAddWakeup (&s_commands_event);
+    onNewCommandConnect();  // 作一些后续处理
+}
+```
 
 至此 Rild 的 main 全部分析完。原书用一张示意图总结 main 执行后的静态结果（原图 9-8）：
 
@@ -1294,9 +1469,40 @@ sequenceDiagram
 
 ### 1.12.1 Java 侧：从 placeCall 到 RIL.dial
 
-Android 支持 GSM 和 CDMA 两种 Phone，创建工作由 PhoneFactory 完成（工厂模式把 GSMPhone/CDMAPhone 创建的具体过程屏蔽起来；用户只关心产出物 Phone，不关心创建过程，即使以后增加 TDPhone，使用者也不需要修改太多代码）：makeDefaultPhone 根据系统设置的网络模式创建 **RIL 对象（它就是 rild socket 的客户端，AT 命令由它发送给 Rild）**，再据此创建 GSMPhone 或 CDMAPhone，最后包一层 PhoneProxy（Proxy 模式）。
+Android 支持 GSM 和 CDMA 两种 Phone，创建工作由 PhoneFactory 完成（工厂模式把 GSMPhone/CDMAPhone 创建的具体过程屏蔽起来；用户只关心产出物 Phone，不关心创建过程，即使以后增加 TDPhone，使用者也不需要修改太多代码）：
 
-拨号的入口在 PhoneUtils，假设创建的是 GSMPhone，调用链是 PhoneUtils.placeCall → PhoneProxy.dial → GSMPhone.dial → GsmCallTracker.dial（其中先构造 GsmConnection）→ RIL.dial（GSMPhone 中 cm 对象的真实类型就是 RIL 类）：
+```java
+[--> PhoneFactory.java::makeDefaultPhone，摘编]
+public static void makeDefaultPhone(Context context) {
+    synchronized(Phone.class) {
+        ......
+        // 根据系统设置获取通信网络的模式
+        int networkMode = Settings.Secure.getInt(context.getContentResolver(),
+                Settings.Secure.PREFERRED_NETWORK_MODE, preferredNetworkMode);
+        int cdmaSubscription =
+                Settings.Secure.getInt(context.getContentResolver(),
+                Settings.Secure.PREFERRED_CDMA_SUBSCRIPTION,
+                preferredCdmaSubscription);
+
+        // RIL 这个对象就是 rild socket 的客户端，AT 命令由它发送给 Rild
+        sCommandsInterface = new RIL(context, networkMode, cdmaSubscription);
+
+        int phoneType = getPhoneType(networkMode);
+        if (phoneType == Phone.PHONE_TYPE_GSM) {
+            // 先创建 GSMPhone，再创建 PhoneProxy，这里使用了 Proxy 模式
+            sProxyPhone = new PhoneProxy(new GSMPhone(context,
+                sCommandsInterface, sPhoneNotifier));
+        } else if (phoneType == Phone.PHONE_TYPE_CDMA) {
+            // 创建 CDMAPhone
+            sProxyPhone = new PhoneProxy(new CDMAPhone(context,
+                        sCommandsInterface, sPhoneNotifier));
+        }
+        sMadeDefaults = true;
+    }
+}
+```
+
+拨号的入口在 PhoneUtils，假设创建的是 GSMPhone，调用链是 PhoneUtils.placeCall → PhoneProxy.dial → GSMPhone.dial → GsmCallTracker.dial（`mCT.dial(newDialString, uusInfo)`，其中先构造 GsmConnection）→ RIL.dial：
 
 ```java
 [--> PhoneUtils.java / GSMPhone.java，摘编]
@@ -1338,7 +1544,47 @@ public RIL(Context context, int networkMode, int cdmaSubscription) {
 }
 ```
 
-和 Rild 中 rild socket 通信的 socket 在 RILReceiver 接收线程中创建：`new LocalSocket()` 后 connect 到 `SOCKET_NAME_RIL`，然后循环 readRilMessage 读数据、Parcel.unmarshall 解析、processResponse 处理。dial 请求的发送先构造一个 Java 层的 RILRequest 请求包，再交给发送线程：
+和 Rild 中 rild socket 通信的 socket 在 RILReceiver 接收线程中创建：
+
+```java
+[--> RIL.java::RILReceiver.run，摘编]
+class RILReceiver implements Runnable {
+    byte[] buffer;
+    ......
+    public void run() {
+        int retryCount = 0;
+        try {for (;;) {
+            LocalSocket s = null;
+            LocalSocketAddress l;
+            try {
+                s = new LocalSocket();
+                l = new LocalSocketAddress(SOCKET_NAME_RIL,
+                            LocalSocketAddress.Namespace.RESERVED);
+                // 和 Rild 进行连接
+                s.connect(l);
+            ......
+            mSocket = s;
+            int length = 0;
+            try {
+                InputStream is = mSocket.getInputStream();
+                for (;;) {
+                    Parcel p;
+                    // 读数据
+                    length = readRilMessage(is, buffer);
+                    // 解析数据
+                    p = Parcel.obtain();
+                    p.unmarshall(buffer, 0, length);
+                    p.setDataPosition(0);
+                    // 处理请求，以后再看
+                    processResponse(p);
+                    p.recycle();
+                }
+            }
+            ......
+        }
+```
+
+dial 请求的发送先构造一个 Java 层的 RILRequest 请求包，再交给发送线程：
 
 ```java
 [--> RIL.java::dial 与 send、RILSender.handleMessage，摘编]

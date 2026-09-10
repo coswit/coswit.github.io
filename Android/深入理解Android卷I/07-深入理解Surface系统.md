@@ -6,7 +6,7 @@
 
 ## 1.1 概述：Surface 系统的全景结构
 
-Surface 系统比 Audio 系统更庞大，原书用两条主线统摄全章：
+Surface 系统比 Audio 系统更庞大，原书用两条主线统摄全章（作者借用经脉的说法，实义如下）：
 
 1. **应用与 Surface 的关系**：不论用 Skia 绘二维图像还是用 OpenGL 绘三维图像，应用最终都要和 Surface 打交道——Surface 就是 UI 的画布，应用在它上面作画。
 2. **Surface 与 SurfaceFlinger 的关系**：Surface 向 SurfaceFlinger 提供数据，SurfaceFlinger 混合数据——与 AudioTrack 向 AudioFlinger 提供音频数据、AudioFlinger 混音的关系同构。
@@ -33,17 +33,39 @@ graph LR
 
 ### 1.2.1 Activity 的创建与 ViewRoot 的建立
 
-先回答一个问题：Activity 的生命周期回调（onCreate、onDestroy 等）人人皆知，可 Activity 对象本身是在哪里创建的？zygote 响应 AMS 的请求后 fork 出应用进程，其入口是 ActivityThread 的 main 函数；而创建 Activity 的地方，是 ActivityThread 的 handleLaunchActivity——① performLaunchActivity 负责「造出」Activity 并触发 onCreate，② handleResumeActivity 完成后续：
+先回答一个问题：Activity 的生命周期回调（onCreate、onDestroy 等）人人皆知，可 Activity 对象本身是在哪里创建的？zygote 响应 AMS 的请求后 fork 出应用进程，其入口是 ActivityThread 的 main 函数；而创建 Activity 的地方，是 ActivityThread 的 handleLaunchActivity：
 
 ```java
-// [--> ActivityThread.java::performLaunchActivity（摘编）]
+// [--> ActivityThread.java]
+private final void handleLaunchActivity(ActivityRecord r, Intent customIntent) {
+    // ① performLaunchActivity 返回一个 Activity
+    Activity a = performLaunchActivity(r, customIntent);
+    if (a != null) {
+        r.createdConfig = new Configuration(mConfiguration);
+        Bundle oldState = r.state;
+        // ② 调用 handleResumeActivity
+        handleResumeActivity(r.token, false, r.isForward);
+    }
+    // ......
+}
+```
+
+两个关键点中，① 负责「造出」Activity 并触发 onCreate：
+
+```java
+// [--> ActivityThread.java]
 private final Activity performLaunchActivity(ActivityRecord r, Intent customIntent) {
     ActivityInfo aInfo = r.activityInfo;
+    // ...... 完成一些准备工作
     Activity activity = null;
     try {
         java.lang.ClassLoader cl = r.packageInfo.getClassLoader();
         // 根据类名通过 Java 反射创建 Activity
         activity = mInstrumentation.newActivity(cl, component.getClassName(), r.intent);
+        r.intent.setExtrasClassLoader(cl);
+        if (r.state != null) {
+            r.state.setClassLoader(cl);
+        }
     } catch (Exception e) {
         // ......
     }
@@ -52,9 +74,11 @@ private final Activity performLaunchActivity(ActivityRecord r, Intent customInte
         if (activity != null) {
             // Activity 的 getContext 返回的就是这个 ContextImpl 对象
             ContextImpl appContext = new ContextImpl();
+            // ......
             // 这个调用最终触发 Activity 的 onCreate
             mInstrumentation.callActivityOnCreate(activity, r.state);
         }
+        // ......
     }
     // ......
     return activity;
@@ -64,19 +88,55 @@ private final Activity performLaunchActivity(ActivityRecord r, Intent customInte
 Instrumentation 的 newActivity 反射实例化 Activity 后，会立刻调用 Activity 的 attach 完成初始化，Window 就是在这里创建的：
 
 ```java
-// [--> Activity.java::attach（摘编）]
-final void attach(......) {
-    // 利用 PolicyManager 创建 Window 对象
-    mWindow = PolicyManager.makeNewWindow(this);
-    mWindow.setCallback(this);
-    // 创建 WindowManager 对象
-    mWindow.setWindowManager(null, mToken, mComponent.flattenToString());
-    // 保存这个 WindowManager 对象
-    mWindowManager = mWindow.getWindowManager();
+// [--> Instrumentation.java]
+public Activity newActivity(Class<?> clazz, Context context,
+            IBinder token, Application application, Intent intent,
+            ActivityInfo info, CharSequence title, Activity parent,
+            String id, Object lastNonConfigurationInstance)
+        throws InstantiationException, IllegalAccessException {
+    Activity activity = (Activity)clazz.newInstance();
+    // 关键函数 attach
+    activity.attach(context, aThread, this, token, application, intent,
+            info, title, parent, id, lastNonConfigurationInstance,
+            new Configuration());
+    return activity;
 }
 ```
 
-Window 是抽象类，它的真实类型由 PolicyManager 间接决定：PolicyManager 通过反射加载 `com.android.internal.policy.impl.Policy`，其 makeNewWindow 返回 PhoneWindow。再看 WindowManager 的真实身份：attach 中调用 setWindowManager 时第一个参数为 null，此时 Window 会创建并包装一个 WindowManagerImpl（单例）：
+```java
+// [--> Activity.java]
+final void attach(Context context, ActivityThread aThread,
+            Instrumentation instr, IBinder token, int ident,
+            Application application, Intent intent, ActivityInfo info,
+            CharSequence title, Activity parent, String id,
+            Object lastNonConfigurationInstance,
+            HashMap<String,Object> lastNonConfigurationChildInstances,
+            Configuration config) {
+    // ......
+    // 利用 PolicyManager 创建 Window 对象
+    mWindow = PolicyManager.makeNewWindow(this);
+    mWindow.setCallback(this);
+    // ......
+    // 创建 WindowManager 对象
+    mWindow.setWindowManager(null, mToken, mComponent.flattenToString());
+    // ......
+    // 保存这个 WindowManager 对象
+    mWindowManager = mWindow.getWindowManager();
+    mCurrentConfig = config;
+}
+```
+
+Window 是抽象类，它的真实类型由 PolicyManager 间接决定：PolicyManager 通过反射加载 `com.android.internal.policy.impl.Policy`，其 makeNewWindow 返回 PhoneWindow。
+
+```java
+// [--> Policy.java]
+public PhoneWindow makeNewWindow(Context context) {
+    // makeNewWindow 返回的是 PhoneWindow 对象
+    return new PhoneWindow(context);
+}
+```
+
+再看 WindowManager 的真实身份。attach 中调用 setWindowManager 时第一个参数为 null，此时 Window 会创建并包装一个 WindowManagerImpl：
 
 ```java
 // [--> Window.java]
@@ -90,6 +150,12 @@ public void setWindowManager(WindowManager wm, IBinder appToken, String appName)
     // mWindowManager 是 LocalWindowManager
     mWindowManager = new LocalWindowManager(wm);
 }
+
+// [--> WindowManagerImpl.java]
+public static WindowManagerImpl getDefault() {
+    return mWindowManager; // 单例
+}
+private static WindowManagerImpl mWindowManager = new WindowManagerImpl();
 ```
 
 LocalWindowManager 是 Window 定义的内部类，它实现了 WindowManager 接口并把工作委托给 WindowManagerImpl（Proxy 模式）。两句话总结：**Activity 的 mWindow 真实类型是 PhoneWindow，mWindowManager 真实类型是 LocalWindowManager，其背后是 WindowManagerImpl 单例**。
@@ -99,6 +165,11 @@ LocalWindowManager 是 Window 定义的内部类，它实现了 WindowManager �
 onCreate 中与 UI 相关的头等大事是 setContentView，它一路转到 PhoneWindow：
 
 ```java
+// [--> Activity.java]
+public void setContentView(View view) {
+    getWindow().setContentView(view); // getWindow 返回的是 PhoneWindow
+}
+
 // [--> PhoneWindow.java]
 public void setContentView(View view, ViewGroup.LayoutParams params) {
     // mContentParent 为 ViewGroup 类型，初值为 null
@@ -116,10 +187,9 @@ private void installDecor() {
     if (mDecor == null) {
         // 创建 mDecor，DecorView 类型，从 FrameLayout 派生
         mDecor = generateDecor();
+        // ......
     }
     if (mContentParent == null) {
-        // generateLayout 根据 Window 的 features 选择标题栏布局资源，
-        // inflate 后加入 DecorView，再取出 id 为 content 的 ViewGroup
         mContentParent = generateLayout(mDecor);
         // 创建标题栏
         mTitleView = (TextView)findViewById(com.android.internal.R.id.title);
@@ -128,16 +198,17 @@ private void installDecor() {
 }
 ```
 
-**应用 setContentView 传入的 View 只是 DecorView 的子 View，标题栏等装饰由 DecorView 统一处理**（Composite 模式的 ViewGroup 容器加 Decorator 模式的装饰）。
+generateLayout 根据 Window 的 features 选择标题栏布局资源，inflate 后加入 DecorView，再从中取出 id 为 content 的 ViewGroup 作为 mContentParent——**应用 setContentView 传入的 View 只是 DecorView 的子 View，标题栏等装饰由 DecorView 统一处理**（Composite 模式的 ViewGroup 容器加 Decorator 模式的装饰）。
 
 ![](./images/ch0125_img03.jpg)
 
-View 树建好后就轮到 handleResumeActivity：它在完成 onResume 后，把 DecorView 加入 WindowManager：
+View 树建好后就轮到 handleLaunchActivity 的关键点②。handleResumeActivity 在完成 onResume 后，把 DecorView 加入 WindowManager：
 
 ```java
-// [--> ActivityThread.java::handleResumeActivity（摘编）]
-final void handleResumeActivity(IBinder token, ......) {
+// [--> ActivityThread.java]
+final void handleResumeActivity(IBinder token, boolean clearHide, boolean isForward) {
     // ...... performResumeActivity 完成 onResume 后，取回 ActivityRecord r 与 Activity a
+    boolean willBeVisible = !a.mStartedActivity;
     if (r.window == null && !a.mFinished && willBeVisible) {
         r.window = r.activity.getWindow();
         // ① 获得一个 View 对象，它就是 DecorView
@@ -154,7 +225,7 @@ final void handleResumeActivity(IBinder token, ......) {
             wm.addView(decor, l);
         }
     }
-    // ......
+    // ...... 其他处理
 }
 ```
 
@@ -167,6 +238,8 @@ private void addView(View view, ViewGroup.LayoutParams params, boolean nest) {
     synchronized (this) {
         // ① 创建 ViewRoot
         root = new ViewRoot(view.getContext());
+        root.mAddNesting = 1;
+        view.setLayoutParams(wparams);
         // ...... 把 view 与 root 保存进 mViews/mRoots 数组
         // ② setView，其中 view 是 DecorView
         root.setView(view, wparams, panelParentView);
@@ -192,12 +265,13 @@ public final class ViewRoot extends Handler implements ViewParent,
 ViewRoot 的构造函数建立了与 WMS 的会话通道：
 
 ```java
-// [--> ViewRoot.java（摘编）]
+// [--> ViewRoot.java]
 public ViewRoot(Context context) {
     super();
+    // ......
     // 与 WMS 建立 IWindowSession 会话
     getWindowSession(context.getMainLooper());
-    // mWindow 是 W 类型，注意它不是 Window，而是 IWindow 的 Bn 端
+    // ...... mWindow 是 W 类型，注意它不是 Window，而是 IWindow 的 Bn 端
     mWindow = new W(this, context);
 }
 
@@ -219,23 +293,79 @@ public static IWindowSession getWindowSession(Looper mainLooper) {
 setView 保存 DecorView、发起一次布局请求，并把 mWindow 交给 WMS 登记：
 
 ```java
-// [--> ViewRoot.java::setView（摘编）]
+// [--> ViewRoot.java]
 public void setView(View view, WindowManager.LayoutParams attrs,
                     View panelParentView) { // 第一个参数 view 是 DecorView
+    // ......
     mView = view; // 保存这个 view
     synchronized (this) {
-        requestLayout(); // 发起布局请求，内部发 DO_TRAVERSAL 消息
+        requestLayout();
+        // ......
         // 调用 IWindowSession 的 add，第一个参数是 W 类型的 mWindow
         res = sWindowSession.add(mWindow, mWindowAttributes,
                   getHostVisibility(), mAttachInfo.mContentInsets);
         // ......
     }
 }
+
+public void requestLayout() {
+    checkThread();
+    mLayoutRequested = true;
+    scheduleTraversals();
+}
+
+public void scheduleTraversals() {
+    if (!mTraversalScheduled) {
+        mTraversalScheduled = true;
+        sendEmptyMessage(DO_TRAVERSAL); // 发送 DO_TRAVERSAL 消息，由自己处理
+    }
+}
 ```
 
-WMS 一侧，openSession 返回一个 Session 对象；Session 的 add 转调 WMS 的 addWindow，后者为窗口创建 WindowState 并调用其 attach，attach 里的动作值得注意：
+现在转到 WMS 一侧，看这两个跨进程调用的响应端：
 
 ```java
+// [--> WindowManagerService.java]
+public IWindowSession openSession(IInputMethodClient client,
+                                  IInputContext inputContext) {
+    // ......
+    return new Session(client, inputContext);
+}
+```
+
+```java
+// [--> WindowManagerService.java::Session]
+public int add(IWindow window, WindowManager.LayoutParams attrs,
+                int viewVisibility, Rect outContentInsets) {
+    // 调用外部类对象的 addWindow，也就是 WMS 的 addWindow
+    return addWindow(this, window, attrs, viewVisibility, outContentInsets);
+}
+```
+
+```java
+// [--> WindowManagerService.java]
+public int addWindow(Session session, IWindow client,
+            WindowManager.LayoutParams attrs, int viewVisibility,
+            Rect outContentInsets) {
+    // ......
+    // 为这个窗口创建一个 WindowState
+    win = new WindowState(session, client, token,
+            attachedWindow, attrs, viewVisibility);
+    // ......
+    // 调用 attach 函数
+    win.attach();
+    // ......
+    return res;
+}
+```
+
+```java
+// [--> WindowManagerService.java::WindowState]
+void attach() {
+    // mSession 就是 Session 对象，调用它的 windowAddedLocked
+    mSession.windowAddedLocked();
+}
+
 // [--> WindowManagerService.java::Session]
 void windowAddedLocked() {
     if (mSurfaceSession == null) {
@@ -247,21 +377,49 @@ void windowAddedLocked() {
 }
 ```
 
-链路收拢为：**ViewRoot 通过 IWindowSession（每个应用进程一个会话）调用 WMS；WMS 为窗口建立 WindowState，并在 Session 中创建 SurfaceSession——SurfaceSession 正是 WMS 侧通往 SF 的门票**。反方向上，WMS 通过 IWindow（ViewRoot 中的 W 对象）向应用做事件通知：按键、触屏等事件由 WMS 找到屏幕顶端的 IWindow 对象（Bp 端），调用其 dispatchKey/dispatchPointer；Bn 端在 ViewRoot 中，再根据 View 的位置信息找到真正处理事件的 View。
+链路收拢为：**ViewRoot 通过 IWindowSession（每个应用进程一个会话）调用 WMS；WMS 为窗口建立 WindowState，并在 Session 中创建 SurfaceSession——SurfaceSession 正是 WMS 侧通往 SF 的门票**。反方向上，WMS 通过 IWindow（ViewRoot 中的 W 对象）向应用做事件通知，其接口内容一目了然：
+
+```java
+// [--> IWindow.aidl 定义]
+void dispatchKey(in KeyEvent event);
+void dispatchPointer(in MotionEvent event, long eventTime, boolean callWhenDone);
+void dispatchTrackball(in MotionEvent event, long eventTime, boolean callWhenDone);
+```
+
+按键、触屏等事件由 WMS 找到屏幕顶端的 IWindow 对象（Bp 端），调用其 dispatchKey；Bn 端在 ViewRoot 中，再根据 View 的位置信息找到真正处理事件的 View。
 
 ![](./images/ch0125_img05.jpg)
 
 ### 1.2.2 performTraversals 与 UI 绘制
 
-requestLayout 发出的 DO_TRAVERSAL 消息由 ViewRoot 自己的 handleMessage 处理，转进 performTraversals。它本身很复杂，抓住两个关键调用即可：
+requestLayout 发出的 DO_TRAVERSAL 消息由 ViewRoot 自己的 handleMessage 处理，转进 performTraversals：
 
 ```java
-// [--> ViewRoot.java::performTraversals（摘编）]
+// [--> ViewRoot.java]
+public void handleMessage(Message msg) {
+    switch (msg.what) {
+    // ......
+    case DO_TRAVERSAL:
+        // ......
+        performTraversals(); // 调用 performTraversals 函数
+        // ......
+        break;
+    // ......
+    }
+}
+```
+
+performTraversals 本身很复杂，抓住两个关键调用即可：
+
+```java
+// [--> ViewRoot.java]
 private void performTraversals() {
     final View host = mView; // mView 就是 DecorView
     // ......
-    relayoutResult = // ① 关键函数 relayoutWindow
-        relayoutWindow(params, viewVisibility, insetsPending);
+    try {
+        relayoutResult = // ① 关键函数 relayoutWindow
+            relayoutWindow(params, viewVisibility, insetsPending);
+    }
     // ......
     draw(fullRedrawNeeded); // ② 开始绘制
     // ......
@@ -271,12 +429,16 @@ private void performTraversals() {
 先看①，它把 mSurface 作为参数传给了跨进程调用：
 
 ```java
-// [--> ViewRoot.java::relayoutWindow（摘编）]
-private int relayoutWindow(WindowManager.LayoutParams params, ......)
-            throws RemoteException {
+// [--> ViewRoot.java]
+private int relayoutWindow(WindowManager.LayoutParams params,
+        int viewVisibility, boolean insetsPending) throws RemoteException {
     // 调用 IWindowSession 的 relayout
     int relayoutResult = sWindowSession.relayout(
-            mWindow, params, ......,
+            mWindow, params,
+            (int) (mView.mMeasuredWidth * appScale + 0.5f),
+            (int) (mView.mMeasuredHeight * appScale + 0.5f),
+            viewVisibility, insetsPending, mWinFrame,
+            mPendingContentInsets, mPendingVisibleInsets,
             mPendingConfiguration, mSurface); // mSurface 作为参数传进去了
     // ......
     return relayoutResult;
@@ -286,15 +448,18 @@ private int relayoutWindow(WindowManager.LayoutParams params, ......)
 再看②，Activity 画面的产生就这三步：
 
 ```java
-// [--> ViewRoot.java::draw（摘编）]
+// [--> ViewRoot.java]
 private void draw(boolean fullRedrawNeeded) {
     Surface surface = mSurface; // mSurface 是 ViewRoot 的成员变量
     // ......
     Canvas canvas;
+    // ......
     // 从 mSurface 中 lock 一块 Canvas
     canvas = surface.lockCanvas(dirty);
+    // ......
     // 调用 DecorView 的 draw 函数，canvas 就是画布
     mView.draw(canvas);
+    // ......
     // unlock 画布，屏幕上马上就能见到画面了
     surface.unlockCanvasAndPost(canvas);
 }
@@ -319,12 +484,32 @@ int relayout(IWindow window, in WindowManager.LayoutParams attrs,
         out Surface outSurface);
 ```
 
-请求端拿到的是 Java 层的代理调用；响应端在 WMS 的 Session 与 WindowManagerService 中——Session.relayout 转调 relayoutWindow：
+请求端（ViewRoot）拿到的是 Java 层的代理调用；响应端在 WMS 的 Session 与 WindowManagerService 中：
 
 ```java
-// [--> WindowManagerService.java::relayoutWindow（摘编）]
-public int relayoutWindow(Session session, IWindow client, ......,
-        Surface outSurface) {
+// [--> WindowManagerService.java::Session]
+public int relayout(IWindow window, WindowManager.LayoutParams attrs,
+            int requestedWidth, int requestedHeight, int viewFlags,
+            boolean insetsPending, Rect outFrame, Rect outContentInsets,
+            Rect outVisibleInsets, Configuration outConfig,
+            Surface outSurface) {
+    // 注意最后这个参数的名字，叫 outSurface
+    // 调用外部类对象的 relayoutWindow
+    return relayoutWindow(this, window, attrs, requestedWidth,
+                    requestedHeight, viewFlags, insetsPending,
+                    outFrame, outContentInsets, outVisibleInsets, outConfig,
+                    outSurface);
+}
+```
+
+```java
+// [--> WindowManagerService.java]
+public int relayoutWindow(Session session, IWindow client,
+        WindowManager.LayoutParams attrs, int requestedWidth,
+        int requestedHeight, int viewVisibility, boolean insetsPending,
+        Rect outFrame, Rect outContentInsets, Rect outVisibleInsets,
+        Configuration outConfig, Surface outSurface) {
+    // ......
     // win 是 WindowState，这里将创建一个本地的 Surface 对象
     Surface surface = win.createSurfaceLocked();
     if (surface != null) {
@@ -334,9 +519,12 @@ public int relayoutWindow(Session session, IWindow client, ......,
     }
     // ......
 }
+```
 
+```java
 // [--> WindowManagerService.java::WindowState]
 Surface createSurfaceLocked() {
+    // ......
     // mSurfaceSession 是 Session 上创建的 SurfaceSession 对象，
     // 以它为参数构造一个新的 Surface 对象
     mSurface = new Surface(
@@ -355,43 +543,87 @@ WMS 端用带 SurfaceSession 参数的构造函数创建 Surface，再通过 cop
 
 ![](./images/ch0130_img01.jpg)
 
-要彻底看清传递机制，得借助 aidl 工具把 IWindowSession.aidl 编译成 Java，看生成的 Binder 两端代码。客户端（Bp 端）的 relayout 中，outSurface 的处理有两处关键：
+要彻底看清传递机制，得借助 aidl 工具把 IWindowSession.aidl 编译成 Java（`aidl -I<include 目录> IWindowSession.aidl test.java`），看生成的 Binder 两端代码。先看客户端（Bp 端）：
 
 ```java
-// [--> aidl 生成的 Bp 端 :: relayout（摘编）]
+// [--> test.java :: Bp 端 :: relayout]
+public int relayout(android.view.IWindow window,
+                  android.view.WindowManager.LayoutParams attrs,
+                  int requestedWidth, int requestedHeight,
+                  int viewVisibility, boolean insetsPending,
+                  android.graphics.Rect outFrame,
+                  android.graphics.Rect outContentInsets,
+                  android.graphics.Rect outVisibleInsets,
+                  android.content.res.Configuration outConfig,
+                  android.view.Surface outSurface) // outSurface 是第 11 个参数
+                  throws android.os.RemoteException
+{
+    android.os.Parcel _data = android.os.Parcel.obtain();
+    android.os.Parcel _reply = android.os.Parcel.obtain();
+    int _result;
+    try {
+        _data.writeInterfaceToken(DESCRIPTOR);
+        _data.writeStrongBinder((((window!=null))?(window.asBinder()):(null)));
+        if ((attrs!=null)) {
+            _data.writeInt(1);
+            attrs.writeToParcel(_data, 0);
+        } else {
+            _data.writeInt(0);
+        }
+        // ...... 写入其余参数
         // 奇怪：outSurface 的信息没有写到请求包 _data 中，请求就直接发出去了
         mRemote.transact(Stub.TRANSACTION_relayout, _data, _reply, 0);
         _reply.readException();
         _result = _reply.readInt();
+        if ((0!=_reply.readInt())) {
+            outFrame.readFromParcel(_reply);
+        }
         // ......
         if ((0!=_reply.readInt())) {
             outSurface.readFromParcel(_reply); // 从 Parcel 中读取信息填充 outSurface
         }
+    }
+    // ......
+    return _result;
+}
 ```
 
 客户端根本没把 outSurface 写进请求包，那服务端收到的 Surface 对象从哪来？再看服务端（Bn 端）的 onTransact：
 
 ```java
-// [--> aidl 生成的 Bn 端 :: onTransact（摘编）]
-    case TRANSACTION_relayout:
+// [--> test.java :: Bn 端 :: onTransact]
+public boolean onTransact(int code, android.os.Parcel data,
+                                android.os.Parcel reply, int flags)
+                    throws android.os.RemoteException
+{
+    switch (code)
     {
-        data.enforceInterface(DESCRIPTOR);
-        // ......
-        android.view.Surface _arg10;
-        // Surface 信息并没有传过来，服务端这边直接 new 了一个新的 Surface
-        _arg10 = new android.view.Surface();
-        int _result = this.relayout(_arg0, _arg1, ......, _arg10);
-        reply.writeNoException();
-        reply.writeInt(_result);
-        // _arg10 就是调用了 copyFrom 的那个 outSurface，怎么传回客户端？
-        if ((_arg10!=null)) {
-            reply.writeInt(1);
-            // 调用 Surface 的 writeToParcel 把信息写到 reply 包中，
-            // 注意最后一个参数为 PARCELABLE_WRITE_RETURN_VALUE
-            _arg10.writeToParcel(reply,
-                  android.os.Parcelable.PARCELABLE_WRITE_RETURN_VALUE);
+        case TRANSACTION_relayout:
+        {
+            data.enforceInterface(DESCRIPTOR);
+            android.view.IWindow _arg0;
+            // ......
+            android.view.Surface _arg10;
+            // Surface 信息并没有传过来，服务端这边直接 new 了一个新的 Surface
+            _arg10 = new android.view.Surface();
+            int _result = this.relayout(_arg0, _arg1, _arg2, _arg3, _arg4,
+                    _arg5, _arg6, _arg7, _arg8, _arg9, _arg10);
+            reply.writeNoException();
+            reply.writeInt(_result);
+            // _arg10 就是调用了 copyFrom 的那个 outSurface，怎么传回客户端？
+            if ((_arg10!=null)) {
+                reply.writeInt(1);
+                // 调用 Surface 的 writeToParcel 把信息写到 reply 包中，
+                // 注意最后一个参数为 PARCELABLE_WRITE_RETURN_VALUE
+                _arg10.writeToParcel(reply,
+                      android.os.Parcelable.PARCELABLE_WRITE_RETURN_VALUE);
+            }
+            // ......
         }
+        // ......
+        return true;
     }
+}
 ```
 
 真相大白：**服务端自己 new 一个 Surface 交给 relayoutWindow 填充（copyFrom 就发生在它身上），返回时调用 writeToParcel 把 Surface 信息序列化进应答包；客户端再通过 readFromParcel 反序列化，填充 ViewRoot 传进来的 mSurface**。整个传递过程如下图：
@@ -402,12 +634,30 @@ WMS 端用带 SurfaceSession 参数的构造函数创建 Surface，再通过 cop
 
 Java 层的 writeToParcel 与 readFromParcel 都是 native 函数，实现集中在 android_view_Surface.cpp。按调用顺序依次看。
 
-ViewRoot 构造时的 Surface 无参构造只创建了一个 Canvas（CompatibleCanvas，从 Canvas 派生）。顺带交代绘图「四大金刚」：**Bitmap 存储像素（真正的画布内存）；Canvas 记载画图动作并提供基本绘图函数；Drawing primitive（绘图基元）是矩形、圆、文本等被绘制的对象；Paint 描述颜色与风格**。一般 Canvas 封装一块 Bitmap，作画就发生在这块 Bitmap 上。
+ViewRoot 构造时的 Surface 无参构造只创建了一个 Canvas：
 
-WMS 侧的 SurfaceSession 构造函数调用 native 的 init，后者创建一个 SurfaceComposerClient 对象并把指针保存到 Java 对象中——**SurfaceSession 的本质是 JNI 层的 SurfaceComposerClient**：
+```java
+// [--> Surface.java]
+public Surface() {
+    // ......
+    // CompatibleCanvas 从 Canvas 类派生
+    mCanvas = new CompatibleCanvas();
+}
+```
+
+顺带交代绘图「四大金刚」：**Bitmap 存储像素（真正的画布内存）；Canvas 记载画图动作并提供基本绘图函数；Drawing primitive（绘图基元）是矩形、圆、文本等被绘制的对象；Paint 描述颜色与风格**。一般 Canvas 封装一块 Bitmap，作画就发生在这块 Bitmap 上。
+
+WMS 侧的 SurfaceSession 构造函数调用 native 的 init：
+
+```java
+// [--> SurfaceSession.java]
+public SurfaceSession() {
+    init(); // 这是一个 native 函数
+}
+```
 
 ```cpp
-// [--> android_view_Surface.cpp::SurfaceSession_init]
+// [--> android_view_Surface.cpp]
 static void SurfaceSession_init(JNIEnv* env, jobject clazz)
 {
     // 创建一个 SurfaceComposerClient 对象
@@ -418,10 +668,23 @@ static void SurfaceSession_init(JNIEnv* env, jobject clazz)
 }
 ```
 
-接着是 WMS 侧带 SurfaceSession 参数的 Surface 构造（Java 层保存 CompatibleCanvas 后调用 native 的 init），JNI 实现的核心是 createSurface：
+SurfaceSession 的本质是 JNI 层的 SurfaceComposerClient。接着是 WMS 侧带 SurfaceSession 参数的 Surface 构造，它调用 native 的 init：
+
+```java
+// [--> Surface.java]
+public Surface(SurfaceSession s, // 传入一个 SurfaceSession 对象
+        int pid, String name, int display, int w, int h, int format, int flags)
+    throws OutOfResourcesException {
+    // ......
+    mCanvas = new CompatibleCanvas();
+    // 又一个 native 函数，w、h 代表绘图区域的宽高
+    init(s, pid, name, display, w, h, format, flags);
+    mName = name;
+}
+```
 
 ```cpp
-// [--> android_view_Surface.cpp::Surface_init]
+// [--> android_view_Surface.cpp]
 static void Surface_init(JNIEnv* env, jobject clazz,
         jobject session, jint pid, jstring jname,
         jint dpy, jint w, jint h, jint format, jint flags)
@@ -431,8 +694,12 @@ static void Surface_init(JNIEnv* env, jobject clazz,
             (SurfaceComposerClient*)env->GetIntField(session, sso.client);
 
     sp<SurfaceControl> surface; // 注意它的类型是 SurfaceControl
-    // createSurface 返回的是一个 SurfaceControl 对象
-    surface = client->createSurface(pid, dpy, w, h, format, flags);
+    if (jname == NULL) {
+        // createSurface 返回的是一个 SurfaceControl 对象
+        surface = client->createSurface(pid, dpy, w, h, format, flags);
+    } else {
+        // ......
+    }
     // 把这个 SurfaceControl 对象设置到 Java 层的 Surface 对象中
     setSurfaceControl(env, clazz, surface);
 }
@@ -441,7 +708,7 @@ static void Surface_init(JNIEnv* env, jobject clazz,
 然后是 copyFrom 的 JNI 实现——它只搬运 SurfaceControl 指针：
 
 ```cpp
-// [--> android_view_Surface.cpp::Surface_copyFrom]
+// [--> android_view_Surface.cpp]
 static void Surface_copyFrom(JNIEnv* env, jobject clazz, jobject other)
 {
     // clazz 是 copyFrom 的调用对象，other 是 copyFrom 的参数。
@@ -455,10 +722,10 @@ static void Surface_copyFrom(JNIEnv* env, jobject clazz, jobject other)
 }
 ```
 
-再是 writeToParcel 与客户端的 readFromParcel：
+再是 writeToParcel：
 
 ```cpp
-// [--> android_view_Surface.cpp::Surface_writeToParcel]
+// [--> android_view_Surface.cpp]
 static void Surface_writeToParcel(JNIEnv* env, jobject clazz,
         jobject argParcel, jint flags)
 {
@@ -474,8 +741,12 @@ static void Surface_writeToParcel(JNIEnv* env, jobject clazz,
         setSurfaceControl(env, clazz, 0);
     }
 }
+```
 
-// [--> android_view_Surface.cpp::Surface_readFromParcel]
+最后是客户端的 readFromParcel：
+
+```cpp
+// [--> android_view_Surface.cpp]
 static void Surface_readFromParcel(JNIEnv* env, jobject clazz, jobject argParcel)
 {
     Parcel* parcel = (Parcel*)env->GetIntField(argParcel, no.native_parcel);
@@ -496,29 +767,49 @@ static void Surface_readFromParcel(JNIEnv* env, jobject clazz, jobject argParcel
 
 ### 1.3.3 Surface 与画图
 
-Surface 拿到手，绘图的最后两个调用 lockCanvas 与 unlockCanvasAndPost 的 JNI 实现也就水到渠成。lockCanvas 的机制很清晰：**通过 Native Surface 的 lock 拿到一块存储区域（info.bits），把它设为 SkCanvas 的 Bitmap 像素区，UI 绘画的结果就记录在这块存储区域里**：
+Surface 拿到手，绘图的最后两个调用 lockCanvas 与 unlockCanvasAndPost 的 JNI 实现也就水到渠成。先看 lockCanvas：
 
 ```cpp
-// [--> android_view_Surface.cpp::Surface_lockCanvas（摘编）]
+// [--> android_view_Surface.cpp]
 static jobject Surface_lockCanvas(JNIEnv* env, jobject clazz, jobject dirtyRect)
 {
     // 从 Java 的 Surface 对象中取出 Native 的 Surface 对象
     const sp<Surface>& surface(getSurface(env, clazz));
-    // dirtyRect 表示需要重绘的矩形块，根据它设置 dirtyRegion（无则全屏）
-    Region dirtyRegion;
     // ......
+    // dirtyRect 表示需要重绘的矩形块，根据它设置 dirtyRegion
+    Region dirtyRegion;
+    if (dirtyRect) {
+        Rect dirty;
+        dirty.left   = env->GetIntField(dirtyRect, ro.l);
+        dirty.top    = env->GetIntField(dirtyRect, ro.t);
+        dirty.right  = env->GetIntField(dirtyRect, ro.r);
+        dirty.bottom = env->GetIntField(dirtyRect, ro.b);
+        if (!dirty.isEmpty()) {
+            dirtyRegion.set(dirty);
+        }
+    } else {
+        dirtyRegion.set(Rect(0x3FFF,0x3FFF));
+    }
+
     // 调用 Native Surface 的 lock，SurfaceInfo 带回绘图所需信息
     Surface::SurfaceInfo info;
     status_t err = surface->lock(&info, &dirtyRegion);
-    // 取出 Surface 构造时创建的 CompatibleCanvas 对象，
-    // 再从中取出 SkCanvas 对象
+    // ......
+    // 取出 Surface 构造时创建的 CompatibleCanvas 对象
     jobject canvas = env->GetObjectField(clazz, so.canvas);
+    env->SetIntField(canvas, co.surfaceFormat, info.format);
+    // 从 Canvas 对象中取出 SkCanvas 对象
     SkCanvas* nativeCanvas = (SkCanvas*)env->GetIntField(canvas, no.native_canvas);
     SkBitmap bitmap;
     ssize_t bpr = info.s * bytesPerPixel(info.format);
     bitmap.setConfig(convertPixelFormat(info.format), info.w, info.h, bpr);
-    // info.bits 指向一块存储区域
-    bitmap.setPixels(info.bits);
+    // ......
+    if (info.w > 0 && info.h > 0) {
+        // info.bits 指向一块存储区域
+        bitmap.setPixels(info.bits);
+    } else {
+        bitmap.setPixels(NULL);
+    }
     // 给这个 SkCanvas 设置 Bitmap，UI 绘画就有画布了
     nativeCanvas->setBitmapDevice(bitmap);
     // ......
@@ -526,7 +817,27 @@ static jobject Surface_lockCanvas(JNIEnv* env, jobject clazz, jobject dirtyRect)
 }
 ```
 
-unlockCanvasAndPost 则是收尾：恢复 SkCanvas 状态并解除与 Bitmap 的绑定（Skia 细节），然后调用 Native Surface 的 unlockAndPost。
+lockCanvas 的机制很清晰：**通过 Native Surface 的 lock 拿到一块存储区域（info.bits），把它设为 SkCanvas 的 Bitmap 像素区，UI 绘画的结果就记录在这块存储区域里**。unlockCanvasAndPost 则是收尾：
+
+```cpp
+// [--> android_view_Surface.cpp]
+static void Surface_unlockCanvasAndPost(JNIEnv* env, jobject clazz,
+        jobject argCanvas)
+{
+    jobject canvas = env->GetObjectField(clazz, so.canvas);
+    // 取出 Native 的 Surface 对象
+    const sp<Surface>& surface(getSurface(env, clazz));
+    // 恢复 SkCanvas 状态并解除与 Bitmap 的绑定（Skia 细节，不展开）
+    SkCanvas* nativeCanvas = (SkCanvas*)env->GetIntField(canvas, no.native_canvas);
+    int saveCount = env->GetIntField(clazz, so.saveCount);
+    nativeCanvas->restoreToCount(saveCount);
+    nativeCanvas->setBitmapDevice(SkBitmap());
+    env->SetIntField(clazz, so.saveCount, 0);
+    // 调用 Surface 对象的 unlockAndPost
+    status_t err = surface->unlockAndPost();
+    // ......
+}
+```
 
 ## 1.4 深入分析 Surface
 
@@ -534,7 +845,7 @@ unlockCanvasAndPost 则是收尾：恢复 SkCanvas 状态并解除与 Bitmap 的
 
 ### 1.4.1 基础知识：显示层、FrameBuffer 与 PageFlipping
 
-第一件事，屏幕上的画面如何组织。屏幕位于一个三维坐标系中，Z 轴由屏幕内指向屏幕外；每个矩形块是一个**显示层（Layer）**，拥有颜色、透明度、位置、宽高等属性以及对应的显示内容。SF 的工作就是把这些按 Z 轴排好序的显示层做图像混合，混合结果即屏幕画面。注意代码中另有一个名为 Layer 的具体类，为区分广义概念，这里把广义的 Layer 称为显示层。
+第一件事，屏幕上的画面如何组织。屏幕位于一个三维坐标系中，Z 轴由屏幕内指向屏幕外；每个矩形块是一个**显示层（Layer）**，拥有颜色、透明度、位置、宽高等属性以及对应的显示内容。SF 的工作就是把这些按 Z 轴排好序的显示层做图像混合，混合结果即屏幕画面——Z 轴排序符合「前面的物体遮挡后面的物体」的日常经验。注意代码中另有一个名为 Layer 的具体类，为区分广义概念，这里把广义的 Layer 称为显示层。
 
 ![](./images/ch0135_img01.jpg)
 
@@ -547,7 +858,49 @@ Surface 系统定义了三种属性、共四种显示层：
 | eFXSurfaceBlur | Blur | 半透明模糊效果，像隔一层毛玻璃 |
 | eFXSurfaceDim | Dim | 变暗效果，暗但不模糊 |
 
-第二件事，数据承载。Audio 系统用共享内存传音频数据，Surface 系统的图像数据则由 FrameBuffer 承载。**FB（FrameBuffer，帧缓冲）就是存储图形帧数据的缓冲**，它依托 Linux 的虚拟显示设备 FBD（FrameBuffer Device，帧缓冲设备，设备文件 /dev/graphics/fb%d）——FBD 把各厂商的真实显示设备统一在一个框架下，应用层通过标准的 ioctl、mmap 等系统调用即可操作显示设备。显存通过 mmap 映射到用户空间，往这块缓冲写数据就相当于在屏幕上作画。DDMS（Dalvik Debug Monitor Server）的截屏功能就是直接读 FB 的例子——framebuffer_service 先 `open("/dev/graphics/fb0")`，经 `ioctl(fb, FBIOGET_VSCREENINFO, &vinfo)` 取出屏幕属性（宽高、 bpp），然后把 FBD 中的数据原样写到输出文件。
+第二件事，数据承载。Audio 系统用共享内存传音频数据，Surface 系统的图像数据则由 FrameBuffer 承载。**FB（FrameBuffer，帧缓冲）就是存储图形帧数据的缓冲**，它依托 Linux 的虚拟显示设备 FBD（FrameBuffer Device，帧缓冲设备，设备文件 /dev/fb%d）——FBD 把各厂商的真实显示设备统一在一个框架下，应用层通过标准的 ioctl、mmap 等系统调用即可操作显示设备，这一机制也称 LFB（Linux FrameBuffer）。显存通过 mmap 映射到用户空间，往这块缓冲写数据就相当于在屏幕上作画。DDMS（Dalvik Debug Monitor Server）的截屏功能就是直接读 FB 的例子：
+
+```c
+// [--> framebuffer_service.c，摘编]
+struct fbinfo { // 写到输出文件头部的屏幕信息
+    unsigned int version;
+    unsigned int bpp;
+    unsigned int size;
+    unsigned int width;
+    unsigned int height;
+    // ...... 各颜色分量的 offset 与 length
+};
+
+// 这个函数的目的是把当前屏幕的内容写到一个文件中
+void framebuffer_service(int fd, void *cookie)
+{
+    struct fb_var_screeninfo vinfo;
+    struct fbinfo fbinfo;
+    char x[256];
+    unsigned i, bytespp;
+    // Android 系统上的 fb 设备路径在 /dev/graphics 目录下
+    int fb = open("/dev/graphics/fb0", O_RDONLY);
+    if (fb < 0) goto done;
+    // 通过 ioctl 取出屏幕属性
+    if (ioctl(fb, FBIOGET_VSCREENINFO, &vinfo) < 0) goto done;
+
+    bytespp = vinfo.bits_per_pixel / 8;
+    fbinfo.bpp    = vinfo.bits_per_pixel;
+    fbinfo.size   = vinfo.xres * vinfo.yres * bytespp;
+    fbinfo.width  = vinfo.xres;
+    fbinfo.height = vinfo.yres;
+    // ...... 填充颜色分量信息
+    writex(fd, &fbinfo, sizeof(fbinfo)); // 先写文件头部
+    for (i = 0; i < fbinfo.size; i += 256) {
+        // 读取 FBD 中的数据，原样写到文件
+        if (readx(fb, &x, 256)) goto done;
+        if (writex(fd, &x, 256)) goto done;
+    }
+done:
+    if (fb >= 0) close(fb);
+    close(fd);
+}
+```
 
 ![](./images/ch0135_img03.jpg)
 
@@ -599,7 +952,7 @@ sp<ISurfaceFlingerClient> SurfaceFlinger::createConnection()
 }
 ```
 
-Client 的构造函数创建共享内存并放上控制结构（原书沿用 Audio 系统的叫法称 CB，Control Block——Surface 系统中真正起控制作用的是接下来这个 SharedClient）：
+Client 的构造函数创建共享内存并放上 CB（Control Block，控制块——原书沿用 Audio 系统的叫法，Surface 系统中真正起控制作用的是接下来这个 SharedClient）：
 
 ```cpp
 // [--> SurfaceFlinger.cpp]
@@ -658,13 +1011,18 @@ class SharedBufferStack {
 
 ![](./images/ch0136_img01.jpg)
 
-最后看 _init，它让 SurfaceComposerClient 拿到三个关键成员：**mSignalServer（BpSurfaceFlinger，客户端刷新 BackBuffer 后由它通知 SF 做 PageFlipping 和输出）、mControl（跨进程共享的 SharedClient，来自 mClient->getControlBlock() 的共享内存）、mClient（BClient 的客户端对应物）**：
+最后看 _init：
 
 ```cpp
-// [--> SurfaceComposerClient.cpp::_init（摘编）]
+// [--> SurfaceComposerClient.cpp]
 void SurfaceComposerClient::_init(
         const sp<ISurfaceComposer>& sm, const sp<ISurfaceFlingerClient>& conn)
 {
+    mPrebuiltLayerState = 0;
+    mTransactionOpen = 0;
+    mStatus = NO_ERROR;
+    mControl = 0;
+
     mClient = conn; // mClient 是 BClient 在客户端的代表
     mControlMemory = mClient->getControlBlock();
     mSignalServer = sm; // mSignalServer 是 BpSurfaceFlinger
@@ -673,7 +1031,7 @@ void SurfaceComposerClient::_init(
 }
 ```
 
-类关系全景如下：
+_init 让 SurfaceComposerClient 拿到三个关键成员：**mSignalServer（BpSurfaceFlinger，客户端刷新 BackBuffer 后由它通知 SF 做 PageFlipping 和输出）、mControl（跨进程共享的 SharedClient）、mClient（BClient 的客户端对应物）**。类关系全景如下：
 
 ![](./images/ch0136_img02.jpg)
 
@@ -681,7 +1039,26 @@ SurfaceFlinger 从 Thread 派生（有独立工作线程）；BClient 是 SF 的
 
 ### 1.4.3 SurfaceControl 的创建与 Layer 家族
 
-精简流程第二步：Surface_init 调用 SurfaceComposerClient 的 createSurface 得到 SurfaceControl。请求端先经一个拼名字的便捷重载，再由内层 createSurface 发起跨进程调用：
+精简流程第二步：Surface_init 调用 SurfaceComposerClient 的 createSurface 得到 SurfaceControl。请求端分两层：
+
+```cpp
+// [--> SurfaceComposerClient.cpp]
+sp<SurfaceControl> SurfaceComposerClient::createSurface(
+        int pid, DisplayID display, uint32_t w, uint32_t h,
+        PixelFormat format, uint32_t flags)
+{
+    String8 name;
+    const size_t SIZE = 128;
+    char buffer[SIZE];
+    snprintf(buffer, SIZE, "<pid_%d>", getpid());
+    name.append(buffer);
+    // 调用另一个 createSurface，多一个 name 参数
+    return SurfaceComposerClient::createSurface(pid, name, display,
+            w, h, format, flags);
+}
+```
+
+DisplayID 是 int32 整型，表示屏幕编号（如双屏手机有内外两屏）；当时 Android 只支持一块屏幕，取值都是 0。内层的 createSurface 发起跨进程调用：
 
 ```cpp
 // [--> SurfaceComposerClient.cpp]
@@ -707,10 +1084,10 @@ sp<SurfaceControl> SurfaceComposerClient::createSurface(
 }
 ```
 
-DisplayID 是 int32 整型，表示屏幕编号（如双屏手机有内外两屏）；当时 Android 只支持一块屏幕，取值都是 0。响应端在 SF 进程（BClient 只是转发给 mFlinger）：
+响应端在 SF 进程（BClient 只是转发给 mFlinger）：
 
 ```cpp
-// [--> SurfaceFlinger.cpp::createSurface（摘编）]
+// [--> SurfaceFlinger.cpp]
 sp<ISurface> SurfaceFlinger::createSurface(ClientID clientId, int pid,
         const String8& name, ISurfaceFlingerClient::surface_data_t* params,
         DisplayID d, uint32_t w, uint32_t h, PixelFormat format, uint32_t flags)
@@ -740,9 +1117,11 @@ sp<ISurface> SurfaceFlinger::createSurface(ClientID clientId, int pid,
             }
             break;
         case eFXSurfaceBlur:
+            // Blur 类型的显示层
             layer = createBlurSurfaceLocked(client, d, id, w, h, flags);
             break;
         case eFXSurfaceDim:
+            // Dim 类型的显示层
             layer = createDimSurfaceLocked(client, d, id, w, h, flags);
             break;
     }
@@ -755,7 +1134,9 @@ sp<ISurface> SurfaceFlinger::createSurface(ClientID clientId, int pid,
         if (surfaceHandle != 0) {
             params->token    = surfaceHandle->getToken();
             params->identity = surfaceHandle->getIdentity();
-            // ......
+            params->width    = w;
+            params->height   = h;
+            params->format   = format;
         }
     }
     return surfaceHandle; // ISurface 的 Bn 端就是这个对象
@@ -765,7 +1146,7 @@ sp<ISurface> SurfaceFlinger::createSurface(ClientID clientId, int pid,
 Normal 类型的创建函数有三个关键点：
 
 ```cpp
-// [--> SurfaceFlinger.cpp::createNormalSurfaceLocked（摘编）]
+// [--> SurfaceFlinger.cpp]
 sp<LayerBaseClient> SurfaceFlinger::createNormalSurfaceLocked(
         const sp<Client>& client, DisplayID display,
         int32_t id, uint32_t w, uint32_t h, uint32_t flags,
@@ -802,7 +1183,10 @@ sp<LayerBaseClient> SurfaceFlinger::createNormalSurfaceLocked(
 Layer::Layer(SurfaceFlinger* flinger, DisplayID display,
         const sp<Client>& c, int32_t i) // i 表示 SharedBufferStack 数组的索引
     :   LayerBaseClient(flinger, display, c, i), // 先调用基类构造函数
-        mSecure(false), ......
+        mSecure(false),
+        mNoEGLImageForSwBuffers(false),
+        mNeedsBlending(true),
+        mNeedsDithering(false)
 {
     // getFrontBuffer 取出 FrontBuffer 的编号
     mFrontBufferIndex = lcblk->getFrontBuffer();
@@ -826,17 +1210,32 @@ LayerBaseClient::LayerBaseClient(SurfaceFlinger* flinger, DisplayID display,
 }
 ```
 
-SF 端的 Layer 通过 SharedBufferServer 绑定 SharedClient 中属于自己的那个 SharedBufferStack；客户端的 Native Surface 则通过 SharedBufferClient 控制同一个栈——SF 是消费者、应用是生产者，一读一写各持一个控制结构。Layer 被 sp 化后 onFirstRef 还会调用 `client->bindLayer(this, mIndex)` 把自己登记进 Client 的 mLayers 数组。
+SF 端的 Layer 通过 SharedBufferServer 绑定 SharedClient 中属于自己的那个 SharedBufferStack；客户端的 Native Surface 则通过 SharedBufferClient 控制同一个栈——SF 是消费者、应用是生产者，一读一写各持一个控制结构。
 
 ![](./images/ch0137_img01.jpg)
+
+Layer 被 sp 化后 onFirstRef 会把它登记进 Client：
+
+```cpp
+// [--> LayerBase.cpp]
+void LayerBaseClient::onFirstRef()
+{
+    sp<Client> client(this->client.promote());
+    if (client != 0) {
+        // 把自己加入 client 对象的 mLayers 数组
+        client->bindLayer(this, mIndex);
+    }
+}
+```
 
 再看关键点② setBuffers，它创建 PageFlipping 所需的两个缓冲：
 
 ```cpp
-// [--> Layer.cpp::setBuffers（摘编）]
+// [--> Layer.cpp]
 status_t Layer::setBuffers(uint32_t w, uint32_t h,
                               PixelFormat format, uint32_t flags)
 {
+    // ......
     // DisplayHardware 是代表显示设备的 HAL 对象，0 代表第一块屏幕，
     // 这里从 HAL 中取出一些与显示相关的信息
     const DisplayHardware& hw(graphicPlane(0).displayHardware());
@@ -856,12 +1255,17 @@ status_t Layer::setBuffers(uint32_t w, uint32_t h,
 }
 ```
 
-关键点③ addLayer_l 把新显示层挂到 SF 的 Z 轴大军——mCurrentState 的 layersSortedByZ 是排序数组，add 按新 layer 在 Z 轴的位置插入（mCurrentState 保存了所有的显示层）：
+关键点③ addLayer_l 把新显示层挂到 SF 的 Z 轴大军：
 
 ```cpp
-// [--> SurfaceFlinger.cpp::addLayer_l（摘编）]
+// [--> SurfaceFlinger.cpp]
 status_t SurfaceFlinger::addLayer_l(const sp<LayerBase>& layer)
 {
+    /*
+     * mCurrentState 是 SF 定义的一个结构，其 layersSortedByZ 是排序数组。
+     * add 把这个新 layer 按它在 Z 轴的位置加入排序数组，
+     * mCurrentState 保存了所有的显示层。
+     */
     ssize_t i = mCurrentState.layersSortedByZ.add(
                                 layer, &LayerBase::compareCurrentStateZ);
     sp<LayerBaseClient> lbc =
@@ -873,7 +1277,26 @@ status_t SurfaceFlinger::addLayer_l(const sp<LayerBase>& layer)
 }
 ```
 
-跨进程调用返回后，客户端用返回的 ISurface 与 surface_data_t 构造 SurfaceControl——它是一个 wrapper 类，成员 mClient 指向 SurfaceComposerClient、mSurface 指向跨进程返回的 ISurface、外加 token/identity/宽高/格式等参数，封装了一批便捷函数转发给 mClient 或 ISurface。至此 Layer 家族的全貌可以给出了：
+跨进程调用返回后，客户端用返回的 ISurface 与 surface_data_t 构造 SurfaceControl：
+
+```cpp
+// [--> SurfaceControl.cpp]
+SurfaceControl::SurfaceControl(
+        const sp<SurfaceComposerClient>& client,
+        const sp<ISurface>& surface,
+        const ISurfaceFlingerClient::surface_data_t& data,
+        uint32_t w, uint32_t h, PixelFormat format, uint32_t flags)
+    // mClient 为 SurfaceComposerClient，mSurface 指向跨进程
+    // createSurface 调用返回的 ISurface 对象
+    : mClient(client), mSurface(surface),
+      mToken(data.token), mIdentity(data.identity),
+      mWidth(data.width), mHeight(data.height), mFormat(data.format),
+      mFlags(flags)
+{
+}
+```
+
+SurfaceControl 是一个 wrapper 类，封装了一批便捷函数，转发给 mClient 或 ISurface。至此 Layer 家族的全貌可以给出了：
 
 ![](./images/ch0137_img02.jpg)
 
@@ -892,12 +1315,16 @@ SurfaceControl 创建后的连接关系：mClient 指向 SurfaceComposerClient�
 精简流程的第三、四步。前面创建的所有对象都在 system_server 进程中，writeToParcel 负责把必要信息打包发给 Activity 所在进程（下称 Activity 端）：
 
 ```cpp
-// [--> SurfaceControl.cpp::writeSurfaceToParcel（摘编）]
+// [--> SurfaceControl.cpp]
 status_t SurfaceControl::writeSurfaceToParcel(
         const sp<SurfaceControl>& control, Parcel* parcel)
 {
-    uint32_t flags = 0; uint32_t format = 0;
-    SurfaceID token = -1; uint32_t identity = 0;
+    uint32_t flags = 0;
+    uint32_t format = 0;
+    SurfaceID token = -1;
+    uint32_t identity = 0;
+    uint32_t width = 0;
+    uint32_t height = 0;
     sp<SurfaceComposerClient> client;
     sp<ISurface> sur;
     if (SurfaceControl::isValid(control)) {
@@ -905,7 +1332,10 @@ status_t SurfaceControl::writeSurfaceToParcel(
         identity  = control->mIdentity;
         client    = control->mClient;
         sur       = control->mSurface;
-        // ...... 宽、高、格式、flags
+        width     = control->mWidth;
+        height    = control->mHeight;
+        format    = control->mFormat;
+        flags     = control->mFlags;
     }
     // SurfaceComposerClient 的连接信息需要传到 Activity 端，
     // 客户端据此构造一个对等的 SurfaceComposerClient 对象
@@ -913,7 +1343,12 @@ status_t SurfaceControl::writeSurfaceToParcel(
     // 把 ISurface 的 Binder 信息也写到 Parcel，
     // Activity 端据此构造一个 ISurface 的 Bp 端
     parcel->writeStrongBinder(sur!=0 ? sur->asBinder(): NULL);
-    // ...... token、identity、宽高等 int 参数
+    parcel->writeInt32(token);
+    parcel->writeInt32(identity);
+    parcel->writeInt32(width);
+    parcel->writeInt32(height);
+    parcel->writeInt32(format);
+    parcel->writeInt32(flags);
     return NO_ERROR;
 }
 ```
@@ -921,7 +1356,7 @@ status_t SurfaceControl::writeSurfaceToParcel(
 Activity 端的 readFromParcel 用这个 Parcel 构造 Native Surface：
 
 ```cpp
-// [--> Surface.cpp::Surface(const Parcel&)（摘编）]
+// [--> Surface.cpp]
 Surface::Surface(const Parcel& parcel)
     : mBufferMapper(GraphicBufferMapper::get()),
     mSharedBufferClient(NULL)
@@ -934,7 +1369,12 @@ Surface::Surface(const Parcel& parcel)
     sp<IBinder> clientBinder = parcel.readStrongBinder();
     // 得到 ISurface 的 Bp 端 BpSurface
     mSurface     = interface_cast<ISurface>(parcel.readStrongBinder());
-    // ...... token、identity、宽高、格式、flags
+    mToken       = parcel.readInt32();
+    mIdentity    = parcel.readInt32();
+    mWidth       = parcel.readInt32();
+    mHeight      = parcel.readInt32();
+    mFormat      = parcel.readInt32();
+    mFlags       = parcel.readInt32();
 
     if (clientBinder != NULL) {
         // 现在位于 Activity 端，这里还没有 SurfaceComposerClient，
@@ -980,10 +1420,11 @@ SharedBufferBase::SharedBufferBase(SharedClient* sharedClient,
 资源齐备，开始绘图。lockCanvas 最终调用 Native Surface 的 lock：
 
 ```cpp
-// [--> Surface.cpp::Surface::lock（摘编）]
+// [--> Surface.cpp]
 status_t Surface::lock(SurfaceInfo* other, Region* dirtyIn, bool blocking)
 {
     // other 用来接收返回信息，dirtyIn 表示需要重绘的区域
+    // ......
     // usage 标志在 GraphicBuffer 分配缓冲时有指导作用
     setUsage(GRALLOC_USAGE_SW_READ_OFTEN | GRALLOC_USAGE_SW_WRITE_OFTEN);
     sp<GraphicBuffer> backBuffer;
@@ -996,6 +1437,7 @@ status_t Surface::lock(SurfaceInfo* other, Region* dirtyIn, bool blocking)
             const Rect bounds(backBuffer->width, backBuffer->height);
             Region scratch(bounds);
             Region& newDirtyRegion(dirtyIn ? *dirtyIn : scratch);
+            // ......
             // mPostedBuffer 是上一次绘画时使用的 Buffer，即现在的 FrontBuffer
             const sp<GraphicBuffer>& frontBuffer(mPostedBuffer);
             if (frontBuffer != 0 &&
@@ -1009,7 +1451,8 @@ status_t Surface::lock(SurfaceInfo* other, Region* dirtyIn, bool blocking)
                     copyBlt(backBuffer, frontBuffer, copyback);
                 }
             }
-            // ......
+            mDirtyRegion = newDirtyRegion;
+            mOldDirtyRegion = newDirtyRegion;
             void* vaddr;
             // 调用 GraphicBuffer 的 lock 得到内存地址 vaddr，
             // 后续的作画在这块内存上展开
@@ -1018,8 +1461,12 @@ status_t Surface::lock(SurfaceInfo* other, Region* dirtyIn, bool blocking)
                     newDirtyRegion.bounds(), &vaddr);
             mLockedBuffer = backBuffer;
             // other 接收返回信息，最重要的是 bits 这个内存地址
+            other->w      = backBuffer->width;
+            other->h      = backBuffer->height;
+            other->s      = backBuffer->stride;
+            other->usage  = backBuffer->usage;
+            other->format = backBuffer->format;
             other->bits   = vaddr;
-            // ...... 宽、高、stride、格式
         }
     }
     return err;
@@ -1029,7 +1476,7 @@ status_t Surface::lock(SurfaceInfo* other, Region* dirtyIn, bool blocking)
 三个关键点逐一展开。① dequeueBuffer 选出一个空闲 GraphicBuffer：
 
 ```cpp
-// [--> Surface.cpp::dequeueBuffer（摘编）]
+// [--> Surface.cpp]
 int Surface::dequeueBuffer(android_native_buffer_t** buffer)
 {
     sp<SurfaceComposerClient> client(getClient());
@@ -1047,6 +1494,7 @@ int Surface::dequeueBuffer(android_native_buffer_t** buffer)
     {
         // 需要向 SF 侧请求真实的存储
         err = getBufferLocked(bufIdx, usage);
+        // ......
     }
     // ......
 }
@@ -1055,7 +1503,7 @@ int Surface::dequeueBuffer(android_native_buffer_t** buffer)
 getBufferLocked 通过 ISurface 向 SF 请求指定索引的 GraphicBuffer：
 
 ```cpp
-// [--> Surface.cpp::getBufferLocked（摘编）]
+// [--> Surface.cpp]
 status_t Surface::getBufferLocked(int index, int usage)
 {
     sp<ISurface> s(mSurface);
@@ -1072,7 +1520,10 @@ status_t Surface::getBufferLocked(int index, int usage)
             if (err == NO_ERROR) {
                 currentBuffer = buffer;
                 currentBuffer->setIndex(index);
+                mNeedFullUpdate = true;
             }
+        } else {
+            err = err<0 ? err : NO_MEMORY;
         }
     }
     return err;
@@ -1082,10 +1533,11 @@ status_t Surface::getBufferLocked(int index, int usage)
 ISurface 的 Bn 端是 Layer 的内部类 SurfaceLayer（内部类把请求转交外部类），所以直接看 Layer 的实现：
 
 ```cpp
-// [--> Layer.cpp::requestBuffer（摘编）]
+// [--> Layer.cpp]
 sp<GraphicBuffer> Layer::requestBuffer(int index, int usage)
 {
     sp<GraphicBuffer> buffer;
+
     sp<Client> ourClient(client.promote());
     // lcblk 是 SharedBufferServer，确保 index 号 GraphicBuffer
     // 没有被 SF 当作 FrontBuffer 使用
@@ -1097,7 +1549,8 @@ sp<GraphicBuffer> Layer::requestBuffer(int index, int usage)
     uint32_t w, h;
     {
         Mutex::Autolock _l(mLock);
-        w = mWidth; h = mHeight;
+        w = mWidth;
+        h = mHeight;
         /*
          * mBuffers 是 SF 端创建的二元数组，取出第 index 个元素。
          * 用的也是无参构造，此时同样没有真实存储。
@@ -1122,6 +1575,8 @@ sp<GraphicBuffer> Layer::requestBuffer(int index, int usage)
         if (mWidth && mHeight) {
             mBuffers[index] = buffer;
             mTextures[index].dirty = true;
+        } else {
+            buffer.clear();
         }
     }
     return buffer;
@@ -1131,15 +1586,20 @@ sp<GraphicBuffer> Layer::requestBuffer(int index, int usage)
 ② lockBuffer 确保 dequeue 得到的编号没被 SF 当作 FrontBuffer 使用：
 
 ```cpp
-// [--> Surface.cpp / SharedBufferStack.cpp]
+// [--> Surface.cpp]
 int Surface::lockBuffer(android_native_buffer_t* buffer)
 {
+    sp<SurfaceComposerClient> client(getClient());
+    status_t err = validate();
     int32_t bufIdx = GraphicBuffer::getSelf(buffer)->getIndex();
     // 调用 SharedBufferClient 的 lock
-    status_t err = mSharedBufferClient->lock(bufIdx);
+    err = mSharedBufferClient->lock(bufIdx);
     return err;
 }
+```
 
+```cpp
+// [--> SharedBufferStack.cpp]
 status_t SharedBufferClient::lock(int buf)
 {
     LockCondition condition(this, buf); // buf 是 BackBuffer 的索引号
@@ -1154,7 +1614,35 @@ bool SharedBufferClient::LockCondition::operator()() {
 }
 ```
 
-waitForCondition 的 condition 参数不是函数而是重载了 () 操作符的函数对象——它在 SharedClient 的锁保护下循环检查条件、超时等待（模板函数，摘编从略）。
+waitForCondition 的 condition 参数不是函数而是重载了 () 操作符的函数对象：
+
+```cpp
+// [--> SharedBufferStack.h]
+template <typename T> // 这是一个模板函数
+status_t SharedBufferBase::waitForCondition(T condition)
+{
+    const SharedBufferStack& stack( *mSharedStack );
+    SharedClient& client( *mSharedClient );
+    const nsecs_t TIMEOUT = s2ns(1);
+    Mutex::Autolock _l(client.lock);
+    while ((condition()==false) && // 注意 condition() 的用法
+            (stack.identity == mIdentity) &&
+            (stack.status == NO_ERROR))
+    {
+        status_t err = client.cv.waitRelative(client.lock, TIMEOUT);
+        if (CC_UNLIKELY(err != NO_ERROR)) {
+            if (err == TIMED_OUT) {
+                if (condition()) { // 超时后再检查一次条件
+                    break;
+                }
+            } else {
+                return err;
+            }
+        }
+    }
+    return (stack.identity != mIdentity) ? status_t(BAD_INDEX) : stack.status;
+}
+```
 
 ③ copyBlt 拷贝旧数据的原因：**大多数情况下 UI 只有一小部分变化（如按钮按下变色），对应 GraphicBuffer 中的一小块 dirtyRegion；把上次绘制的结果（保存在 mPostedBuffer 中）拷到 BackBuffer，本次绘制只需更新脏区域，避免整块重绘**。
 
@@ -1176,6 +1664,7 @@ status_t Surface::unlockAndPost()
 int Surface::queueBuffer(android_native_buffer_t* buffer)
 {
     sp<SurfaceComposerClient> client(getClient());
+
     int32_t bufIdx = GraphicBuffer::getSelf(buffer)->getIndex();
     // 设置脏 Region
     mSharedBufferClient->setDirtyRegion(bufIdx, mDirtyRegion);
@@ -1190,7 +1679,29 @@ int Surface::queueBuffer(android_native_buffer_t* buffer)
 }
 ```
 
-queue 操作同样借助函数对象完成——QueueUpdate 在锁保护下把 stack.queued 加一，再 broadcast 唤醒等待的同步对象（updateCondition 模板与 waitForCondition 对称，摘编从略）。
+queue 操作同样借助函数对象完成：
+
+```cpp
+// [--> SharedBufferStack.cpp]
+status_t SharedBufferClient::queue(int buf)
+{
+    // QueueUpdate 也是一个函数对象
+    QueueUpdate update(this);
+    // 调用 updateCondition 函数
+    status_t err = updateCondition( update );
+    // ...... 记录耗时统计
+    return err;
+}
+
+template <typename T>
+status_t SharedBufferBase::updateCondition(T update) {
+    SharedClient& client( *mSharedClient );
+    Mutex::Autolock _l(client.lock);
+    ssize_t result = update(); // 调用 update 对象的 () 函数
+    client.cv.broadcast();     // 唤醒等待的同步对象
+    return result;
+}
+```
 
 ![](./images/ch0139_img01.jpg)
 
@@ -1206,14 +1717,27 @@ class GraphicBuffer
     public Flattenable
 ```
 
+```cpp
+// [--> Android_natives.h]
+template <typename NATIVE_TYPE, typename TYPE, typename REF>
+class EGLNativeBase : public NATIVE_TYPE, public REF
+```
+
 ![](./images/ch0140_img01.jpg)
 
-从 LightRefBase 派生使它支持轻量级引用计数；从 Flattenable 派生使它支持序列化（flatten/unflatten），信息因此可以存进 Parcel 并被 Binder 传输。父类 android_native_buffer_t 是 C 的 struct，其关键成员是 handle：
+从 LightRefBase 派生使它支持轻量级引用计数；从 Flattenable 派生使它支持序列化（flatten/unflatten），信息因此可以存进 Parcel 并被 Binder 传输。父类 android_native_buffer_t 是 C 的 struct（C++ 中 struct 与 class 同类），其关键成员是 handle：
 
 ```c
 // [--> android_native_buffer.h]
 typedef struct android_native_buffer_t
 {
+#ifdef __cplusplus
+    android_native_buffer_t() {
+        common.magic = ANDROID_NATIVE_BUFFER_MAGIC;
+        common.version = sizeof(android_native_buffer_t);
+        memset(common.reserved, 0, sizeof(common.reserved));
+    }
+#endif
     // 第一个成员，在派生类对象的内存布局中同样排在最前
     struct android_native_base_t common;
     int width;
@@ -1221,13 +1745,19 @@ typedef struct android_native_buffer_t
     int stride;
     int format;
     int usage;
+    void* reserved[2];
     // 关键成员：保存与显示内存分配/管理相关的内容
     buffer_handle_t handle;
-    // ......
-} android_native_buffer_t;
 
-// [--> gralloc.h / native_handle.h]
+    void* reserved_proc[8];
+} android_native_buffer_t;
+```
+
+```c
+// [--> gralloc.h]
 typedef const native_handle* buffer_handle_t;
+
+// [--> native_handle.h]
 typedef struct
 {
     int version;    /* version 值为 sizeof(native_handle_t) */
@@ -1235,11 +1765,30 @@ typedef struct
     int numInts;
     int data[0];    /* data 是数据存储空间的首地址 */
 } native_handle_t;
+typedef native_handle_t native_handle;
 ```
 
 **buffer_handle_t 实际是 native_handle 指针，GraphicBuffer 的精髓就在于通过它持有那块共享显示内存的身份信息（文件描述符与整数参数）**。
 
-接着看存储分配。无参构造不分配任何东西（handle 为空，宽高格式全零）；真正的分配发生在 requestBuffer 促使 SF 端调用 reallocate 时：
+接着看存储分配。无参构造不分配任何东西：
+
+```cpp
+// [--> GraphicBuffer.cpp]
+GraphicBuffer::GraphicBuffer()
+    : BASE(), mOwner(ownData), mBufferMapper(GraphicBufferMapper::get()),
+      mInitCheck(NO_ERROR),   mVStride(0), mIndex(-1)
+{
+    // mBufferMapper 为 GraphicBufferMapper，单例，每进程只有一个
+    width   =
+    height =
+    stride =
+    format =
+    usage   = 0;
+    handle = NULL; // handle 为空
+}
+```
+
+真正的分配发生在 requestBuffer 促使 SF 端调用 reallocate 时：
 
 ```cpp
 // [--> GraphicBuffer.cpp]
@@ -1248,6 +1797,7 @@ status_t GraphicBuffer::reallocate(uint32_t w, uint32_t h, PixelFormat f,
 {
     if (mOwner != ownData)
         return INVALID_OPERATION;
+
     if (handle) { // 无参构造时 handle 为空，不会走这里
         GraphicBufferAllocator& allocator(GraphicBufferAllocator::get());
         allocator.free(handle);
@@ -1266,7 +1816,13 @@ status_t GraphicBuffer::initSize(uint32_t w, uint32_t h, PixelFormat format,
     GraphicBufferAllocator& allocator = GraphicBufferAllocator::get();
     // alloc 分配存储，handle 作为指针被传入，值会被修改
     status_t err = allocator.alloc(w, h, format, reqUsage, &handle, &stride);
-    // ...... 成功则记录宽高格式 usage
+    if (err == NO_ERROR) {
+        this->width   = w;
+        this->height  = h;
+        this->format  = format;
+        this->usage   = reqUsage;
+        mVStride = 0;
+    }
     return err;
 }
 ```
@@ -1308,15 +1864,20 @@ status_t GraphicBufferAllocator::alloc(uint32_t w, uint32_t h, PixelFormat forma
 软件分配路径直接用 ashmem（anonymous shared memory，匿名共享内存）：
 
 ```cpp
-// [--> GraphicBufferAllocator.cpp::sw_gralloc_handle_t::alloc（摘编）]
+// [--> GraphicBufferAllocator.cpp]
 status_t sw_gralloc_handle_t::alloc(uint32_t w, uint32_t h, int format,
         int usage, buffer_handle_t* pHandle, int32_t* pStride)
 {
     int align = 4;
-    // ...... 根据 format 计算 bpp，再按对齐算出 bpr 与总大小 size
+    int bpp = 0;
+    // ...... 根据 format 计算 bpp
+    size_t bpr = (w*bpp + (align-1)) & ~(align-1);
+    size_t size = bpr * h;
+    size_t stride = bpr / bpp;
     size = (size + (PAGE_SIZE-1)) & ~(PAGE_SIZE-1);
     // 直接使用 ashmem 创建共享内存
     int fd = ashmem_create_region("sw-gralloc-buffer", size);
+    // ......
     // 内存映射，得到共享内存的起始地址
     void* base = mmap(0, size, prot, MAP_SHARED, fd, 0);
 
@@ -1325,18 +1886,62 @@ status_t sw_gralloc_handle_t::alloc(uint32_t w, uint32_t h, int format,
     hnd->size = size;            // 保存共享内存的大小
     hnd->base = intptr_t(base);  // 保存起始地址
     hnd->prot = prot;            // 保存属性
+    *pStride = stride;
     *pHandle = hnd;              // 对传入的 handle 指针赋值
+
     return NO_ERROR;
 }
 ```
 
-那么 Activity 端的 GraphicBuffer 怎么和 SF 端 Layer 的 GraphicBuffer 建立联系？这是一次小规模的跨进程搬运，发生在 requestBuffer 的 Binder 两端：BnSurface 的 onTransact 把 requestBuffer 的返回值 `reply->write(*buffer)` 写进 Parcel（GraphicBuffer 从 Flattenable 派生，flatten 被调用）；BpSurface 请求端则 new 一个本地 GraphicBuffer，`reply.read(*buffer)` 用 unflatten 把信息反序列化进去。搬运的关键就在 flatten 与 unflatten：
+那么 Activity 端的 GraphicBuffer 怎么和 SF 端 Layer 的 GraphicBuffer 建立联系？这是一次小规模的跨进程搬运，发生在 requestBuffer 的 Binder 两端：
+
+```cpp
+// [--> ISurface.cpp]
+// requestBuffer 的响应端
+status_t BnSurface::onTransact(
+    uint32_t code, const Parcel& data, Parcel* reply, uint32_t flags)
+{
+    switch(code) {
+        case REQUEST_BUFFER: {
+            CHECK_INTERFACE(ISurface, data, reply);
+            int bufferIdx = data.readInt32();
+            int usage = data.readInt32();
+            sp<GraphicBuffer> buffer(requestBuffer(bufferIdx, usage));
+            // ......
+            /*
+             * requestBuffer 的返回值被写到 Parcel 包中，GraphicBuffer
+             * 从 Flattenable 派生，这导致它的 flatten 函数被调用。
+             */
+            return reply->write(*buffer);
+        }
+        // ......
+    }
+    // ......
+}
+
+// 请求端，在 BpSurface 中
+virtual sp<GraphicBuffer> requestBuffer(int bufferIdx, int usage)
+{
+    Parcel data, reply;
+    data.writeInterfaceToken(ISurface::getInterfaceDescriptor());
+    data.writeInt32(bufferIdx);
+    data.writeInt32(usage);
+    remote()->transact(REQUEST_BUFFER, data, &reply);
+    sp<GraphicBuffer> buffer = new GraphicBuffer();
+    // Parcel 调用 unflatten 把信息反序列化到这个 buffer 中
+    reply.read(*buffer);
+    return buffer; // 实际返回的是本地 new 出来的这个 GraphicBuffer
+}
+```
+
+搬运的关键就在 flatten 与 unflatten：
 
 ```cpp
 // [--> GraphicBuffer.cpp]
 status_t GraphicBuffer::flatten(void* buffer, size_t size,
         int fds[], size_t count) const
 {
+    // buffer 是装载数据的缓冲区，由 Parcel 提供
     // ...... 宽、高、格式等信息写入 buf
     if (handle) {
         buf[6] = handle->numFds;
@@ -1346,6 +1951,7 @@ status_t GraphicBuffer::flatten(void* buffer, size_t size,
         memcpy(fds,     h->data,              h->numFds*sizeof(int));
         memcpy(&buf[8], h->data + h->numFds,  h->numInts*sizeof(int));
     }
+
     return NO_ERROR;
 }
 
@@ -1363,8 +1969,10 @@ status_t GraphicBuffer::unflatten(void const* buffer, size_t size,
         memcpy(h->data,             fds,      numFds*sizeof(int));
         memcpy(h->data + numFds,   &buf[8],   numInts*sizeof(int));
         handle = h; // 根据 Parcel 包中的数据还原一个 handle
+    } else {
+        width = height = stride = format = usage = 0;
+        handle = NULL;
     }
-    // ......
     mOwner = ownHandle;
     return NO_ERROR;
 }
@@ -1379,6 +1987,7 @@ status_t sw_gralloc_handle_t::registerBuffer(sw_gralloc_handle_t* hnd)
     if (hnd->pid != getpid()) {
         // 对端进程：做一次 mmap 内存映射
         void* base = mmap(0, hnd->size, hnd->prot, MAP_SHARED, hnd->fd, 0);
+        // ......
         // base 保存着共享内存的起始地址
         hnd->base = intptr_t(base);
     }
@@ -1386,7 +1995,26 @@ status_t sw_gralloc_handle_t::registerBuffer(sw_gralloc_handle_t* hnd)
 }
 ```
 
-至此可以回答前面的悬案：**Activity 端与 SF 端各自的两个 GraphicBuffer，通过 handle 中共享内存的文件描述符映射到同一块物理存储——像素数据从不拷贝，跨进程传递的只是身份信息**。使用时的 lock/unlock 也只是取地址（软件路径下 lock 返回 hnd->base，unlock 无操作）。从应用层的角度，可以把 GraphicBuffer 当作架构在共享内存之上的数据缓冲。
+至此可以回答前面的悬案：**Activity 端与 SF 端各自的两个 GraphicBuffer，通过 handle 中共享内存的文件描述符映射到同一块物理存储——像素数据从不拷贝，跨进程传递的只是身份信息**。使用时的 lock/unlock 也只是取地址：
+
+```cpp
+// [--> GraphicBufferMapper.cpp]
+// lock 操作
+int sw_gralloc_handle_t::lock(sw_gralloc_handle_t* hnd, int usage,
+        int l, int t, int w, int h, void** vaddr)
+{
+    // 得到共享内存的起始地址，后续作画就使用这块内存
+    *vaddr = (void*)hnd->base;
+    return NO_ERROR;
+}
+// unlock 操作
+status_t sw_gralloc_handle_t::unlock(sw_gralloc_handle_t* hnd)
+{
+    return NO_ERROR; // 没有任何操作
+}
+```
+
+从应用层的角度，可以把 GraphicBuffer 当作架构在共享内存之上的数据缓冲。
 
 ## 1.5 SurfaceFlinger 分析
 
@@ -1394,7 +2022,17 @@ status_t sw_gralloc_handle_t::registerBuffer(sw_gralloc_handle_t* hnd)
 
 ### 1.5.1 SurfaceFlinger 的诞生
 
-SF 驻留于 system_server 进程（由 SystemServer 的 init1 启动），创建代码波澜不惊——instantiate 把 `new SurfaceFlinger()` 注册为名为 "SurfaceFlinger" 的 Binder 服务。注意它的继承关系：`class SurfaceFlinger : public BnSurfaceComposer, protected Thread`——从 Thread 派生意味着 SF 会单独启动一个工作线程。构造函数只做了些属性读取；启动发生在对象第一次被 sp 化时的 onFirstRef：
+SF 驻留于 system_server 进程（由 SystemServer 的 init1 启动），创建代码波澜不惊：
+
+```cpp
+// [--> SurfaceFlinger.cpp]
+void SurfaceFlinger::instantiate() {
+    defaultServiceManager()->addService(
+            String16("SurfaceFlinger"), new SurfaceFlinger());
+}
+```
+
+注意它的继承关系：`class SurfaceFlinger : public BnSurfaceComposer, protected Thread`——从 Thread 派生意味着 SF 会单独启动一个工作线程。构造函数与 init 只做了些属性读取，没有启动线程；启动发生在对象第一次被 sp 化时的 onFirstRef：
 
 ```cpp
 // [--> SurfaceFlinger.cpp]
@@ -1413,7 +2051,7 @@ void SurfaceFlinger::onFirstRef()
 这个同步条件在工作线程的 readyToRun 中触发：
 
 ```cpp
-// [--> SurfaceFlinger.cpp::readyToRun（摘编）]
+// [--> SurfaceFlinger.cpp]
 status_t SurfaceFlinger::readyToRun()
 {
     int dpy = 0;
@@ -1432,9 +2070,31 @@ status_t SurfaceFlinger::readyToRun()
                               "SurfaceFlinger read-only heap");
     mServerCblk =
       static_cast<surface_flinger_cblk_t*>(mServerHeap->getBase());
-    new(mServerCblk) surface_flinger_cblk_t; // placement new
+    // placement new
+    new(mServerCblk) surface_flinger_cblk_t;
 
-    // ...... 把屏幕宽高格式等信息填入 cblk，OpenGL 初始化
+    const GraphicPlane& plane(graphicPlane(dpy));
+    const DisplayHardware& hw = plane.displayHardware();
+    const uint32_t w = hw.getWidth();
+    const uint32_t h = hw.getHeight();
+    const uint32_t f = hw.getFormat();
+    hw.makeCurrent();
+
+    // 当前只有一块屏
+    mServerCblk->connected |= 1<<dpy;
+    // 屏幕在 cblk 中的代表是 display_cblk_t
+    display_cblk_t* dcblk = mServerCblk->displays + dpy;
+    memset(dcblk, 0, sizeof(display_cblk_t));
+    dcblk->w = plane.getWidth();
+    dcblk->h = plane.getHeight();
+    // ...... 获取屏幕信息
+
+    // 一些 OpenGL 相关的初始化
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    // ......
+    glOrthof(0, w, h, 0, 0, 1);
+
     // LayerDim 是 Dim 类型的 Layer
     LayerDim::initDimmer(this, w, h);
 
@@ -1450,14 +2110,26 @@ status_t SurfaceFlinger::readyToRun()
 关键点②的 DisplayHardware 在构造中完成 EGL 初始化，FrameBuffer 也在这里创建：
 
 ```cpp
-// [--> DisplayHardware.cpp::init（摘编）]
+// [--> DisplayHardware.cpp]
 void DisplayHardware::init(uint32_t dpy)
 {
     // FramebufferNativeWindow 实现了对 FrameBuffer 的管理和操作，
     // 其中创建了两个 FrameBuffer，分别充当 FrontBuffer 和 BackBuffer
     mNativeWindow = new FramebufferNativeWindow();
+
     framebuffer_device_t const * fbDev = mNativeWindow->getDevice();
-    // ...... Overlay 相关的 hw_get_module/overlay_control_open
+
+    mOverlayEngine = NULL;
+    hw_module_t const* module; // Overlay 相关
+    if (hw_get_module(OVERLAY_HARDWARE_MODULE_ID, &module) == 0) {
+        overlay_control_open(module, &mOverlayEngine);
+    }
+    // ......
+    EGLint w, h, dummy;
+    EGLint numConfigs=0;
+    EGLSurface surface;
+    EGLContext context;
+    mFlags = CACHED_BUFFERS;
     // EGLDisplay 在 EGL 中代表屏幕
     EGLDisplay display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
     // ......
@@ -1467,7 +2139,13 @@ void DisplayHardware::init(uint32_t dpy)
      */
     surface = eglCreateWindowSurface(display, config,
             mNativeWindow.get(), NULL);
-    // ...... 保存 display/config/surface/context
+    // ......
+    mDisplay = display;
+    mConfig   = config;
+    mSurface = surface;
+    mContext = context;
+    mFormat   = fbDev->format;
+    mPageFlipCount = 0;
 }
 ```
 
@@ -1478,13 +2156,17 @@ void DisplayHardware::init(uint32_t dpy)
 SF 工作线程的主循环由四个关键点构成：waitForEvent（等事件）、handlePageFlip（取新数据）、handleRepaint（重绘合成）、postFramebuffer（送显），外加 unlockClients 与事务处理。先看等待：
 
 ```cpp
-// [--> SurfaceFlinger.cpp::waitForEvent（摘编）]
+// [--> SurfaceFlinger.cpp]
 void SurfaceFlinger::waitForEvent()
 {
     while (true) {
         nsecs_t timeout = -1;
-        // ...... 冻屏相关的超时处理
+        const nsecs_t freezeDisplayTimeout = ms2ns(5000);
+        // ......
+
         MessageList::value_type msg = mEventQueue.waitMessage(timeout);
+
+        // ...... 还有一些和冻屏相关的内容
         if (msg != 0) {
             switch (msg->what) {
                 // 千辛万苦就等这一个重绘消息
@@ -1496,10 +2178,22 @@ void SurfaceFlinger::waitForEvent()
 }
 ```
 
-谁发的重绘消息？正是应用端 unlockCanvasAndPost 末尾的 signalServer，它在 SF 端的实现就是 `mEventQueue.invalidate()`——往消息队列中加入 INVALIDATE 消息。被唤醒后，threadLoop 先处理事务（见 1.5.3），随后进行 PageFlip：
+谁发的重绘消息？正是应用端 unlockCanvasAndPost 末尾的 signalServer，它在 SF 端的实现：
 
 ```cpp
-// [--> SurfaceFlinger.cpp::threadLoop（摘编）]
+// [--> SurfaceFlinger.cpp]
+void SurfaceFlinger::signal() const {
+    const_cast<SurfaceFlinger*>(this)->signalEvent();
+}
+void SurfaceFlinger::signalEvent() {
+    mEventQueue.invalidate(); // 往消息队列中加入 INVALIDATE 消息
+}
+```
+
+被唤醒后，threadLoop 先处理事务（见 1.5.3），随后进行 PageFlip：
+
+```cpp
+// [--> SurfaceFlinger.cpp]
 bool SurfaceFlinger::threadLoop()
 {
     waitForEvent();
@@ -1517,7 +2211,7 @@ bool SurfaceFlinger::threadLoop()
 handlePageFlip 遍历当前要显示的所有显示层，取出各自的新数据：
 
 ```cpp
-// [--> SurfaceFlinger.cpp::handlePageFlip（摘编）]
+// [--> SurfaceFlinger.cpp]
 void SurfaceFlinger::handlePageFlip()
 {
     bool visibleRegions = mVisibleRegionsDirty;
@@ -1538,7 +2232,7 @@ void SurfaceFlinger::handlePageFlip()
         mWormholeRegion = screenRegion.subtract(opaqueRegion);
         mVisibleRegionsDirty = false;
     }
-    // ② 调用 unlockPageFlip（对每个显示层做区域清理）
+    // ② 调用 unlockPageFlip
     unlockPageFlip(currentLayers);
     mDirtyRegion.andSelf(screenRegion);
 }
@@ -1547,11 +2241,12 @@ void SurfaceFlinger::handlePageFlip()
 lockPageFlip 对每个显示层调用同名函数，以 Normal 的 Layer 为例：
 
 ```cpp
-// [--> Layer.cpp::lockPageFlip（摘编）]
+// [--> Layer.cpp]
 void Layer::lockPageFlip(bool& recomputeVisibleRegions)
 {
     // lcblk 是 SharedBufferServer，retireAndLock 返回 FrontBuffer 的索引号
     ssize_t buf = lcblk->retireAndLock();
+    // ......
     mFrontBufferIndex = buf;
 
     // 得到 FrontBuffer 对应的 GraphicBuffer
@@ -1577,10 +2272,12 @@ void Layer::lockPageFlip(bool& recomputeVisibleRegions)
 }
 ```
 
-**handlePageFlip 的工作归结为一句话：各 Layer 从 FrontBuffer 取得新数据并生成一张 OpenGL 纹理——纹理可以看作一张图片，内容就是 FrontBuffer 中的图像**。接着是重绘：
+unlockPageFlip 则对每个显示层做区域清理。**handlePageFlip 的工作归结为一句话：各 Layer 从 FrontBuffer 取得新数据并生成一张 OpenGL 纹理——纹理可以看作一张图片，内容就是 FrontBuffer 中的图像**。
+
+接着是重绘：
 
 ```cpp
-// [--> SurfaceFlinger.cpp（摘编）]
+// [--> SurfaceFlinger.cpp]
 void SurfaceFlinger::handleRepaint()
 {
     mInvalidRegion.orSelf(mDirtyRegion);
@@ -1588,6 +2285,11 @@ void SurfaceFlinger::handleRepaint()
         return;
     }
     // ......
+    const DisplayHardware& hw(graphicPlane(0).displayHardware());
+    glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity();
+
+    // ...... 根据显示设备能力计算脏区域
     // 在脏区域上进行绘制
     composeSurfaces(mDirtyRegion);
     mDirtyRegion.clear();
@@ -1595,6 +2297,7 @@ void SurfaceFlinger::handleRepaint()
 
 void SurfaceFlinger::composeSurfaces(const Region& dirty)
 {
+    const SurfaceFlinger& flinger(*this);
     const LayerVector& drawingLayers(mDrawingState.layersSortedByZ);
     const size_t count = drawingLayers.size();
     sp<LayerBase> const* const layers = drawingLayers.array();
@@ -1611,25 +2314,135 @@ void SurfaceFlinger::composeSurfaces(const Region& dirty)
 }
 ```
 
-composeSurfaces 按 Z 轴顺序由里到外依次绘制各显示层，后画的可能遮盖先画的。Layer 的绘制最终落在 OpenGL 纹理上：LayerBase::draw 调用子类 onDraw，Layer::onDraw 取 mFrontBufferIndex 对应的纹理（lockPageFlip 中生成的），经 drawWithOpenGL 画上去——后者是一段标准的 OpenGL 操作：validateTexture 绑定纹理、glEnable(GL_TEXTURE_2D)、设置顶点与纹理坐标（含旋转变换）、按裁剪区域 glScissor 后 glDrawArrays 画矩形（摘编从略）。
-
-绘制完成后还有两项收尾。unlockClients 释放各显示层占用的 FrontBuffer 索引（每个 layer 调用 finishPageFlip，内部 `lcblk->unlock(mFrontBufferIndex)`）；postFramebuffer 把合成结果送进 FrameBuffer：
+composeSurfaces 按 Z 轴顺序由里到外依次绘制各显示层，后画的可能遮盖先画的。Layer 的绘制最终落在 OpenGL 纹理上：
 
 ```cpp
-// [--> SurfaceFlinger.cpp / DisplayHardware.cpp]
+// [--> LayerBase.cpp]
+void LayerBase::draw(const Region& inClip) const
+{
+    // ......
+    glEnable(GL_SCISSOR_TEST);
+    onDraw(clip); // 调用子类的 onDraw 函数
+}
+
+// [--> Layer.cpp]
+void Layer::onDraw(const Region& clip) const
+{
+    int index = mFrontBufferIndex;
+    if (mTextures[index].image == EGL_NO_IMAGE_KHR)
+        index = 0;
+    GLuint textureName = mTextures[index].name;
+    // ...... 无纹理时清屏（此处摘编省略透明区域处理分支）
+    // index 对应的纹理在 lockPageFlip 中就已经生成了
+    drawWithOpenGL(clip, mTextures[index]); // 将纹理画上去
+}
+
+// [--> LayerBase.cpp]
+void LayerBase::drawWithOpenGL(const Region& clip, const Texture& texture) const
+{
+    const DisplayHardware& hw(graphicPlane(0).displayHardware());
+    const uint32_t fbHeight = hw.getHeight();
+    const State& s(drawingState());
+
+    // validateTexture 内部将绑定指定的纹理
+    validateTexture(texture.name);
+    // 下面就是 OpenGL 操作函数了
+    glEnable(GL_TEXTURE_2D);
+
+    // ......
+    glMatrixMode(GL_TEXTURE);
+    glLoadIdentity();
+
+    // 坐标旋转
+    switch (texture.transform) {
+        case HAL_TRANSFORM_ROT_90:
+            glTranslatef(0, 1, 0);
+            glRotatef(-90, 0, 0, 1);
+            break;
+        // ...... 其余旋转移位，摘编省略
+    }
+    // 使能纹理坐标
+    glEnableClientState(GL_TEXTURE_COORD_ARRAY);
+    // 设置顶点坐标
+    glVertexPointer(2, GL_FIXED, 0, mVertices);
+    // 设置纹理坐标
+    glTexCoordPointer(2, GL_FIXED, 0, texCoords);
+    Region::const_iterator it = clip.begin();
+    Region::const_iterator const end = clip.end();
+    while (it != end) {
+        const Rect& r = *it++;
+        const GLint sy = fbHeight - (r.top + r.height());
+        // 裁剪
+        glScissor(r.left, sy, r.width, r.height());
+        // 画矩形
+        glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+    }
+    // 禁止纹理坐标
+    glDisableClientState(GL_TEXTURE_COORD_ARRAY);
+}
+
+void LayerBase::validateTexture(GLint textureName) const
+{
+    // 下面这个函数将绑定纹理
+    glBindTexture(GL_TEXTURE_2D, textureName);
+    // ...... 其他一些设置
+}
+```
+
+绘制完成后还有两项收尾。unlockClients 释放各显示层占用的 FrontBuffer 索引：
+
+```cpp
+// [--> SurfaceFlinger.cpp]
+void SurfaceFlinger::unlockClients()
+{
+    const LayerVector& drawingLayers(mDrawingState.layersSortedByZ);
+    const size_t count = drawingLayers.size();
+    sp<LayerBase> const* const layers = drawingLayers.array();
+    for (size_t i=0 ; i<count ; ++i) {
+        const sp<LayerBase>& layer = layers[i];
+        layer->finishPageFlip();
+    }
+}
+
+// [--> Layer.cpp]
+void Layer::finishPageFlip()
+{
+    // 释放 FrontBufferIndex
+    status_t err = lcblk->unlock( mFrontBufferIndex );
+}
+```
+
+postFramebuffer 把合成结果送进 FrameBuffer：
+
+```cpp
+// [--> SurfaceFlinger.cpp]
 void SurfaceFlinger::postFramebuffer()
 {
     if (!mInvalidRegion.isEmpty()) {
         const DisplayHardware& hw(graphicPlane(0).displayHardware());
+        const nsecs_t now = systemTime();
+        mDebugInSwapBuffers = now;
         // 调用这个函数后，混合后的图像就会传递到屏幕中显示了
         hw.flip(mInvalidRegion);
+        mLastSwapBufferTime = systemTime() - now;
+        mDebugInSwapBuffers = 0;
         mInvalidRegion.clear();
     }
 }
 
+// [--> DisplayHardware.cpp]
 void DisplayHardware::flip(const Region& dirty) const
 {
-    // ...... 支持局部更新时设置更新矩形
+    checkGLErrors();
+
+    EGLDisplay dpy = mDisplay;
+    EGLSurface surface = mSurface;
+
+    // ......
+    if (mFlags & PARTIAL_UPDATES) {
+        mNativeWindow->setUpdateRectangle(dirty.getBounds());
+    }
+
     mPageFlipCount++;
     eglSwapBuffers(dpy, surface); // PageFlipping，此后图像终于显示在屏幕上了
 }
@@ -1658,10 +2471,45 @@ Surface createSurfaceLocked() {
 }
 ```
 
-openTransaction 与 closeTransaction 都是 native 函数，进入 SurfaceComposerClient 一层。openGlobalTransaction 会遍历全局连接表，对每个 SurfaceComposerClient 调用 openTransaction——后者只是把 mTransactionOpen 计数加一并准备一个 layer_state_t：
+openTransaction 与 closeTransaction 都是 native 函数，进入 SurfaceComposerClient 一层：
 
 ```cpp
-// [--> SurfaceComposerClient.cpp::openTransaction（摘编）]
+// [--> android_view_Surface.cpp]
+static void Surface_openTransaction(JNIEnv* env, jobject clazz)
+{
+    // 调用 SurfaceComposerClient 的 openGlobalTransaction
+    SurfaceComposerClient::openGlobalTransaction();
+}
+
+static void Surface_closeTransaction(JNIEnv* env, jobject clazz)
+{
+    SurfaceComposerClient::closeGlobalTransaction();
+}
+```
+
+```cpp
+// [--> SurfaceComposerClient.cpp]
+void SurfaceComposerClient::openGlobalTransaction()
+{
+    Mutex::Autolock _l(gLock);
+    // ......
+
+    const size_t N = gActiveConnections.size();
+    for (size_t i=0; i<N; i++) {
+        sp<SurfaceComposerClient> client(gActiveConnections.valueAt(i).promote());
+        // gOpenTransactions 存储当前提交事务请求的 Client
+        if (client != 0 && gOpenTransactions.indexOf(client) < 0) {
+            // 调用每个 SurfaceComposerClient 的 openTransaction
+            if (client->openTransaction() == NO_ERROR) {
+                if (gOpenTransactions.add(client) < 0) {
+                    client->closeTransaction();
+                }
+            }
+            // ......
+        }
+    }
+}
+
 status_t SurfaceComposerClient::openTransaction()
 {
     if (mStatus != NO_ERROR)
@@ -1675,25 +2523,70 @@ status_t SurfaceComposerClient::openTransaction()
 }
 ```
 
-open 与 close 之间的操作（如 setPosition）只修改本地的 layer_state_t，并不立即跨进程——调用链 Surface.setPosition → SurfaceComposerClient::setPosition 中，后者找到对应的 layer_state_t，置上 ePositionChanged 标志、填入 x/y 新值就返回。closeTransaction 才把积攒的修改一次性提交：
+open 与 close 之间的操作（如 setPosition）只修改本地的 layer_state_t，并不立即跨进程：
 
 ```cpp
-// [--> SurfaceComposerClient.cpp::closeGlobalTransaction/closeTransaction（摘编）]
+// [--> android_view_Surface.cpp]
+static void Surface_setPosition(JNIEnv* env, jobject clazz, jint x, jint y)
+{
+    const sp<SurfaceControl>& surface(getSurfaceControl(env, clazz));
+    if (surface == 0) return;
+    status_t err = surface->setPosition(x, y);
+}
+```
+
+```cpp
+// [--> SurfaceControl.cpp]
+status_t SurfaceControl::setPosition(int32_t x, int32_t y) {
+    const sp<SurfaceComposerClient>& client(mClient);
+    status_t err = validate();
+    if (err < 0) return err;
+    // 调用 SurfaceComposerClient 的 setPosition 函数
+    return client->setPosition(mToken, x, y);
+}
+```
+
+```cpp
+// [--> SurfaceComposerClient.cpp]
+status_t SurfaceComposerClient::setPosition(SurfaceID id, int32_t x, int32_t y)
+{
+    layer_state_t* s = _lockLayerState(id); // 找到对应的 layer_state_t
+    if (!s) return BAD_INDEX;
+    s->what |= ISurfaceComposer::ePositionChanged;
+    s->x = x;
+    s->y = y;           // 上面几句修改了这块 layer 的参数
+    _unlockLayerState(); // 解锁一个同步对象
+    return NO_ERROR;
+}
+```
+
+closeTransaction 才把积攒的修改一次性提交：
+
+```cpp
+// [--> SurfaceComposerClient.cpp]
 void SurfaceComposerClient::closeGlobalTransaction()
 {
     // ......
+
+    const size_t N = clients.size();
     sp<ISurfaceComposer> sm(getComposerService());
     // ① 先调用 SF 的 openGlobalTransaction
     sm->openGlobalTransaction();
-    // ② 然后调用每个 SurfaceComposerClient 的 closeTransaction
-    clients[i]->closeTransaction();
+    for (size_t i=0; i<N; i++) {
+        // ② 然后调用每个 SurfaceComposerClient 的 closeTransaction
+        clients[i]->closeTransaction();
+    }
     // ③ 最后调用 SF 的 closeGlobalTransaction
     sm->closeGlobalTransaction();
 }
 
 status_t SurfaceComposerClient::closeTransaction()
 {
+    if (mStatus != NO_ERROR)
+        return mStatus;
+
     Mutex::Autolock _l(mLock);
+    // ......
     const ssize_t count = mStates.size();
     if (count) {
         // mStates 保存所有 layer_state_t（每个 Surface 一个），
@@ -1708,7 +2601,7 @@ status_t SurfaceComposerClient::closeTransaction()
 SF 端三个函数依次是：
 
 ```cpp
-// [--> SurfaceFlinger.cpp（摘编）]
+// [--> SurfaceFlinger.cpp]
 void SurfaceFlinger::openGlobalTransaction()
 {
     android_atomic_inc(&mTransactionCount); // 又是一个计数控制
@@ -1739,6 +2632,19 @@ status_t SurfaceFlinger::setClientState(ClientID cid, int32_t count,
     return NO_ERROR;
 }
 
+uint32_t SurfaceFlinger::setTransactionFlags(uint32_t flags, nsecs_t delay)
+{
+    uint32_t old = android_atomic_or(flags, &mTransactionFlags);
+    if ((old & flags)==0) {
+        if (delay > 0) {
+            signalDelayedEvent(delay);
+        } else {
+            signalEvent(); // 设置完 mTransactionFlags 后，触发事件
+        }
+    }
+    return old;
+}
+
 void SurfaceFlinger::closeGlobalTransaction()
 {
     if (android_atomic_dec(&mTransactionCount) == 1) {
@@ -1748,15 +2654,97 @@ void SurfaceFlinger::closeGlobalTransaction()
          * 只有最后一个 closeGlobalTransaction 才会生效。
          */
         signalEvent();
-        // ...... 涉及尺寸调整时等待一段时间
+
+        Mutex::Autolock _l(mStateLock);
+        // 如果这次事务涉及尺寸调整，则需要等一段时间
+        while (mResizeTransationPending) {
+            status_t err = mTransactionCV.waitRelative(mStateLock, s2ns(5));
+            if (CC_UNLIKELY(err != NO_ERROR)) {
+                mResizeTransationPending = false;
+                break;
+            }
+        }
     }
 }
 ```
 
-事务为什么需要 eTraversalNeeded（遍历所有显示层）？因为控制操作的后果可能波及别的层——显示层 A 挪走后，原先被它遮住的 B 可能变得可见。工作线程被事件唤醒后处理事务（handleTransaction → handleTransactionLocked）：需要遍历时对每个显示层调用 doTransaction 更新其内部状态；eTransactionNeeded 分支处理横竖屏切换（GraphicPlane::setOrientation）与被移除显示层的收尾（ditch）；最后 commitTransaction：
+事务为什么需要 eTraversalNeeded（遍历所有显示层）？因为控制操作的后果可能波及别的层——显示层 A 挪走后，原先被它遮住的 B 可能变得可见。工作线程被事件唤醒后处理事务：
 
 ```cpp
-// [--> SurfaceFlinger.cpp::commitTransaction]
+// [--> SurfaceFlinger.cpp]
+uint32_t SurfaceFlinger::getTransactionFlags(uint32_t flags)
+{
+    /*
+     * 先通过原子操作去掉 mTransactionFlags 中对应的位，
+     * 返回值是旧值与 flags 的与——get 的同时顺手清位，
+     * 从这个角度看 getTransactionFlags 有点名不副实。
+     */
+    return android_atomic_and(~flags, &mTransactionFlags) & flags;
+}
+
+void SurfaceFlinger::handleTransaction(uint32_t transactionFlags)
+{
+    Vector< sp<LayerBase> > ditchedLayers;
+
+    {
+        Mutex::Autolock _l(mStateLock);
+        // 调用 handleTransactionLocked 函数处理
+        handleTransactionLocked(transactionFlags, ditchedLayers);
+    }
+
+    // ditch 是丢弃的意思，有些显示层可能被 hide 了，这里做收尾工作
+    const size_t count = ditchedLayers.size();
+    for (size_t i=0 ; i<count ; i++) {
+        if (ditchedLayers[i] != 0) {
+            ditchedLayers[i]->ditch();
+        }
+    }
+}
+
+void SurfaceFlinger::handleTransactionLocked(
+        uint32_t transactionFlags, Vector< sp<LayerBase> >& ditchedLayers)
+{
+    // mCurrentState 的 layersSortedByZ 存储了 SF 中所有的显示层
+    const LayerVector& currentLayers(mCurrentState.layersSortedByZ);
+    const size_t count = currentLayers.size();
+
+    const bool layersNeedTransaction = transactionFlags & eTraversalNeeded;
+    if (layersNeedTransaction) { // 需要遍历所有显示层
+        for (size_t i=0 ; i<count ; i++) {
+            const sp<LayerBase>& layer = currentLayers[i];
+            uint32_t trFlags = layer->getTransactionFlags(eTransactionNeeded);
+            if (!trFlags) continue;
+            // 调用各个显示层的 doTransaction，更新其内部状态
+            const uint32_t flags = layer->doTransaction(0);
+            if (flags & Layer::eVisibleRegion)
+                mVisibleRegionsDirty = true;
+        }
+    }
+    if (transactionFlags & eTransactionNeeded) {
+        if (mCurrentState.orientation != mDrawingState.orientation) {
+            // 横竖屏发生切换，需要对应变换设置
+            const int dpy = 0;
+            const int orientation = mCurrentState.orientation;
+            const uint32_t type = mCurrentState.orientationType;
+            GraphicPlane& plane(graphicPlane(dpy));
+            plane.setOrientation(orientation);
+            // ......
+        }
+        /*
+         * mLayersRemoved 在显示层被移除时设置（例如 removeLayer），
+         * 这些函数也会触发 handleTransaction 的执行。
+         */
+        if (mLayersRemoved) {
+            mLayersRemoved = false;
+            mVisibleRegionsDirty = true;
+            // ...... 找出被移除的 layer 加入 ditchedLayers
+        }
+        free_resources_l();
+    }
+    // 提交事务处理
+    commitTransaction();
+}
+
 void SurfaceFlinger::commitTransaction()
 {
     // mDrawingState 将使用更新后的 mCurrentState
@@ -1779,7 +2767,26 @@ Surface 系统的 CB 就是指 SharedBuffer 家族，是生产者/消费者步�
 
 ![](./images/ch0147_img01.jpg)
 
-SBC 与 SBS 建立在同一个 SBT 上。SBT 的控制参数即 1.4.2 列出的 head/available/queued/inUse，加上 SBC 自己的 tail——注意 tail 是 SBC 定义的本地变量，不在 SBT 中，SBS 端不可见。SBS 的构造初始化栈内参数：
+SBC 与 SBS 建立在同一个 SBT 上，先看 SBT 的控制参数（比 1.4.2 的列表多了一个 tail）：
+
+```cpp
+// [--> SharedBufferStack.h]
+class SharedBufferStack{
+    // ......
+    /*
+     * PageFlipping 用 Front、Back 两个 Buffer 就可以了，
+     * 但 SBT 的结构和相关算法支持多个缓冲。
+     * 缓冲按块获取，一次获得一块，每块缓冲用一个编号表示。
+     */
+    int32_t head;
+    int32_t available;          // 当前可用的空闲缓冲个数
+    int32_t queued;             // SBC 投递的脏缓冲个数
+    int32_t inUse;              // SBS 当前正在使用的缓冲编号
+    // ...... 上面几个参数联合 SBC 中的 tail，合称控制参数
+}
+```
+
+SBS 的构造初始化这些参数：
 
 ```cpp
 // [--> SharedBufferStack.cpp]
@@ -1797,7 +2804,7 @@ SharedBufferServer::SharedBufferServer(SharedClient* sharedClient,
 }
 ```
 
-SBC 的构造则计算自己的 tail：
+SBC 的构造则计算自己的 tail（注意 tail 是 SBC 定义的变量，不在 SBT 中，SBS 端不可见）：
 
 ```cpp
 // [--> SharedBufferStack.cpp]
@@ -1837,7 +2844,8 @@ SBC 端流程从 dequeue 开始：
 ssize_t SharedBufferClient::dequeue()
 {
     SharedBufferStack& stack( *mSharedStack );
-    // DequeueCondition 函数对象：available 大于 0 即满足条件
+    // ......
+    // DequeueCondition 函数对象
     DequeueCondition condition(this);
     status_t err = waitForCondition(condition);
     // 成功以后 available 减 1，表示当前可用的空闲 buffer 只剩 1 个
@@ -1848,8 +2856,14 @@ ssize_t SharedBufferClient::dequeue()
     int dequeued = tail; // tail 值为 0，所以 dequeued 的值为 0
     // tail 加 1。如果超过 2，则重新置为 0，这表明 tail 的值在 0、1 间循环
     tail = ((tail+1 >= mNumBuffers) ? 0 : tail+1);
+    // ......
     // 返回的 dequeued 是 tail 加 1 操作前的旧值，务必注意这一点
     return dequeued;
+}
+
+bool SharedBufferClient::DequeueCondition::operator()() {
+    // available 大于 0 即满足条件，第一次进来肯定满足
+    return stack.available > 0;
 }
 ```
 
@@ -1857,7 +2871,24 @@ ssize_t SharedBufferClient::dequeue()
 
 dequeue 的返回值 dequeued 指向 0 号缓冲（图中虚线）。由于 tail 是 SBC 的本地变量，dequeue 不能保证 0 号缓冲真正空闲——SBS 可能正在用它，所以还要 lock（见 1.4.5 的 LockCondition）。**dequeue 只是根据本地 tail 计算本次应使用的缓冲编号（在 0、1 间循环），lock 确保这个编号的缓冲没有被 SF 当作 FrontBuffer 使用**。
 
-绘制完成后 SBC 投递 BackBuffer（编号 0）——queue 经 QueueUpdate 函数对象把 queued 加一（由 0 变 1）：
+绘制完成后 SBC 投递 BackBuffer（编号 0）：
+
+```cpp
+// [--> SharedBufferStack.cpp]
+status_t SharedBufferClient::queue(int buf)
+{
+    QueueUpdate update(this);
+    status_t err = updateCondition( update );
+    // ......
+    return err;
+}
+
+// QueueUpdate 函数对象
+ssize_t SharedBufferClient::QueueUpdate::operator()() {
+    android_atomic_inc(&stack.queued); // queued 增加 1，由 0 变为 1
+    return NO_ERROR;
+}
+```
 
 ![](./images/ch0148_img03.jpg)
 
@@ -1894,6 +2925,7 @@ ssize_t SharedBufferServer::RetireUpdate::operator()() {
 
     // inUse 被设置为 0
     android_atomic_write(head, &stack.inUse);
+
     // head 值被写回 stack.head
     android_atomic_write(head, &stack.head);
 
@@ -1905,9 +2937,32 @@ ssize_t SharedBufferServer::RetireUpdate::operator()() {
 
 ![](./images/ch0148_img04.jpg)
 
-注意 available 区域中 1 号缓冲右边的 0 号缓冲用虚线表示——它实际并不在 available 区域，但 available 计数已是 2。这不会出错，因为 SBC 的 lock 会确保该缓冲没有被 SBS 使用。SBS 的最后一个函数 unlock 只把 inUse 置回 -1。
+注意 available 区域中 1 号缓冲右边的 0 号缓冲用虚线表示——它实际并不在 available 区域，但 available 计数已是 2。这不会出错，因为 SBC 的 lock 会确保该缓冲没有被 SBS 使用。SBS 的最后一个函数 unlock 只把 inUse 置回 -1：
 
-对比 unlock 后的最终状态与初始状态，tail 与 head 刚好互换了位置——这就是 PageFlip。最后一个值得咀嚼的细节：这些函数对象都在 Mutex 锁的保护下执行，可 RetireUpdate 里仍然用了 `android_atomic_cmpxchg` 的 while 循环——有锁的保护的话，理论上没有其他线程能够修改 stack.queued 的值，这个循环本可省去。原书作者对此也存疑（把函数对象移到锁外执行，真机测试未见异常），仅把问题记录在此；大量使用原子操作的目的显然是避免锁，锁与原子操作的并用是否必要，留给读者判断。
+```cpp
+// [--> SharedBufferStack.cpp]
+ssize_t SharedBufferServer::UnlockUpdate::operator()() {
+    // ......
+    android_atomic_write(-1, &stack.inUse); // inUse 被设置为 -1
+    return NO_ERROR;
+}
+```
+
+对比 unlock 后的最终状态与初始状态，tail 与 head 刚好互换了位置——这就是 PageFlip。最后一个值得咀嚼的细节：这些函数对象都在 Mutex 锁的保护下执行，可 RetireUpdate 里仍然用了 `android_atomic_cmpxchg` 的 while 循环：
+
+```cpp
+// 有锁控制的话，根本用不着 while 循环：有锁的保护，
+// 没有其他线程能够修改 stack.queued 的值
+int32_t queued;
+do {
+    queued = stack.queued;
+    if (queued == 0) {
+        return NOT_ENOUGH_DATA;
+    }
+} while (android_atomic_cmpxchg(queued, queued-1, &stack.queued));
+```
+
+原书作者对此也存疑（把函数对象移到锁外执行，真机测试未见异常），仅把问题记录在此。大量使用原子操作的目的显然是避免锁，锁与原子操作的并用是否必要，留给读者判断。
 
 ### 1.6.2 ViewRoot 相关问答
 
@@ -1921,14 +2976,27 @@ ViewRoot 是 Surface 系统乃至 UI 系统的关键类，原书汇总了几个�
 
 ### 1.6.3 LayerBuffer：PushBuffers 显示层与 Camera 预览
 
-Normal 属性显示层的第二类是 PushBuffers 模式，对应 LayerBuffer，用于视频播放和摄像机预览。以 Camera 的 preview 为例。LayerBuffer 的创建与 Normal 类型同构（new LayerBuffer → initStates → addLayer_l）。
+Normal 属性显示层的第二类是 PushBuffers 模式，对应 LayerBuffer，用于视频播放和摄像机预览。以 Camera 的 preview 为例。LayerBuffer 的创建走 createPushBuffersSurfaceLocked：
+
+```cpp
+// [--> SurfaceFlinger.cpp]
+sp<LayerBaseClient> SurfaceFlinger::createPushBuffersSurfaceLocked(
+        const sp<Client>& client, DisplayID display,
+        int32_t id, uint32_t w, uint32_t h, uint32_t flags)
+{
+    sp<LayerBuffer> layer = new LayerBuffer(this, display, client, id);
+    layer->initStates(w, h, flags);
+    addLayer_l(layer);
+    return layer;
+}
+```
 
 ![](./images/ch0150_img01.jpg)
 
 LayerBuffer 定义了内部类 Source 作为数据提供者，其下有 BufferSource 与 OverlaySource 两个派生类；LayerBuffer 的 mSurface 真实类型是 SurfaceLayerBuffer。使用方从 CameraService 开始：它先向 Camera HAL 取预览堆，再注册给 ISurface：
 
 ```cpp
-// [--> CameraService.cpp::registerPreviewBuffers（摘编）]
+// [--> CameraService.cpp]
 status_t CameraService::Client::registerPreviewBuffers()
 {
     int w, h;
@@ -1952,9 +3020,10 @@ status_t CameraService::Client::registerPreviewBuffers()
 BufferHeap 的 heap 成员指向真实的存储，即 CameraHardwareStub::initHeapLocked 创建的预览内存：
 
 ```cpp
-// [--> CameraHardwareStub.cpp::initHeapLocked（摘编）]
+// [--> CameraHardwareStub.cpp]
 void CameraHardwareStub::initHeapLocked()
 {
+    // ......
     /*
      * 创建一个 MemoryHeapBase 对象，大小是 mPreviewFrameSize * kBufferCount，
      * kBufferCount 为 4。注意这是一段连续的缓冲。
@@ -1970,10 +3039,37 @@ void CameraHardwareStub::initHeapLocked()
 
 ![](./images/ch0150_img02.jpg)
 
-registerBuffers 经 SurfaceLayerBuffer（纯代理，转交外部类）转到 LayerBuffer，创建 BufferSource 并保存为 mSource。数据传输由 Camera HAL 的 preview 线程驱动：
+registerBuffers 经 SurfaceLayerBuffer（纯代理）转到外部类 LayerBuffer，创建 BufferSource：
 
 ```cpp
-// [--> CameraHardwareStub.cpp::previewThread（摘编）]
+// [--> LayerBuffer.cpp]
+status_t LayerBuffer::SurfaceLayerBuffer::registerBuffers(
+        const ISurface::BufferHeap& buffers)
+{
+    sp<LayerBuffer> owner(getOwner());
+    if (owner != 0)
+        // 转交外部类处理，SurfaceLayerBuffer 也是一个 Proxy
+        return owner->registerBuffers(buffers);
+    return NO_INIT;
+}
+
+status_t LayerBuffer::registerBuffers(const ISurface::BufferHeap& buffers)
+{
+    Mutex::Autolock _l(mLock);
+    // 创建数据的来源 BufferSource，把 MemoryHeap 设置了上去
+    sp<BufferSource> source = new BufferSource(*this, buffers);
+    status_t result = source->getStatus();
+    if (result == NO_ERROR) {
+        mSource = source; // 保存这个数据源为 mSource
+    }
+    return result;
+}
+```
+
+数据传输由 Camera HAL 的 preview 线程驱动：
+
+```cpp
+// [--> CameraHardwareStub.cpp]
 // preview 线程从 Thread 派生，此函数在 threadLoop 中循环调用
 int CameraHardwareStub::previewThread()
 {
@@ -1990,6 +3086,7 @@ int CameraHardwareStub::previewThread()
     if (buffer != 0) {
         int delay = (int)(1000000.0f / float(previewFrameRate));
         void* base = heap->base(); // base 是 mPreviewHeap 的起始位置
+
         // frame 代表这块 buffer 在 mPreviewHeap 中的起始位置
         uint8_t* frame = ((uint8_t*)base) + offset;
         // 取出一帧数据，放到对应的 MemoryBase 中
@@ -2002,16 +3099,90 @@ int CameraHardwareStub::previewThread()
         mCurrentPreviewFrame = (mCurrentPreviewFrame + 1) % kBufferCount;
         usleep(delay); // 模拟真实硬件的延时
     }
+
     return NO_ERROR;
 }
 ```
 
-CameraService 在回调 handlePreviewData 中把这块内存通知给显示层——传的只是一个偏移量：`mem->getMemory(&offset, &size)` 取出该成员在 mPreviewHeap 中的偏移，然后 `mSurface->postBuffer(offset)`。postBuffer 一路经 LayerBuffer 转到 BufferSource：检查 offset 合法性后，`new LayerBuffer::Buffer(buffers, offset, mBufferSize)` 创建一个 Buffer、setBuffer 把它设为 mSource 的当前 buffer（原来指向的那个被释放），最后 `mLayer.invalidate()` 触发 SF 重绘。
+CameraService 在回调 handlePreviewData 中把这块内存通知给显示层——传的只是一个偏移量：
+
+```cpp
+// [--> CameraService.cpp]
+void CameraService::Client::handlePreviewData(const sp<IMemory>& mem)
+{
+    ssize_t offset;
+    size_t size;
+    // mem 实际上是 Camera HAL 创建的 mBuffers 数组中的一员，
+    // offset 返回这个成员在 mPreviewHeap 中的偏移量
+    sp<IMemoryHeap> heap = mem->getMemory(&offset, &size);
+    if (!mUseOverlay)
+    {
+        Mutex::Autolock surfaceLock(mSurfaceLock);
+        if (mSurface != NULL) {
+            // 调用 ISurface 的 postBuffer，注意传入的参数是 offset
+            mSurface->postBuffer(offset);
+        }
+    }
+    // ......
+}
+```
+
+postBuffer 一路转到 BufferSource：
+
+```cpp
+// [--> LayerBuffer.cpp]
+void LayerBuffer::postBuffer(ssize_t offset)
+{
+    sp<Source> source(getSource()); // getSource 返回 mSource，为 BufferSource 类型
+    if (source != 0)
+        source->postBuffer(offset); // 调用 BufferSource 的 postBuffer
+}
+
+void LayerBuffer::BufferSource::postBuffer(ssize_t offset)
+{
+    ISurface::BufferHeap buffers;
+    {
+        Mutex::Autolock _l(mBufferSourceLock);
+        buffers = mBufferHeap;
+        if (buffers.heap != 0) {
+            // BufferHeap 的 heap 变量指向 MemoryHeap，取出它的大小
+            const size_t memorySize = buffers.heap->getSize();
+            // 做一下检查，判断这个 offset 是不是有问题
+            if ((size_t(offset) + mBufferSize) > memorySize) {
+                LOGE("LayerBuffer::BufferSource::postBuffer() "
+                      "invalid buffer (offset=%d, size=%d, heap-size=%d",
+                      int(offset), int(mBufferSize), int(memorySize));
+                return;
+            }
+        }
+    }
+
+    sp<Buffer> buffer;
+    if (buffers.heap != 0) {
+        // 创建一个 LayerBuffer::Buffer
+        buffer = new LayerBuffer::Buffer(buffers, offset, mBufferSize);
+        if (buffer->getStatus() != NO_ERROR)
+            buffer.clear();
+        setBuffer(buffer);
+
+        // mLayer 就是外部类 LayerBuffer，触发 SF 的重绘
+        mLayer.invalidate();
+    }
+}
+
+void LayerBuffer::BufferSource::setBuffer(
+                              const sp<LayerBuffer::Buffer>& buffer)
+{
+    Mutex::Autolock _l(mBufferSourceLock);
+    // 新 buffer 设置为 mBuffer，原来指向的那个被释放
+    mBuffer = buffer;
+}
+```
 
 Buffer 的构造把内存地址算出来存进 mNativeBuffer：
 
 ```cpp
-// [--> LayerBuffer.cpp::LayerBuffer::Buffer（摘编）]
+// [--> LayerBuffer.cpp]
 LayerBuffer::Buffer::Buffer(const ISurface::BufferHeap& buffers,
         ssize_t offset, size_t bufferSize)
     : mBufferHeap(buffers), mSupportsCopybit(false)
@@ -2022,6 +3193,7 @@ LayerBuffer::Buffer::Buffer(const ISurface::BufferHeap& buffers,
     src.crop.t = 0;
     src.crop.r = buffers.w;
     src.crop.b = buffers.h;
+
     src.img.w         = buffers.hor_stride ?: buffers.w;
     src.img.h         = buffers.ver_stride ?: buffers.h;
     src.img.format    = buffers.format;
@@ -2032,7 +3204,33 @@ LayerBuffer::Buffer::Buffer(const ISurface::BufferHeap& buffers,
 }
 ```
 
-SF 工作线程重绘时经 LayerBuffer 的 onDraw 用这块内存生成贴图（getBuffer 取 mBuffer，再 `mLayer.drawWithOpenGL(clip, mTexture)`——注意使用的时候没有锁控制）。
+SF 工作线程重绘时经 LayerBuffer 的 onDraw 用这块内存生成贴图：
+
+```cpp
+// [--> LayerBuffer.cpp]
+void LayerBuffer::onDraw(const Region& clip) const
+{
+    sp<Source> source(getSource());
+    if (LIKELY(source != 0)) {
+        source->onDraw(clip); // source 实际类型是 BufferSource
+    } else {
+        clearWithOpenGL(clip);
+    }
+}
+
+void LayerBuffer::BufferSource::onDraw(const Region& clip) const
+{
+    sp<Buffer> ourBuffer(getBuffer());
+    // ...... 使用这个 buffer，注意使用的时候没有锁控制
+    mLayer.drawWithOpenGL(clip, mTexture); // 生成一个贴图，然后绘制它
+}
+
+sp<LayerBuffer::Buffer> LayerBuffer::BufferSource::getBuffer() const
+{
+    Mutex::Autolock _l(mBufferSourceLock);
+    return mBuffer;
+}
+```
 
 从缓冲的角度看这套流程有一个结构性的隐患：**数据生产者（Camera HAL 的 preview 线程）在含四个成员的缓冲队列 mBuffers 上循环写，数据消费者（SF 工作线程）却只持有一个 mBuffer；setBuffer 换引用时虽有锁，但 SF 使用 mBuffer 指向的内存期间没有同步控制**。
 
@@ -2062,3 +3260,6 @@ SF 工作线程重绘时经 LayerBuffer 的 onDraw 用这块内存生成贴图�
 - **SF 架构化**：主循环重写为事件驱动，图层管理拆出前端（接收事务与生命周期）与后端（按显示组织合成）；HWC 接口演进到 AIDL，多屏/折叠屏的复杂层级由 Layer 树的容器节点表达。观测工具（dumpsys SurfaceFlinger、Perfetto FrameTimeline）让掉帧归因从玄学变成可测量。
 
 一句收束：**Surface 系统的两条主线——应用往 Surface 里画、SF 把所有 Surface 合成送显——从 2.3 到今天从未改变，变化的只是「谁来分配缓冲、按什么节拍交换、由谁执行绘制」这三件事的实现方式。**
+
+
+

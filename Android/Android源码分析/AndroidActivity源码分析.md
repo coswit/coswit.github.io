@@ -1,111 +1,144 @@
 ## 1. 概述与版本说明
 
-本文基于 **Android 9.0（API 28）** 前后的 AOSP 源码，分析 Activity 从 `startActivity()` 到 `onCreate()`/`onResume()` 回调的完整启动流程。
+本文基于 **AOSP main 分支源码（Android 16 前后）**，分析 Activity 从 `startActivity()` 到 `onCreate()`/`onResume()` 回调的完整启动流程。
 
-整个启动流程主要在发起方 App 进程与 system_server 两个进程间往复；冷启动时目标进程还不存在，AMS 会先请 zygote fork 出目标进程，再继续后面的阶段。据此把流程拆成三个阶段，冷启动时在 ② 与 ③ 之间插入一段进程孵化（表中 ②′，第 5 节单独展开）：
+整个启动流程主要在发起方 App 进程与 system_server 两个进程间往复；冷启动时目标进程还不存在，AMS 会先经 zygote fork 出目标进程，再继续后面的阶段。据此把流程拆成三个阶段，冷启动时在 ② 与 ③ 之间插入一段进程孵化（表中 ②′，第 5 节单独展开）：
 
 | 阶段 | 所在进程 | 核心调用链 |
 | --- | --- | --- |
 | ① 发起启动 | App 进程 | `Activity.startActivity()` → `Instrumentation.execStartActivity()` |
-| ② 处理启动请求 | system_server 进程 | `AMS.startActivity()` → `ActivityStarter` → `ActivityStackSupervisor.realStartActivityLocked()` |
-| ②′ 孵化进程（仅冷启动） | system_server → zygote → 新进程 | `startSpecificActivityLocked` → `startProcessLocked` → `ZygoteProcess` 经 socket 请求 → `forkAndSpecialize` → `ActivityThread.main` |
-| ③ 创建并回调 | App 进程 | `ApplicationThread.scheduleLaunchActivity()` → `ActivityThread.handleLaunchActivity()` → `performLaunchActivity()` |
+| ② 处理启动请求 | system_server 进程 | `ATMS.startActivity()` → `ActivityStarter` → `ActivityTaskSupervisor.realStartActivityLocked()` |
+| ②′ 孵化进程（仅冷启动） | system_server → zygote → 新进程 | `startSpecificActivity` → `startProcessAsync` → `ProcessList` → `ZygoteProcess` → `forkAndSpecialize` → `ActivityThread.main` |
+| ③ 创建并回调 | App 进程 | `ApplicationThread.scheduleTransaction()` → `H.EXECUTE_TRANSACTION` → `TransactionExecutor` → `performLaunchActivity()` |
 
-> **版本注意（Android 9/10+）**：生命周期调度方面，**ClientTransaction 事务机制**（`LaunchActivityItem`/`ResumeActivityItem` 等事务项经 `TransactionExecutor` 派发）从 **Android 9.0** 起就已取代 `scheduleLaunchActivity` 这组方法；本文正文仍按 `scheduleLaunchActivity` 的经典链路讲解（对应 8.x 及之前的形态，也便于对照旧资料），核心思路不变。Android 10 起，AMS 中 Activity 相关职责进一步迁移到 **ATMS（ActivityTaskManagerService）**，`ActivityStack`、`ActivityStarter` 等类移入 `ActivityTaskManager` 命名空间。流程骨架对各版本仍然适用。
+> **版本注意**：本文基准是 Android 16 前后的 main 分支代码，与网上大量基于 Android 9/10 的资料相比，类名与入口有多处变化：Activity 调度已从 AMS 迁到 **ATMS（ActivityTaskManagerService）** 与 ActivityTaskSupervisor；生命周期调度自 Android 9 起用 **ClientTransaction 事务机制** 取代了 `scheduleLaunchActivity` 直调；进程孵化改为 `startProcessAsync` 全异步。骨架思路不变，逐项差异见第 9 节演进备注。
 >
-> 文中代码为**摘编版**：保留了主干逻辑与关键调用，省略了日志、异常样板、参数透传等细节，便于快速把握原理；行号为方法的准确入口，可对照原始 AOSP 阅读。
+> 文中代码为**摘编版**：保留主干逻辑与关键调用，省略日志、异常样板、参数透传与调试分支，可对照 AOSP 原文阅读。
 
 从 Activity 启动到生命周期回调的完整调用链：
 
 ```mermaid
 flowchart TD
     A[Activity startActivity] --> B[Instrumentation execStartActivity]
-    B --> C[ActivityManagerService startActivity Binder IPC]
-    C --> D[ActivityStarter startActivityMayWait]
-    D --> E[ActivityStackSupervisor startSpecificActivityLocked]
-    E -->|目标进程已存活| F[realStartActivityLocked]
-    E -->|目标进程不存在| P[AMS startProcessLocked 分配 startSeq]
-    P --> Q[ZygoteProcess 经 socket 向 zygote 发送孵化参数]
-    Q --> R[zygote processOneCommand 执行 forkAndSpecialize]
-    R --> S[子进程 zygoteInit 一路到 ActivityThread main]
-    S --> T[attachApplication 回到 AMS]
-    T --> F
-    F --> G[ApplicationThread scheduleLaunchActivity Binder 回调]
-    G --> H[ActivityThread 的 H 处理 LAUNCH_ACTIVITY]
-    H --> I[handleLaunchActivity]
-    I --> J[performLaunchActivity 创建 Activity 并回调 onCreate]
-    I --> K[handleResumeActivity 回调 onResume]
+    B --> C[ATMS startActivity Binder IPC]
+    C --> D[ActivityStarter executeRequest 与 startActivityInner]
+    D --> E[ActivityTaskSupervisor startSpecificActivity]
+    E -->|目标进程已存活| F[realStartActivityLocked 打包事务]
+    E -->|目标进程不存在| P[ATMS startProcessAsync]
+    P --> Q[ProcessList startProcessLocked 分配 startSeq]
+    Q --> R[ZygoteProcess 经 socket 请求 zygote]
+    R --> S[zygote processCommand 执行 forkAndSpecialize]
+    S --> T[子进程 zygoteInit 一路到 ActivityThread main]
+    T --> U[attachApplication 回到 AMS 与 ATMS]
+    U --> F
+    F --> G[ClientTransaction scheduleTransaction Binder 回调]
+    G --> H[ActivityThread 的 H 处理 EXECUTE_TRANSACTION]
+    H --> I[TransactionExecutor execute]
+    I --> J[LaunchActivityItem → performLaunchActivity 回调 onCreate]
+    I --> K[cycleToPath 推进 onStart → ResumeActivityItem 回调 onResume]
 ```
 
 ## 2. 整体类关系
 
 ### 2.1 App 进程侧
 
-ActivityThread 是 App 进程的主线程入口，持有 ApplicationThread（Binder Stub，接收 AMS 回调）与 H（主线程 Handler）；LoadedApk 负责创建 Application：
+ActivityThread 是 App 进程的主线程入口，继承 **ClientTransactionHandler**——这层继承正是事务机制的入口：`scheduleTransaction()` 定义在父类中，把 Binder 收到的事务转成主线程消息；TransactionExecutor 负责按序执行事务项。ApplicationThread 是 Binder Stub，接收 system_server 的回调：
 
 ```mermaid
 classDiagram
 class ActivityThread {
-	-ResourcesManager mResourcesManager
+	TransactionExecutor mTransactionExecutor
 	Handler sMainThreadHandler
 	ApplicationThread mAppThread
 	Looper mLooper
 	H mH
 
-	+main()
-	attach(boolean system)
-	-handleBindApplication(AppBindData data)
+	main(String[] args)
+	attach(boolean system, long startSeq)
+	handleBindApplication(AppBindData data)
+	handleLaunchActivity(...)
+	handleStartActivity(...)
+	handleResumeActivity(...)
 }
+
+ClientTransactionHandler <|-- ActivityThread
 
 Handler <|-- H
 
 H --* ActivityThread
 
 class ApplicationThread{
-	+bindApplication()
-	+scheduleLaunchActivity()
+	+bindApplication(...)
+	+scheduleTransaction(ClientTransaction)
 }
 
 ApplicationThread --* ActivityThread
 IApplicationThreadStub <|-- ApplicationThread
 
-class ActivityManagerService{
-	ActivityStackSupervisor mStackSupervisor
-	SparseArray~ProcessRecord~ mPidsSelfLocked
-	+attachApplication(IApplicationThread)
-	+startActivity(...)
-}
-ActivityManagerService ..> ActivityThread : attach(system)
-
-IActivityManagerStub <|-- ActivityManagerService
-
-PackageItemInfo <|-- InstrumentationInfo
-
-PackageManager <|-- ApplicationPackageManager
-
-class PackageManager{
-	InstrumentationInfo getInstrumentationInfo(ComponentName className,int flags)
+class TransactionExecutor{
+	+execute(ClientTransaction)
 }
 
-InstrumentationInfo ..> ApplicationPackageManager : getInstrumentationInfo
-
-ApplicationPackageManager ..> ActivityThread : handleBindApplication-InstrumentationInfo
-
-ActivityThread < .. Instrumentation : handleBindApplication
+TransactionExecutor --* ActivityThread
 
 class LoadedApk{
-	makeApplication(boolean forceDefaultAppClass,Instrumentation) Application
+	makeApplicationInner(boolean, Instrumentation) Application
 }
 
-AppBindData *-- LoadedApk
-class AppBindData{
-	LoadedApk loadedApk
-}
-
-ActivityThread *-- AppBindData
+ActivityThread ..> LoadedApk : getPackageInfo
 ```
 
-### 2.2 Activity 与 Window
+### 2.2 system_server 侧：AMS 与 ATMS 的双界对应
+
+Android 10 起 Activity 相关职责从 AMS（ActivityManagerService）拆到 ATMS，两个服务各自维护一份进程视图，通过 WindowProcessController 关联——这是读新源码最容易迷路的第一个点：
+
+```mermaid
+classDiagram
+class ActivityManagerService{
+	+attachApplication(IApplicationThread, long startSeq)
+	+startProcess(...)
+}
+
+class ActivityTaskManagerService{
+	+startActivity(...)
+	startProcessAsync(...)
+}
+
+class ProcessRecord{
+	long startSeq
+	int startUid
+	IApplicationThread thread
+}
+
+class WindowProcessController{
+	boolean hasThread()
+	boolean hasEverLaunchedActivity()
+}
+
+ProcessRecord "1" -- "1" WindowProcessController : 双界对应
+
+class ActivityTaskSupervisor{
+	realStartActivityLocked(...)
+	startSpecificActivity(...)
+}
+
+class RootWindowContainer{
+	attachApplication(WindowProcessController)
+}
+
+class ClientLifecycleManager{
+	scheduleTransactionItems(...)
+}
+
+ActivityTaskManagerService --* ActivityTaskSupervisor
+ActivityTaskManagerService --* RootWindowContainer
+ActivityTaskManagerService --* ClientLifecycleManager
+ActivityManagerService ..> ActivityTaskManagerService : mAtmInternal
+```
+
+AMS 侧的 ProcessRecord 管进程生命周期（孵化、超时、优先级），ATMS 侧的 WindowProcessController 管窗口视角的进程状态（是否绑定、是否启动过 Activity）；`attachApplication()` 里 AMS 核对完身份后，把 controller 交给 ATMS 去找等待启动的 Activity。
+
+### 2.3 Activity 与 Window
 
 Activity 并不直接持有 View 树，而是通过 PhoneWindow 间接管理，DecorView 是窗口的根 View：
 
@@ -116,33 +149,20 @@ class Activity{
 	-Window mWindow
 	-WindowManager mWindowManager
 	View mDecor
-	FragmentController mFragments
 
 	attach(...)
 }
-
-class ContextThemeWrapper{
-	-int mThemeResource
-	-LayoutInflater mInflater
-}
-
-Activity --|> ContextThemeWrapper
-
-ContextThemeWrapper --|> Context
 
 class PhoneWindow{
 	-DecorView mDecor
 	-LayoutInflater mLayoutInflater
 	+installDecor()
 	+setContentView(int layoutResID)
-	generateDecor(int featureId) DecorView
-	generateLayout(DecorView decor) ViewGroup
 }
 
 PhoneWindow --* Activity : attach
 
 class Window{
-	+setContainer(Window container)
 	+getDecorView() View
 }
 
@@ -168,6 +188,7 @@ FrameLayout <|-- DecorView
 ```java
 @Override
 public void startActivity(Intent intent, @Nullable Bundle options) {
+    getAutofillClientController().onStartActivity(intent, mIntent);
     if (options != null) {
         startActivityForResult(intent, -1, options);
     } else {
@@ -179,7 +200,7 @@ public void startActivity(Intent intent, @Nullable Bundle options) {
 ```java
 public void startActivityForResult(Intent intent, int requestCode, @Nullable Bundle options) {
     if (mParent == null) {
-        // 交给 Instrumentation 发起, 把 ApplicationThread 传给 AMS 作为回调通道
+        // 交给 Instrumentation 发起, 把 ApplicationThread 传给 ATMS 作为回调通道
         Instrumentation.ActivityResult ar = mInstrumentation.execStartActivity(
                 this, mMainThread.getApplicationThread(), mToken, this,
                 intent, requestCode, options);
@@ -193,68 +214,25 @@ public void startActivityForResult(Intent intent, int requestCode, @Nullable Bun
 }
 ```
 
-注意传给 `execStartActivity()` 的 `mMainThread.getApplicationThread()`——把 App 进程的 ApplicationThread Binder 对象带过去，AMS 之后就是靠它回调 App 进程的。
+注意传给 `execStartActivity()` 的 `mMainThread.getApplicationThread()`——把 App 进程的 ApplicationThread Binder 对象带过去，system_server 之后就是靠它回调 App 进程的。
 
-### 3.2 Instrumentation
+### 3.2 Instrumentation.execStartActivity
 
-Instrumentation 是 App 与系统交互的"工具人"：Activity/Application 的创建和生命周期回调都经它之手，同时它也是自动化测试（如 ActivityMonitor 拦截启动）的挂载点。
-
-```java
-public class Instrumentation {
-    private List<ActivityMonitor> mActivityMonitors;
-
-    // 生命周期回调统一入口
-    public void callActivityOnCreate(Activity activity, Bundle icicle, ...) {
-        prePerformCreate(activity);
-        activity.performCreate(icicle, persistentState);  // 内部回调 onCreate
-        postPerformCreate(activity);
-    }
-
-    public void callApplicationOnCreate(Application app) {
-        app.onCreate();
-    }
-}
-```
-
-内部类 ActivityMonitor，用于测试时拦截匹配的 Intent：
-
-```java
-public static class ActivityMonitor {
-    private final IntentFilter mWhich;
-    private final ActivityResult mResult;
-    private final boolean mBlock;   // 为 true 时拦截启动, 不真正 start
-    ...
-}
-```
-
-**execStartActivity**——真正跨进程发起启动：
+Instrumentation 负责代替 App 进程与系统交互：Activity/Application 的创建和生命周期回调都经它之手，同时它也是自动化测试（ActivityMonitor 拦截启动）的挂载点。`execStartActivity()` 真正跨进程发起启动：
 
 ```java
 public ActivityResult execStartActivity(Context who, IBinder contextThread,
         IBinder token, Activity target, Intent intent, int requestCode, Bundle options) {
     IApplicationThread whoThread = (IApplicationThread) contextThread;
-
-    // 测试用的 ActivityMonitor 拦截: 命中且阻塞则直接返回, 不发起启动
-    if (mActivityMonitors != null) {
-        for (ActivityMonitor am : mActivityMonitors) {
-            if (am.match(who, null, intent)) {
-                am.mHits++;
-                if (am.isBlocking()) {
-                    return requestCode >= 0 ? am.getResult() : null;
-                }
-                break;
-            }
-        }
-    }
-
+    ...
     try {
         intent.prepareToLeaveProcess(who);
-        // Binder IPC 到 system_server, 启动交由 AMS 处理
-        int result = ActivityManager.getService().startActivity(
-                whoThread, who.getBasePackageName(), intent,
-                intent.resolveTypeIfNeeded(who.getContentResolver()),
-                token, target != null ? target.mEmbeddedID : null,
-                requestCode, 0, null, options);
+        // Binder IPC 到 system_server: 目标服务是 ATMS 而非 AMS
+        int result = ActivityTaskManager.getService().startActivity(whoThread,
+                who.getOpPackageName(), who.getAttributionTag(), intent,
+                intent.resolveTypeIfNeeded(who.getContentResolver()), token,
+                target != null ? target.mEmbeddedID : null, requestCode, 0, null, options);
+        notifyStartActivityResult(result, options);
         // 检查启动结果: "Unable to find explicit activity class..." 等异常的抛出点
         checkStartActivityResult(result, intent);
     } catch (RemoteException e) {
@@ -264,132 +242,50 @@ public ActivityResult execStartActivity(Context who, IBinder contextThread,
 }
 ```
 
-InstrumentationInfo 描述 manifest 中 `<instrumentation>` 标签的信息：
+与老版本的一个细节差异：`getService()` 查询的服务是 `ActivityTaskManager` 的 "activity" 服务，`startActivity()` 的 Binder 入口在 ATMS 上。
+
+## 4. 阶段②：system_server 处理启动请求
+
+### 4.1 ATMS.startActivity → ActivityStarter
+
+ATMS 只做 uid 归属与 user 校验，随即交给 ActivityStartController 派发的 ActivityStarter：
 
 ```java
-public class InstrumentationInfo extends PackageItemInfo implements Parcelable {
-     public String targetPackage;
-     public String targetProcesses;
-     ...
-}
-```
-
-## 4. 阶段②：system_server 进程处理
-
-### 4.1 AMS 的获取：ActivityManager.getService
-
-App 进程通过 `ActivityManager.getService()` 拿到 AMS 的 Binder 代理，底层是 `ServiceManager` 查询名为 `Context.ACTIVITY_SERVICE`（"activity"）的服务：
-
-```java
-public class ActivityManager {
-    public static IActivityManager getService() {
-        return IActivityManagerSingleton.get();
-    }
-
-    private static final Singleton<IActivityManager> IActivityManagerSingleton =
-            new Singleton<IActivityManager>() {
-        @Override
-        protected IActivityManager create() {
-            final IBinder b = ServiceManager.getService(Context.ACTIVITY_SERVICE);
-            return IActivityManager.Stub.asInterface(b);
-        }
-    };
-}
-```
-
-AMS 本体是 `IActivityManager.Stub` 的实现，内部由 ActivityStackSupervisor 管理所有 Activity 栈，由 mPidsSelfLocked 按 pid 索引进程记录：
-
-```java
-public class ActivityManagerService extends IActivityManager.Stub
-        implements Watchdog.Monitor, BatteryStatsImpl.BatteryCallback {
-
-    final ActivityStackSupervisor mStackSupervisor;          // 管理所有 Activity 栈
-    final SparseArray<ProcessRecord> mPidsSelfLocked;        // 按 pid 索引运行中的进程
-    final ActivityStarter mActivityStarter;                   // 启动决策者
-    ...
-}
-```
-
-### 4.2 AMS.startActivity → ActivityStarter
-
-AMS 只做权限/Multi-user 校验，随即转交给 ActivityStarter：
-
-```java
-@Override
 public final int startActivity(IApplicationThread caller, String callingPackage,
-        Intent intent, String resolvedType, IBinder resultTo, ...) {
-    return startActivityAsUser(caller, callingPackage, intent, ..., UserHandle.getCallingUserId());
-}
-
-@Override
-public final int startActivityAsUser(..., int userId) {
-    enforceNotIsolatedCaller("startActivity");
-    userId = mUserController.handleIncomingUser(...);
-    // 转交 ActivityStarter
-    return mActivityStarter.startActivityMayWait(caller, -1, callingPackage, intent, ...,
-            userId, null, "startActivityAsUser");
+        @Nullable String callingFeatureId, Intent intent, String resolvedType,
+        IBinder resultTo, String resultWho, int requestCode, int startFlags,
+        ProfilerInfo profilerInfo, Bundle bOptions) {
+    return startActivityAsUser(caller, callingPackage, callingFeatureId, intent, ...,
+            UserHandle.getCallingUserId());
 }
 ```
-
-### 4.3 ActivityStarter：startActivityMayWait 与 startActivityUnchecked
-
-ActivityStarter 负责 Intent 解析、launchMode/flag/任务栈（TaskRecord）的决策。`startActivityMayWait()` 先解析出目标 ActivityInfo，再进入同名的 `startActivity(...)` 重载：
 
 ```java
-class ActivityStarter {
-    private final ActivityManagerService mService;
-    private final ActivityStackSupervisor mSupervisor;
-}
-
-final int startActivityMayWait(IApplicationThread caller, ..., Intent intent, ..., int userId, ...) {
-    // 拷贝一份 intent, 不修改调用方的对象
-    intent = new Intent(intent);
-
-    // 通过 PMS 解析 Intent 对应的 ActivityInfo
-    ActivityInfo aInfo = mSupervisor.resolveActivity(intent, rInfo, startFlags, profilerInfo);
-
-    synchronized (mService) {
-        ...
-        // 进入启动主链
-        int res = startActivity(caller, intent, ..., aInfo, rInfo, ..., reason);
-        ...
-        return res;
-    }
+private int startActivityAsUser(..., int userId, boolean validateIncomingUser) {
+    ...
+    assertPackageMatchesCallingUid(callingPackage);       // callingPackage 必须属于调用方 uid
+    enforceNotIsolatedCaller("startActivityAsUser");      // 隔离进程不允许启动 activity
+    ...
+    return getActivityStartController().startActivities(...);
 }
 ```
 
-这个 `startActivity(...)` 重载做三件事：
+### 4.2 ActivityStarter：executeRequest 与 startActivityInner
 
-- **校验**：caller 进程记录、组件能否解析（`Unable to find explicit activity class` 一类错误码在此返回）、`checkStartAnyActivityPermission` 权限与 IntentFirewall 检查、App 切换检查 `checkAppSwitchAllowedLocked`——处于不允许切换的时段则把请求挂进 PendingActivityLaunch 稍后重试。
+ActivityStarter 负责 Intent 解析、launchMode/flag/任务栈（Task）的决策。入口 `executeRequest()` 做检查，核心决策在 `startActivityInner()`——源码注释里的分工原文是 "the normally activity launch flow will go through `startActivityUnchecked` to `startActivityInner`"，其中 startActivityUnchecked 现在只保留转发逻辑。
+
+`executeRequest()` 做三件事：
+
+- **校验**：caller 进程记录、组件能否解析（`Unable to find explicit activity class` 一类错误码在此返回）、`checkStartAnyActivityPermission` 权限与 IntentFirewall 检查、App 切换检查——处于不允许切换的时段则把请求挂起稍后重试。
 - **拦截**：权限审查（mPermissionReviewRequired）会把 Intent 整个替换成权限确认页 ACTION_REVIEW_PERMISSIONS；ActivityStartInterceptor 则处理静音工作资料、应用被暂停（suspended）等场景。
-- **登记**：为目标 activity new 出一个 ActivityRecord——4.4 节 realStartActivityLocked 操作的就是它。
+- **登记**：为目标 activity new 出一个 ActivityRecord——4.5 节 realStartActivityLocked 操作的就是它。
 
-之后经一层薄包装进入真正的决策函数：
-
-```java
-private int startActivity(final ActivityRecord r, ActivityRecord sourceRecord, ...) {
-    int result = START_CANCELED;
-    try {
-        mService.mWindowManager.deferSurfaceLayout();   // 暂停 surface 布局, 避免切换中间态闪烁
-        result = startActivityUnchecked(r, sourceRecord, ...);
-    } finally {
-        // 启动失败: 把刚入栈的 ActivityRecord 回收掉
-        if (!ActivityManager.isStartResultSuccessful(result) && stack != null) {
-            stack.finishActivityLocked(mStartActivity, RESULT_CANCELED,
-                    null, "startActivity", true);
-        }
-        mService.mWindowManager.continueSurfaceLayout();
-    }
-    return result;
-}
-```
-
-**startActivityUnchecked** 是 launchMode 与任务栈决策的核心——名字里的 Unchecked 指"参数与权限校验已在调用方完成"，这里只做决策。可分三步看。
+`startActivityInner()` 的决策与老版本的 startActivityUnchecked 同源，分三步。
 
 第一步，初始化状态与修正 flags：
 
 ```java
-setInitialState(r, options, inTask, doResume, ...);    // launchMode、launchFlags、mDoResume 等
+setInitialState(r, ...);                  // launchMode、launchFlags、mDoResume 等
 computeLaunchingTaskFlags();
 // 按场景补 FLAG_ACTIVITY_NEW_TASK: 非 Activity 的 context 发起(无源任务可依附)、
 // 发起方是 singleInstance、目标声明 singleTask/singleInstance
@@ -397,222 +293,306 @@ computeSourceStack();       // 源 activity 正在 finish 则改走 NEW_TASK, �
 mIntent.setFlags(mLaunchFlags);
 ```
 
-第二步，查找可复用的已有实例与任务——这两个分支命中任何一个都直接返回，不再新建实例：
+第二步，查找可复用的任务与栈顶实例——命中即复用，不再新建实例：
 
 ```java
 // 条件: NEW_TASK 且未要求 MULTIPLE_TASK, 或目标为 singleTask/singleInstance
-ActivityRecord reusedActivity = getReusableIntentActivity();
-if (reusedActivity != null) {
-    // 把目标所在任务带到前台; 配合 CLEAR_TOP 时清掉它之上的 activity
-    reusedActivity = setTargetStackAndMoveToFrontIfNeeded(reusedActivity);
-    ...
-    if (!mAddingToTask && mReuseTask == null) {
-        // 任务被移到前台返回 START_TASK_TO_FRONT, 本就在顶端返回 START_DELIVERED_TO_TOP
-        resumeTargetStackIfNeeded();
-        return mMovedToFront ? START_TASK_TO_FRONT : START_DELIVERED_TO_TOP;
+final Task reusedTask = resolveReusableTask(...);
+final Task targetTask = reusedTask != null ? reusedTask : computeTargetTask();
+final boolean newTask = targetTask == null;
+...
+final ActivityRecord targetTaskTop = newTask
+        ? null : targetTask.getTopNonFinishingActivity();
+if (targetTaskTop != null) {
+    // 复用已有任务: 处理 CLEAR_TOP 清理、把任务带到前台、给已有实例投递 onNewIntent
+    startResult = recycleTask(targetTask, targetTaskTop, reusedTask, ...);
+    if (startResult != START_SUCCESS) {
+        return startResult;                 // 已在任务顶/已投递 NewIntent, 启动结束
     }
 }
 
 // 目标恰好是栈顶且 singleTop/singleTask: 不建新实例, 只投递 onNewIntent
-final ActivityRecord top = topStack.topRunningNonDelayedActivityLocked(mNotTop);
-final boolean dontStart = top != null && mStartActivity.resultTo == null
-        && top.realActivity.equals(mStartActivity.realActivity)
-        && ((mLaunchFlags & FLAG_ACTIVITY_SINGLE_TOP) != 0
-        || isLaunchModeOneOf(LAUNCH_SINGLE_TOP, LAUNCH_SINGLE_TASK));
-if (dontStart) {
-    mSupervisor.resumeFocusedStackTopActivityLocked();  // 确保栈顶正确 resume
-    deliverNewIntent(top);                              // onNewIntent 的来源
-    return START_DELIVERED_TO_TOP;
+startResult = deliverToCurrentTopIfNeeded(topRootTask, intentGrants);
+if (startResult != START_SUCCESS) {
+    return startResult;                     // START_DELIVERED_TO_TOP
 }
 ```
 
-第三步，确需新建实例时决定任务归属（四选一），入栈并触发 resume：
+第三步，确需新建实例时决定任务归属，入栈并触发 resume：
 
 ```java
-if (mStartActivity.resultTo == null && mInTask == null && !mAddingToTask
-        && (mLaunchFlags & FLAG_ACTIVITY_NEW_TASK) != 0) {
-    newTask = true;
-    result = setTaskFromReuseOrCreateNewTask(...);  // 新建 TaskRecord (冷启动多走这条)
-} else if (mSourceRecord != null) {
-    result = setTaskFromSourceRecord();             // 放进发起方的任务 (普通场景)
-} else if (mInTask != null) {
-    result = setTaskFromInTask();                   // 放进指定任务 (系统内部使用)
-} else {
-    setTaskToCurrentTopOrCreateNewTask();           // 兜底: 当前顶端任务或新建
+if (newTask) {
+    setNewTask(taskToAffiliate);            // 新建 Task (冷启动通常新建)
+} else if (mAddingToTask) {
+    addOrReparentStartingActivity(targetTask, "adding to task");   // 加入目标任务
 }
 
-mTargetStack.startActivityLocked(mStartActivity, topFocused, newTask, ...);  // ActivityStack 侧入栈
 if (mDoResume) {
-    ...
-    mSupervisor.resumeFocusedStackTopActivityLocked(mTargetStack, mStartActivity, mOptions);
+    mTargetRootTask.getRootTask().moveToFront("reuseOrNewTask", targetTask);
+}
+...
+mTargetRootTask.startActivityLocked(mStartActivity, topRootTask, newTask, ...);  // RootTask 侧入栈
+if (mDoResume) {
+    mRootWindowContainer.resumeFocusedTasksTopActivities(mTargetRootTask, ...);
 }
 return START_SUCCESS;
 ```
 
-注意同名陷阱：这里的 `ActivityStack.startActivityLocked()` 与启动链同名，但职责只是把 ActivityRecord 加入任务栈并在 WMS 侧登记窗口 token——AMS 源码里大量 `xxxLocked` 后缀表示"持有 AMS 大锁调用"，并非"锁定"。
+注意同名陷阱：`RootTask.startActivityLocked()` 与启动链前段方法名相似，但职责只是把 ActivityRecord 加入任务栈并在 WMS 侧登记窗口 token——system_server 源码里大量 `xxxLocked` 后缀表示"持锁调用"，并非"锁定"。
 
-resume 这一行往下：`resumeFocusedStackTopActivityLocked` → 焦点栈的 `resumeTopActivityUncheckedLocked`/`resumeTopActivityInnerLocked`——这里会先安排前一个 activity pause（ActivityStack 内部的切换调度），在栈顶就绪时最终调用 `ActivityStackSupervisor.startSpecificActivityLocked()`。若目标进程已存活则直接 `realStartActivityLocked()`（4.4 节）；否则转入进程孵化链路（第 5 节）：AMS 经 zygote fork 新进程，等新进程 attach 到 AMS 后再走 `realStartActivityLocked()`。
+startActivityInner 末尾那行 resume 调用只是发起，从它到 startSpecificActivity 之间还隔着一条 resume 链路，见下节。
 
-### 4.4 ActivityStackSupervisor.realStartActivityLocked
+### 4.3 resume 链路：先挂起旧 Activity，再按进程状态分叉
 
-realStartActivityLocked 完成进程与 ActivityRecord 的绑定，并通过 `app.thread.scheduleLaunchActivity()` Binder 回调到 App 进程。
+这条链路承担两件事：让当前前台 Activity 进入 pause（"新 Activity 的 onCreate 之前，旧 Activity 先走 onPause"的根源就在这里），然后按目标 Activity 的进程状态决定走向。三层调用：
 
-冷启动时，新进程起来后 AMS 会在 `attachApplicationLocked()` 中找到等待在该进程运行的 top Activity，再调用 realStartActivityLocked：
+`RootWindowContainer.resumeFocusedTasksTopActivities` → `Task.resumeTopActivityUncheckedLocked` → `TaskFragment.resumeTopActivity`
+
+最外层负责选出获得焦点的 Task 并对其执行 resume 流程；若当前没有任何可恢复的 Activity（例如设备刚完成开机、桌面进程刚崩溃），它会改为恢复桌面 Activity，保证每个屏幕至少有一个 Activity 处于 resumed 状态。中间层只做防重入检查：resume 流程执行期间可能再次触发 resume 请求，方法内以 `mInResumeTopActivity` 标志将重入请求直接拦截，防止递归。核心逻辑集中在 `TaskFragment.resumeTopActivity`，下面分三段分析。
+
+第一段，取栈顶 Activity 作为目标，先安排旧的前台 Activity 进入 pause。pause 是异步执行的：本方法发起 pause 后即返回，等 pause 完成的回调再次进入本方法时才继续 resume 流程。等待期间有一个冷启动优化——若已确认目标进程尚未运行，就提前发起进程孵化，使其与旧 Activity 的 pause 并行执行：
 
 ```java
-public class ActivityStackSupervisor extends ConfigurationContainer {
-
-    boolean attachApplicationLocked(ProcessRecord app) {
-        boolean didSomething = false;
-        for (each display -> each stack) {
-            if (!isFocusedStack(stack)) continue;                    // 只关注焦点栈
-            final ActivityRecord top = stack.topRunningActivityLocked();
-            for (ActivityRecord activity : 所有可见activity) {
-                // 找到等待在该进程运行的 activity (uid + processName 匹配)
-                if (activity.app == null && app.uid == activity.info.applicationInfo.uid
-                        && processName.equals(activity.processName)) {
-                    if (realStartActivityLocked(activity, app,
-                            top == activity /* andResume */, true /* checkConfig */)) {
-                        didSomething = true;
-                    }
-                }
-            }
+final boolean resumeTopActivity(ActivityRecord prev, ActivityOptions options, boolean skipPause) {
+    final ActivityRecord next = topRunningActivity(true /* focusableOnly */);
+    ...
+    // 先让别的 Task 与本 TaskFragment 上正前台的 activity 进入 pause
+    boolean pausing = !skipPause && taskDisplayArea.pauseBackTasks(next);
+    if (mResumedActivity != null) {
+        pausing |= startPausing(mTaskSupervisor.mUserLeaving, false /* uiSleeping */,
+                next, "resumeTopActivity");
+    }
+    if (pausing) {
+        // pause 已发起, 本次 resume 先返回, 等 pause 完成的回调后重新进入本方法
+        // 冷启动优化: 不必等待 pause 完成, 提前孵化目标进程
+        if (!next.isProcessRunning()) {
+            final boolean isTop = this == taskDisplayArea.getFocusedRootTask();
+            mAtmService.startProcessAsync(next, false /* knownToBeDead */, isTop,
+                    isTop ? HostingRecord.HOSTING_TYPE_NEXT_TOP_ACTIVITY
+                            : HostingRecord.HOSTING_TYPE_NEXT_ACTIVITY);
         }
+        return true;
     }
-}
+    ...
 ```
 
+第二段，目标 Activity 已绑定进程（`next.attachedToProcess()`）——Activity 对象已经存在（例如应用从后台切回前台），不需要重新创建，只需把积攒的 activity result、newIntent 与 ResumeActivityItem 分别作为事务项，经 scheduleTransactionItem 派发到应用进程，即可将其恢复到前台；若投递过程中抛出异常，通常说明目标进程已经死亡，此时调用 startSpecificActivity 重新启动该 Activity：
+
 ```java
-final boolean realStartActivityLocked(ActivityRecord r, ProcessRecord app,
-        boolean andResume, boolean checkConfig) {
-    final TaskRecord task = r.getTask();
-    final ActivityStack stack = task.getStack();
-    try {
-        r.app = app;                                   // ActivityRecord 绑定到目标进程
+    if (next.attachedToProcess()) {
         ...
-        app.activities.add(r);                         // 进程侧记录该 activity
-        mService.updateLruProcessLocked(app, true, null);  // 更新 LRU 与 oom_adj
-        mService.updateOomAdjLocked();
-
-        // 关键一步: 通过 Binder 回调 App 进程, 真正去创建 Activity
-        app.thread.scheduleLaunchActivity(new Intent(r.intent), r.appToken,
-                System.identityHashCode(r), r.info,
-                mergedConfiguration.getGlobalConfiguration(),
-                mergedConfiguration.getOverrideConfiguration(), r.compat,
-                r.launchedFromPackage, task.voiceInteractor, app.repProcState, r.icicle,
-                r.persistentState, results, newIntents, !andResume,
-                mService.isNextTransitionForward(), profilerInfo);
-    } finally {
-        endDeferResume();
+        next.setState(RESUMED, "resumeTopActivity");
+        ...
+        mAtmService.getLifecycleManager().scheduleTransactionItem(appThread,
+                new NewIntentItem(next.token, next.newIntents, true /* resume */));
+        ...
+        final ResumeActivityItem resumeActivityItem = new ResumeActivityItem(next.token, ...);
+        mAtmService.getLifecycleManager().scheduleTransactionItem(appThread, resumeActivityItem);
+    } catch (Exception e) {
+        // resume 失败多为进程已死亡: 调 startSpecificActivity 重新启动
+        mTaskSupervisor.startSpecificActivity(next, true, false);
+        return true;
     }
-}
 ```
 
-ProcessRecord 中持有的 `thread` 就是 App 进程的 ApplicationThread 代理：
+第三段，目标从未启动或进程已死——进入下一节的分叉点：
 
 ```java
-final class ProcessRecord {
-    IApplicationThread thread;
-
-    public void makeActive(IApplicationThread _thread, ProcessStatsService tracker) {
-        thread = _thread;
+    } else {
+        // Whoops, need to restart this activity!
+        if (!next.hasBeenLaunched) {
+            next.hasBeenLaunched = true;
+        } else {
+            ...   // 显示 starting window 之类的过渡处理
+        }
+        mTaskSupervisor.startSpecificActivity(next, true, true);
     }
+```
+
+第一段的提前孵化与下面 startSpecificActivity 的孵化是两种来源（HOSTING_TYPE_NEXT_TOP_ACTIVITY 与 HOSTING_TYPE_TOP_ACTIVITY），最终都汇入 5.1 节的 startProcessAsync，由 mStartingProcessActivities 去重。
+
+### 4.4 ActivityTaskSupervisor.startSpecificActivity：进程分叉点
+
+startSpecificActivity 是进程维度的分叉点：先按 processName 与 uid 查找 WindowProcessController；若进程仍在运行，直接调用 realStartActivityLocked（热启动路径）；若查不到记录，或调用抛出 RemoteException 说明进程刚刚死亡，才转入进程孵化路径：
+
+```java
+void startSpecificActivity(ActivityRecord r, boolean andResume, boolean checkConfig) {
+    // 目标 activity 的进程是否已在运行?
+    final WindowProcessController wpc =
+            mService.getProcessController(r.processName, r.info.applicationInfo.uid);
+
+    if (wpc != null && wpc.hasThread()) {
+        try {
+            realStartActivityLocked(r, wpc, andResume, checkConfig);   // 热路径
+            return;
+        } catch (RemoteException e) { ... }
+        // RemoteException 说明进程已死亡, 落到下方孵化路径重新启动
+        mService.mProcessNames.remove(wpc.mName, wpc.mUid);
+        mService.mProcessMap.remove(wpc.getPid());
+    }
+    ...
+
+    final boolean isTop = andResume && r.isTopRunningActivity();
+    // 冷路径: 交 AMS 孵化新进程; 顶部应用标记 HOSTING_TYPE_TOP_ACTIVITY, 可提前提优先级
+    mService.startProcessAsync(r, knownToBeDead, isTop,
+            isTop ? HostingRecord.HOSTING_TYPE_TOP_ACTIVITY
+                    : HostingRecord.HOSTING_TYPE_ACTIVITY);
 }
 ```
+
+### 4.5 realStartActivityLocked：打包 ClientTransaction
+
+realStartActivityLocked 完成进程与 ActivityRecord 的绑定，并把"启动 + 最终生命周期状态"打包成一个事务投递出去。三段主干：
+
+先确认没有仍在 pause 过程中的 Activity——正常情况下 pause 已由 4.3 节的 resume 链安排完毕，这里属于对并发情况的防御：若派发事务前又有新的 pause 请求发起，则推迟本次启动：
+
+```java
+boolean realStartActivityLocked(ActivityRecord r, WindowProcessController proc,
+        boolean andResume, boolean checkConfig) throws RemoteException {
+    if (!mRootWindowContainer.allPausedActivitiesComplete()) {
+        return false;                          // 有 activity 正在 pause, 稍后再试
+    }
+    final Task task = r.getTask();
+    if (andResume) {
+        if (task.pauseActivityIfNeeded(r, "realStart")) {
+            return false;                      // 安排前台 activity pause, 等它完成
+        }
+        ...
+    }
+    ...
+    r.setProcess(proc);                        // ActivityRecord 绑定到目标进程
+    ...
+```
+
+然后构造事务：一个 **LaunchActivityItem**（承载全部启动参数）加一个**最终生命周期状态项**——三选一：前台启动用 ResumeActivityItem，可见但非前台用 PauseActivityItem，不可见启动直接 StopActivityItem：
+
+```java
+    // Create activity launch transaction.
+    final LaunchActivityItem launchActivityItem = new LaunchActivityItem(r.token,
+            r.intent, System.identityHashCode(r), r.info,
+            procConfig, overrideConfig, deviceId, referrer, task.voiceInteractor,
+            proc.getReportedProcState(), r.getSavedState(), r.getPersistentSavedState(),
+            results, newIntents, ..., activityClientController, ..., activityWindowInfo);
+
+    // Set desired final state.
+    final ActivityLifecycleItem lifecycleItem;
+    if (andResume) {
+        lifecycleItem = new ResumeActivityItem(r.token, isTransitionForward, ...);
+    } else if (r.isVisibleRequested()) {
+        lifecycleItem = new PauseActivityItem(r.token);
+    } else {
+        lifecycleItem = new StopActivityItem(r.token);
+    }
+
+    // Schedule transaction.
+    // 冷启动要求立即派发: Binder 发送失败可当场感知, 重启进程重试
+    mService.getLifecycleManager().scheduleTransactionItems(
+            proc.getThread(), true /* shouldDispatchImmediately */,
+            launchActivityItem, lifecycleItem);
+```
+
+最后按最终状态推进服务端记录（客户端还在执行事务，服务端先乐观记录）：
+
+```java
+    ...
+    if (andResume && readyToResume()) {
+        r.setState(RESUMED, "realStartActivityLocked");
+        r.completeResumeLocked();
+    } else if (r.isVisibleRequested()) {
+        r.setState(PAUSED, "realStartActivityLocked");
+        ...
+    } else {
+        r.setState(STOPPING, "realStartActivityLocked");
+    }
+    proc.onStartActivity(mService.mTopProcessState, r.info);   // 更新进程 oom_adj 输入
+    ...
+}
+```
+
+ClientLifecycleManager 的派发有两条路：`shouldDispatchImmediately = true`（冷启动）当场走 Binder 发送，失败抛 RemoteException 由上面的 catch 处理——两次失败就杀进程放弃；普通事务则攒在 pending 队列里，等下一次 surface placement 一批发出，省 Binder 往返。
 
 ## 5. 冷启动分叉：经 zygote fork 新进程
 
-4.3 节末尾的分叉点在这里展开：目标进程不存在时，AMS 自己并不能创建进程——Android 的 Java 进程全部由 **zygote** fork 出来。这条链路跨三个角色：system_server 发起请求、zygote 执行 fork、新进程把自己初始化成应用进程，全程只多一次 socket 往返：
+4.4 节末尾的冷路径在这里展开：system_server 自己并不能创建进程——Android 的 Java 进程全部由 **zygote** fork 出来。这条链路跨三个角色：system_server 发起请求、zygote 执行 fork、新进程把自己初始化成应用进程，全程只多一次 socket 往返：
 
 ```mermaid
 flowchart TD
-    A[startSpecificActivityLocked 发现进程不存在] --> B[AMS startProcessLocked 分配 startSeq]
-    B --> C[procStart 线程 Process.start]
-    C --> D[ZygoteProcess 拼孵化参数 连接 zygote socket]
-    D --> E[zygote processOneCommand]
-    E --> F[zygote forkAndSpecialize fork 并特化]
-    F -->|子进程| G[handleChildProc → zygoteInit]
-    G --> H[findStaticMain 返回 Runnable]
-    H --> I[ZygoteInit main 中 caller.run 调 ActivityThread main]
-    F -->|父进程 zygote| J[handleParentProc 把 pid 写回 socket]
-    J --> K[AMS handleProcessStartedLocked 登记 pid 挂 10 秒超时]
+    A[startSpecificActivity 发现进程不存在] --> B[ATMS startProcessAsync 发消息转交 AMS]
+    B --> C[AMS startProcess 构造 HostingRecord]
+    C --> D[ProcessList startProcessLocked 分配 startSeq]
+    D --> E[procStart 线程 Process.start]
+    E --> F[ZygoteProcess 拼孵化参数 优先 USAP]
+    F --> G[zygote processCommand]
+    G --> H[forkAndSpecialize 或 forkSimpleApps]
+    H -->|子进程| I[handleChildProc → zygoteInit]
+    I --> J[findStaticMain 返回 Runnable]
+    J --> K[ZygoteInit main 中 caller.run 调 ActivityThread main]
+    H -->|父进程 zygote| L[把 pid 写回 socket]
+    L --> M[AMS handleProcessStartedLocked 登记 pid 挂 10 秒超时]
 ```
 
-### 5.1 ActivityStackSupervisor.startSpecificActivityLocked
+### 5.1 ATMS.startProcessAsync：跨服务的异步转交
 
-startSpecificActivityLocked 是进程维度的分叉点：先按 processName + uid 查 ProcessRecord，进程活着就直接走 4.4 节的 realStartActivityLocked（热启动路径）；查不到、或 Binder 调用抛异常说明进程刚死，才转去孵化：
+孵化请求不直接调用 AMS——startSpecificActivity 执行时持有 ATMS 的锁，此时直接调用 AMS 可能造成锁序死锁，所以先发送消息，把调用转移到 ATMS 的 Handler 线程上执行：
 
 ```java
-void startSpecificActivityLocked(ActivityRecord r, boolean andResume, boolean checkConfig) {
-    // 目标 activity 的进程是否已在运行?
-    ProcessRecord app = mService.getProcessRecordLocked(r.processName,
-            r.info.applicationInfo.uid, true);
-
-    if (app != null && app.thread != null) {
-        try {
-            if ((r.info.flags & ActivityInfo.FLAG_MULTIPROCESS) == 0
-                    || !"android".equals(r.info.packageName)) {
-                // 非 multiprocess 的组件才记入进程的包列表, 供杀进程时反向查找
-                app.addPackage(r.info.packageName, r.info.versionCode, mService.mProcessStats);
-            }
-            realStartActivityLocked(r, app, andResume, checkConfig);   // 热路径: 直接启动
-            return;
-        } catch (Exception e) { ... }
-        // realStartActivityLocked 抛 RemoteException 说明进程已死, 落到下面重新拉起
+void startProcessAsync(ActivityRecord activity, boolean knownToBeDead, boolean isTop,
+        String hostingType) {
+    if (!mStartingProcessActivities.contains(activity)) {
+        mStartingProcessActivities.add(activity);
+        // 多个 activity 等同一进程时按 z-order 排序, 高优先级的先处理
+        if (mStartingProcessActivities.size() > 1) {
+            mStartingProcessActivities.sort(null);
+        }
+    } else if (mProcessNames.get(activity.processName, activity.info.applicationInfo.uid) != null) {
+        return;                  // 同进程的孵化已在进行, 等它 attach
     }
-
-    // 冷路径: 交 AMS 孵化新进程, hostingType 标记为 "activity"
-    mService.startProcessLocked(r.processName, r.info.applicationInfo, true, 0,
-            "activity", r.intent.getComponent(), false, false, true);
+    // Post message to start process to avoid possible deadlock of calling into AMS with the
+    // ATMS lock held.
+    final Message m = PooledLambda.obtainMessage(ActivityManagerInternal::startProcess,
+            mAmInternal, activity.processName, activity.info.applicationInfo, knownToBeDead,
+            isTop, hostingType, activity.intent.getComponent());
+    mH.sendMessage(m);
 }
 ```
 
-### 5.2 AMS.startProcessLocked：确定入口类与孵化参数
+`mStartingProcessActivities` 这张表同时也是 6.3 节 attach 时找"等待中的 Activity"的依据。
 
-startProcessLocked 在 9.0 的 AMS 里是一组同名重载（Android 10 起才迁入 ProcessList）：外层复查 ProcessRecord、做 bad process 检查与 isolated uid 分配，内层向 PMS 查 gids、计算 runtimeFlags 与 seInfo、确定目标 ABI（Application Binary Interface）。去掉这些准备动作，主干只有两步——确定入口类、发起孵化：
-
-```java
-// Start the process.  It will either succeed and return a result containing
-// the PID of the new process, or else throw a RuntimeException.
-final String entryPoint = "android.app.ActivityThread";   // 孵化入口写死
-```
+AMS 侧收到后构造 **HostingRecord**（孵化理由：activity、top-activity、service、broadcast……决定优先级与调度策略）并进入 ProcessList：
 
 ```java
-private ProcessStartResult startProcess(String hostingType, String entryPoint, ...) {
-    final ProcessStartResult startResult;
-    if (hostingType.equals("webview_service")) {
-        // WebView 渲染进程走独立的 webview_zygote, 不从主 zygote fork
-        startResult = startWebView(entryPoint, app.processName, uid, uid, gids, ...);
-    } else {
-        startResult = Process.start(entryPoint, app.processName, uid, uid, gids, runtimeFlags,
-                mountExternal, app.info.targetSdkVersion, seInfo, requiredAbi,
-                instructionSet, app.info.dataDir, invokeWith,
-                new String[] {PROC_START_SEQ_IDENT + app.startSeq});   // 捎带孵化编号
+// ActivityManagerService$LocalService
+public void startProcess(String processName, ApplicationInfo info, boolean knownToBeDead,
+        boolean isTop, String hostingType, ComponentName hostingName) {
+    synchronized (ActivityManagerService.this) {
+        HostingRecord hostingRecord = new HostingRecord(hostingType, hostingName, isTop);
+        ProcessRecord app = startProcessLocked(processName, info, knownToBeDead,
+                0 /* intentFlags */, hostingRecord,
+                ZYGOTE_POLICY_FLAG_LATENCY_SENSITIVE,   // 冷启动按延迟敏感策略选 zygote
+                false /* allowWhileBooting */, false /* isolated */);
     }
-    return startResult;
 }
 ```
 
-### 5.3 startSeq 与 10 秒超时：孵化的可靠性兜底
+### 5.2 ProcessList.startProcessLocked：startSeq 与异步孵化
 
-fork 是异步的：AMS 发出请求后，子进程何时起来、起来后能否正常 attach 都不确定。为了状态机不乱，AMS 在孵化前后做三件事。
+fork 是异步的：请求发出后，子进程何时起来、起来后能否正常 attach 都不确定。为了状态机不乱，AMS 在孵化前后做三件事。
 
-**分配编号**。每次孵化分配一个自增的 startSeq，随孵化参数传进子进程，再随 attachApplication 带回——pid 可能被系统复用，只有编号对上才能确认"这个 pid 确实是本次孵化的产物"：
+**分配编号**。每次孵化分配一个自增的 startSeq，随孵化参数传进子进程，再随 attachApplication 带回——pid 可能被系统复用，只有编号匹配才能确认该 pid 确实来自本次孵化请求：
 
 ```java
-final long startSeq = app.startSeq = ++mProcStartSeqCounter;   // 孵化请求编号
+final long startSeq = ++mProcStartSeqCounter;
+app.setStartSeq(startSeq);
+mPendingStarts.put(startSeq, app);        // 未完成孵化的登记表
 ```
 
-**异步孵化**。与 zygote 的 socket 往来默认 post 到专用的 procStart 线程，不抱着 AMS 大锁等 fork：
+**异步孵化**。与 zygote 的 socket 通信默认 post 到专用的 procStart 线程执行，避免在持有 AMS 大锁的状态下等待 fork 完成：
 
 ```java
 if (mConstants.FLAG_PROCESS_START_ASYNC) {
     mProcStartHandler.post(() -> {
-        synchronized (ActivityManagerService.this) {
-            mPendingStarts.put(startSeq, app);        // 未完成孵化的登记表
-        }
-        final ProcessStartResult startResult = startProcess(...);   // socket 往来在这里发生
-        synchronized (ActivityManagerService.this) {
+        final ProcessStartResult startResult = startProcess(hostingRecord, entryPoint, ...);
+        synchronized (mService) {
             handleProcessStartedLocked(app, startResult, startSeq);
         }
     });
@@ -620,39 +600,43 @@ if (mConstants.FLAG_PROCESS_START_ASYNC) {
 }
 ```
 
-**超时兜底**。拿到 pid 后登记 mPidsSelfLocked 并挂一条延迟消息：普通进程 10 秒（`PROC_START_TIMEOUT = 10*1000`），带 wrapper（如用 Valgrind 调试）的放宽到 20 分钟；超时仍未 attach 就 processStartTimedOutLocked 杀掉进程：
+**超时兜底**。拿到 pid 后登记 mPidsSelfLocked 并挂一条延迟消息：普通进程 10 秒（`PROC_START_TIMEOUT = 10 * 1000`），带 wrapper（如用 Valgrind 调试）的放宽到 20 分钟；超时仍未 attach 就按孵化失败处理杀掉进程：
 
 ```java
-synchronized (mPidsSelfLocked) {
-    this.mPidsSelfLocked.put(pid, app);
+synchronized (mService.mPidsSelfLocked) {
+    ...
+    mService.addPidLocked(app);
     if (!procAttached) {
-        Message msg = mHandler.obtainMessage(PROC_START_TIMEOUT_MSG);
+        Message msg = mService.mHandler.obtainMessage(PROC_START_TIMEOUT_MSG);
         msg.obj = app;
-        mHandler.sendMessageDelayed(msg, usingWrapper
+        mService.mHandler.sendMessageDelayed(msg, usingWrapper
                 ? PROC_START_TIMEOUT_WITH_WRAPPER : PROC_START_TIMEOUT);
     }
 }
 ```
 
-attach 一侧的核对见 6.2 节：attachApplicationLocked 会按 pid + startSeq 验明正身，成功后 removeMessages 撤销超时。
+attach 一侧的核对见 6.2 节。
 
-### 5.4 Process.start → ZygoteProcess：拼参数、选 zygote
-
-Process.start 只是转发，真正干活的是 ZygoteProcess——它持有与 zygote 的 LocalSocket 长连接，主、次两个 zygote 各一条：
+startProcess 尾部按孵化来源三选一发起真正的 fork——WebView 进程走 webview_zygote、应用私有进程可走 AppZygote（android:useAppZygote）、普通应用走主 zygote；入口类永远写死：
 
 ```java
-public class Process {
-    public static final ZygoteProcess zygoteProcess =
-            new ZygoteProcess(ZYGOTE_SOCKET, SECONDARY_ZYGOTE_SOCKET);
-    // ZYGOTE_SOCKET = "zygote", SECONDARY_ZYGOTE_SOCKET = "zygote_secondary"
-
-    public static final ProcessStartResult start(...) {
-        return zygoteProcess.start(processClass, niceName, uid, gid, gids, runtimeFlags, ...);
-    }
+// ProcessList#startProcess(摘编)
+if (hostingRecord.usesWebviewZygote()) {
+    startResult = startWebView(entryPoint, ...);
+} else if (hostingRecord.usesAppZygote()) {
+    startResult = appZygote.getProcess().start(entryPoint, ...);
+} else {
+    startResult = Process.start(entryPoint,               // entryPoint = "android.app.ActivityThread"
+            app.processName, uid, uid, gids, runtimeFlags, mountExternal,
+            app.info.targetSdkVersion, seInfo, requiredAbi, instructionSet,
+            app.info.dataDir, invokeWith, app.info.packageName, zygotePolicyFlags,
+            isTopApp, ..., new String[]{PROC_START_SEQ_IDENT + app.getStartSeq()});
 }
 ```
 
-startViaZygote 把孵化参数拼成一行行文本（zygote 侧按行解析），最后一行才是入口类名：
+### 5.3 Process.start → ZygoteProcess：拼参数、选 zygote、USAP
+
+Process.start 只是转发，真正干活的是 ZygoteProcess——它持有与主、次两个 zygote 的 LocalSocket 长连接。startViaZygote 把孵化参数拼成一行行文本（zygote 侧按行解析），最后一行才是入口类名：
 
 ```java
 private Process.ProcessStartResult startViaZygote(...) {
@@ -661,278 +645,376 @@ private Process.ProcessStartResult startViaZygote(...) {
     argsForZygote.add("--setuid=" + uid);
     argsForZygote.add("--setgid=" + gid);
     argsForZygote.add("--runtime-flags=" + runtimeFlags);
-    argsForZygote.add("--mount-external-" + mountExternalStr);     // 存储挂载模式
+    argsForZygote.add("--mount-external-" + mountExternalStr);   // 存储挂载模式
     argsForZygote.add("--target-sdk-version=" + targetSdkVersion);
     ...
-    if (niceName != null)  argsForZygote.add("--nice-name=" + niceName);       // 进程名
-    if (seInfo != null)    argsForZygote.add("--seinfo=" + seInfo);            // SELinux 标签
+    if (niceName != null)   argsForZygote.add("--nice-name=" + niceName);   // 进程名
+    if (seInfo != null)     argsForZygote.add("--seinfo=" + seInfo);        // SELinux 标签
     if (appDataDir != null) argsForZygote.add("--app-data-dir=" + appDataDir);
+    if (isTopApp)           argsForZygote.add(Zygote.START_AS_TOP_APP_ARG);
+    if (bindMountAppsData)  argsForZygote.add(Zygote.BIND_MOUNT_APP_DATA_DIRS);
+    ...
     argsForZygote.add(processClass);            // android.app.ActivityThread
     // zygoteArgs (seq=<startSeq>) 也追加在末尾, 子进程最终能在 argv 里读到
 
     synchronized (mLock) {
-        return zygoteSendArgsAndGetResult(openZygoteSocketIfNeeded(abi), argsForZygote);
+        return zygoteSendArgsAndGetResult(openZygoteSocketIfNeeded(abi),
+                zygotePolicyFlags, argsForZygote);
     }
 }
 ```
 
-openZygoteSocketIfNeeded 先连主 zygote，对方报出的 ABI 列表不匹配目标 ABI 再连 zygote_secondary（64 位为主、32 位应用从次级 fork）；zygoteSendArgsAndGetResult 先写参数个数、再逐行写参数，然后阻塞读回两个整数：新进程 pid 与 usingWrapper 标志。mLock 保证同一连接上的请求串行收发。
-
-### 5.5 Zygote 侧：processOneCommand 与 forkAndSpecialize
-
-请求到达 zygote 一侧，runSelectLoop 从 select 循环醒来，交给 ZygoteConnection 处理（9.0 里方法已叫 processOneCommand，老版本的 runOnce 这个名字已废弃）：
+openZygoteSocketIfNeeded 先连接主 zygote；若对方返回的 ABI（Application Binary Interface）列表与目标 ABI 不匹配，再连接 zygote_secondary（设备以 64 位主 zygote 为主，32 位应用从次级 zygote fork）。zygoteSendArgsAndGetResult 先做参数合法性检查（禁止换行等），然后发送——发送前会先尝试 **USAP**：
 
 ```java
-Runnable processOneCommand(ZygoteServer zygoteServer) {
-    String args[] = readArgumentList();              // 逐行读取孵化参数
-    ...
-    ZygoteArguments parsedArgs = new ZygoteArguments(args);
+if (shouldAttemptUsapLaunch(zygotePolicyFlags, args)) {
+    try {
+        return attemptUsapSendArgsAndGetResult(zygoteState, msgStr);   // 优先从进程池取
+    } catch (IOException ex) {
+        // USAP 失败回落到常规 zygote 路径
+    }
+}
+return attemptZygoteSendArgsAndGetResult(zygoteState, msgStr);
+```
 
-    // 安全检查: 客户端不能请求孵化成它无权使用的身份 (uid/pid 校验)
-    applyUidSecurityPolicy(parsedArgs, peer);
-    ...
-    FileDescriptor[] fdsToClose = { mSocket.getFileDescriptor(),
-            zygoteServer.getServerSocketFd() };      // 子进程里要关掉的 zygote socket
+**USAP（Unspecialized App Process）**是 Android 10 引入的优化：zygote 空闲时预先 fork 一批"未特化"进程放进池子，请求到来时从池中取一个直接特化（设 uid/gid、改进程名），把 fork 这个重操作移出应用启动的关键路径。mLock 保证同一连接上的请求串行收发。
 
-    pid = Zygote.forkAndSpecialize(parsedArgs.mUid, parsedArgs.mGid, parsedArgs.mGids,
-            parsedArgs.mRuntimeFlags, rlimits, parsedArgs.mMountExternal,
-            parsedArgs.mSeInfo, parsedArgs.mNiceName, fdsToClose, fdsToIgnore,
-            parsedArgs.mStartChildZygote, parsedArgs.mInstructionSet, parsedArgs.mAppDataDir);
+### 5.4 zygote 侧：processCommand 与两条 fork 路径
 
-    if (pid == 0) {
-        // 子进程侧: 关闭从 zygote 继承的服务端 socket, 此后与 zygote 再无关系
-        zygoteServer.setForkChild();
-        zygoteServer.closeServerSocket();
-        return handleChildProc(parsedArgs, descriptors, pipeFd, newStderr);
-    } else {
-        // zygote 侧: 把子进程 pid 写回 socket, 交给 AMS
-        handleParentProc(pid, descriptors, pipeFd, parsedArgs);
-        return null;
+请求到达 zygote 一侧时，runSelectLoop 的 select 调用因 socket 可读而返回，随后交给 ZygoteConnection.processCommand 处理。安全检查后按场景分两条 fork 路径：
+
+```java
+Runnable processCommand(ZygoteServer zygoteServer, boolean multipleOK) {
+    try (ZygoteCommandBuffer argBuffer = new ZygoteCommandBuffer(mSocket)) {
+        while (true) {
+            parsedArgs = ZygoteArguments.getInstance(argBuffer);  // 直接从 socket 缓冲区解析
+            ...
+            Zygote.applyUidSecurityPolicy(parsedArgs, peer);
+            Zygote.applyInvokeWithSecurityPolicy(parsedArgs, peer);
+            ...
+            if (parsedArgs.mInvokeWith != null || parsedArgs.mStartChildZygote
+                    || !multipleOK || peer.getUid() != Process.SYSTEM_UID) {
+                // 老路径: 逐参数 fork, 兼容 wrapper/child zygote/非 system 调用方
+                pid = Zygote.forkAndSpecialize(parsedArgs.mUid, parsedArgs.mGid,
+                        parsedArgs.mGids, parsedArgs.mRuntimeFlags, rlimits, ...);
+                if (pid == 0) {
+                    // 子进程: 关闭从 zygote 继承的服务端 socket, 此后与 zygote 再无关系
+                    zygoteServer.setForkChild();
+                    zygoteServer.closeServerSocket();
+                    return handleChildProc(parsedArgs, childPipeFd, parsedArgs.mStartChildZygote);
+                } else {
+                    handleParentProc(pid, serverPipeFd);   // 把 pid 写回 socket 交给 AMS
+                    return null;
+                }
+            } else {
+                // 新路径: forkSimpleApps 直接在 native 层从命令缓冲批量 fork,
+                // 减少对象分配与线程唤醒, USAP 也走这里
+                ZygoteHooks.preFork();
+                Runnable result = Zygote.forkSimpleApps(argBuffer,
+                        zygoteServer.getZygoteSocketFileDescriptor(),
+                        peer.getUid(), Zygote.minChildUid(peer), parsedArgs.mNiceName);
+                if (result == null) {
+                    continue;              // zygote 父进程: 继续处理下一条命令
+                } else {
+                    zygoteServer.setForkChild();
+                    return result;         // 子进程: 返回待执行的 Runnable
+                }
+            }
+        }
     }
 }
 ```
 
-forkAndSpecialize 的 Java 壳与 native 实现配合完成「先 fork、后特化」：
+forkAndSpecialize 的 Java 层封装与 native 实现配合完成「先 fork、后特化」：
 
 ```java
-public static int forkAndSpecialize(int uid, int gid, int[] gids, int runtimeFlags,
-        int[][] rlimits, int mountExternal, String seInfo, String niceName, ...) {
-    VM_HOOKS.preFork();      // ART 钩子: 停掉 GC 等内部线程, 保证 fork 时进程单线程
+static int forkAndSpecialize(int uid, int gid, int[] gids, int runtimeFlags, ...) {
+    ZygoteHooks.preFork();     // ART 钩子: 停掉 GC 等内部线程, 保证 fork 时进程单线程
+
     int pid = nativeForkAndSpecialize(uid, gid, gids, runtimeFlags, ...);
     if (pid == 0) {
-        Trace.setTracingEnabled(false, 0);   // 子进程关闭从 zygote 继承的 tracing
+        // 子进程: 若指定了 gids, 按是否包含 inet 组决定网络权限
+        NetworkUtilsInternal.setAllowNetworkingForProcess(containsInetGid(gids));
     }
-    VM_HOOKS.postForkCommon();               // 父子两侧各自恢复 ART 内部线程
+
+    Thread.currentThread().setPriority(Thread.NORM_PRIORITY);   // 恢复默认优先级
+    ZygoteHooks.postForkCommon();       // 父子两侧各自恢复 ART 内部线程
     return pid;
 }
 ```
 
-native 侧（com_android_internal_os_Zygote.cpp 的 ForkAndSpecializeCommon）fork 出子进程后按参数做**特化**：设置补充组与 uid/gid（setresuid）、设 rlimits 与 capabilities、按 seInfo 切换 SELinux context、按 mountExternal 挂载存储、设置进程名。注意顺序——fork 时子进程还持有 zygote 的全部权限，特化、降到目标 uid 之后，才会执行任何应用代码。
+native 侧（com_android_internal_os_Zygote.cpp）fork 出子进程后按参数做**特化**：设置补充组与 uid/gid（setresuid）、设 rlimits 与 capabilities、按 seInfo 切换 SELinux context、按 mountExternal 挂载存储、设置进程名。注意顺序——fork 时子进程还持有 zygote 的全部权限，特化、降到目标 uid 之后，才会执行任何应用代码。
 
-### 5.6 子进程侧：zygoteInit 到 ActivityThread.main
+### 5.5 子进程侧：zygoteInit 到 ActivityThread.main
 
-handleChildProc 收尾三件事：关闭与 AMS 的连接（那是 zygote 的服务端 socket，子进程用不着）、setArgV0 设置进程名、进入 ZygoteInit.zygoteInit 初始化：
+handleChildProc 收尾三件事：关闭与 system_server 的连接（那是 zygote 的服务端 socket，子进程用不着）、设置进程名、进入 ZygoteInit.zygoteInit 初始化：
 
 ```java
-public static final Runnable zygoteInit(int targetSdkVersion, String[] argv,
-        ClassLoader classLoader) {
-    RuntimeInit.redirectLogStreams();    // System.out/err 重定向到 Android log
-    RuntimeInit.commonInit();            // 时区、默认 UncaughtExceptionHandler、User-Agent 等
-    ZygoteInit.nativeZygoteInit();       // native: AppRuntime.onZygoteInit
+private Runnable handleChildProc(ZygoteArguments parsedArgs, FileDescriptor pipeFd,
+        boolean isZygote) {
+    closeSocket();
+    Zygote.setAppProcessName(parsedArgs, TAG);
+    ...
+    if (!isZygote) {
+        return ZygoteInit.zygoteInit(parsedArgs.mTargetSdkVersion,
+                parsedArgs.mDisabledCompatChanges, parsedArgs.mRemainingArgs,
+                null /* classLoader */);
+    } else {
+        return ZygoteInit.childZygoteInit(parsedArgs.mRemainingArgs);   // child zygote 另走一路
+    }
+}
+```
+
+```java
+public static Runnable zygoteInit(int targetSdkVersion, long[] disabledCompatChanges,
+        String[] argv, ClassLoader classLoader) {
+    RuntimeInit.redirectLogStreams();     // System.out/err 重定向到 Android log
+    RuntimeInit.commonInit();             // 时区、默认 UncaughtExceptionHandler 等
+    ZygoteInit.nativeZygoteInit();        // native: AppRuntime.onZygoteInit
                                          // → ProcessState.self().startThreadPool()
                                          // 应用进程的 Binder 线程池从这里启动
-    return RuntimeInit.applicationInit(targetSdkVersion, argv, classLoader);
+    return RuntimeInit.applicationInit(targetSdkVersion, disabledCompatChanges, argv,
+            classLoader);
 }
 ```
 
 注意 nativeZygoteInit 这一步：zygote 自己只靠 socket 通信、没有 Binder；应用进程正是在这里建立 Binder 能力，之后的 attachApplication 才能作为 Binder 调用到达 AMS。
 
-applicationInit 设置 targetSdkVersion 等运行时参数后，由 findStaticMain 定位入口类的 main：
+applicationInit 设置 targetSdkVersion 与 compat 变更列表后，由 findStaticMain 定位入口类的 main 并打包成 Runnable：
 
 ```java
 protected static Runnable findStaticMain(String className, String[] argv,
         ClassLoader classLoader) {
-    Class<?> cl = Class.forName(className, true, classLoader);  // android.app.ActivityThread
+    Class<?> cl = Class.forName(className, true, classLoader);   // android.app.ActivityThread
     Method m = cl.getMethod("main", new Class[] { String[].class });
     ...   // 检查 public static, 不满足直接抛异常
-    return new MethodAndArgsCaller(m, argv);   // Runnable, 携带 Method 与参数
+    return new MethodAndArgsCaller(m, argv);    // Runnable, 携带 Method 与参数
 }
 ```
 
-《深入理解Android 卷I》分析的 2.x 版本里，这一步靠抛 MethodAndArgsCaller 异常、在 ZygoteInit.main 的 catch 中截获执行——借异常展开清掉孵化阶段的调用栈；Android 9 已改为普通返回值：MethodAndArgsCaller 实现 Runnable，被 processOneCommand 一路 return 回 ZygoteInit.main，由末尾的 `caller.run()` 反射调用 `ActivityThread.main`。清栈的意图没变（不在层层嵌套的孵化调用栈里直接执行 main），实现从「异常穿越」换成了「返回值传递」。
+这个 Runnable 被一路 return 回 ZygoteInit.main 的末尾，由 `caller.run()` 反射调用 `ActivityThread.main`。用返回值而不是就地调用，意图与早期的 MethodAndArgsCaller 异常一致：不在层层嵌套的孵化调用栈里直接执行 main，让目标 main 从干净的栈顶开始。
 
-ActivityThread.main 从 argv 里解析出 `seq=<startSeq>`，随后 `attach(false, startSeq)` 把编号带回 AMS——孵化链路到此闭环，回到第 6 节的主线。
+ActivityThread.main 从 argv 里解析出 `seq=<startSeq>`，随后 `attach(false, startSeq)` 把编号带回 AMS——孵化链路到此闭环，进入第 6 节。
 
-### 5.7 为什么所有应用进程都从 zygote fork
+### 5.6 为什么所有应用进程都从 zygote fork
 
-孵化主线到此走完。为什么 Android 要设计这样一条链路，而不是让每个应用独立起进程？把动机收拢成几条：
+孵化主线到此分析完毕。为什么 Android 要设计这样一条链路，而不是让每个应用独立启动进程？把动机归纳为几条：
 
 - **预加载 + COW 共享**：zygote 开机时预加载框架类、资源与共享库；fork 出的子进程直接继承一份现成的 ART（Android Runtime）运行时。配合 COW（Copy-On-Write，写时复制），不被修改的只读页由所有进程共享同一份物理内存——上百个进程共享一套预加载框架，启动快且省内存。
 - **不走 fork 的代价**：若每个应用 exec 一个新进程，就要重新创建虚拟机、重新加载上千个类，冷启动耗时与内存占用都会暴涨。
 - **zygote 用 socket 而非 Binder**：根源也在 fork——多线程进程 fork 只保留调用线程，其余线程（包括 Binder 线程）凭空消失，它们持有的锁永远无人释放。zygote 全程单线程（ZygoteHooks 禁止创建线程 + select 循环），socket 通信不会引入任何线程；反而是 system_server 一侧的 ZygoteProcess 可以多线程调用。
 - **可直接验证**：adb shell 里执行 ps，任意应用进程的父进程号（PPID）都是 zygote 的 pid。
 
-### 5.8 演进备注（可跳过，不影响主线）
+## 6. 冷启动前置：进程 attach 与 Application 的创建
 
-- **Android 9**：引入 startSeq 同步机制与 webview_zygote（WebView 渲染进程从独立的 child zygote fork，与普通应用隔离）；孵化默认异步化（procStart 线程）。
-- **Android 10**：startProcessLocked 从 AMS 迁入 ProcessList；引入 USAP（Unspecialized App Process）——zygote 空闲时预 fork 一批「未特化」进程入池，请求到来时取一个直接特化，把 fork 移出启动关键路径；AppZygote（android:useAppZygote）让应用可用自己的 zygote 预加载私有代码。
-- **Android 10 之后**：随 AMS → ATMS 迁移，startSpecificActivityLocked 移入 ActivityTaskSupervisor，新源码已更名 startSpecificActivity，并区分 HOSTING_TYPE_ACTIVITY 与 HOSTING_TYPE_TOP_ACTIVITY 两种孵化理由；孵化进一步改为 startProcessAsync 全异步，并把 bindApplication 超时拆成 soft/hard 两级。
-- **最新主线**（对照本地 AOSP main 分支）：ZygoteConnection 的入口重构为 processCommand，命令经 ZygoteCommandBuffer 直接从 socket 缓冲区读取；USAP 池的孵化走 `Zygote.forkSimpleApps` 批量路径；child zygote（AppZygote 与 WebViewZygote）的入口独立成 ChildZygoteInit 类。「socket 请求 → fork → 特化 → RuntimeInit → ActivityThread.main」的骨架不变。
-
-## 6. 冷启动前置：Application 的创建
-
-冷启动时目标进程由第 5 节的孵化链路 fork 出来。新进程的 ActivityThread.main() 起来后，会主动 attach 到 AMS；AMS 再通过 `bindApplication` 驱动 App 进程创建 Application。这条链路是理解"Application 先于 Activity 的 onCreate"的关键。
+冷启动时目标进程由第 5 节的孵化链路 fork 出来。新进程的 ActivityThread.main() 起来后，会主动 attach 到 AMS；AMS 核对身份、驱动创建 Application，再把进程交给 ATMS 启动等待中的 Activity。这条链路是理解"Application 先于 Activity 的 onCreate"的关键。
 
 ### 6.1 ActivityThread.main / attach
 
 ```java
-public final class ActivityThread {
-    static volatile Handler sMainThreadHandler;
-    final ApplicationThread mAppThread = new ApplicationThread();
-    final H mH = new H();
-    Instrumentation mInstrumentation;
-    ...
-}
-```
-
-```java
 public static void main(String[] args) {
-    Looper.prepareMainLooper();          // 准备主线程 Looper
-    ActivityThread thread = new ActivityThread();
-    thread.attach(false);                // 向 AMS 注册 ApplicationThread
-    if (sMainThreadHandler == null) {
-        sMainThreadHandler = thread.getHandler();
+    AndroidOs.install();                   // 安装选择性的系统调用拦截
+    ...
+    Looper.prepareMainLooper();            // 准备主线程 Looper
+
+    // 从 argv 解析孵化编号, 格形如 "seq=114"
+    long startSeq = 0;
+    if (args != null) {
+        for (int i = args.length - 1; i >= 0; --i) {
+            if (args[i] != null && args[i].startsWith(PROC_START_SEQ_IDENT)) {
+                startSeq = Long.parseLong(args[i].substring(PROC_START_SEQ_IDENT.length()));
+            }
+        }
     }
-    Looper.loop();                       // 主线程消息循环, 之后不再返回
+    ActivityThread thread = new ActivityThread();
+    thread.attach(false, startSeq);        // 向 AMS 注册 ApplicationThread
+    ...
+    Looper.loop();                         // 主线程消息循环, 之后不再返回
     throw new RuntimeException("Main thread loop unexpectedly exited");
 }
 ```
 
-attach 方法：AMS 对象绑定 appThread：
+attach 把 ApplicationThread 与 startSeq 一起交给 AMS，建立双向 Binder 通道：
 
 ```java
-private void attach(boolean system) {
+private void attach(boolean system, long startSeq) {
     if (!system) {
-        // 把 ApplicationThread 交给 AMS, 建立双向 Binder 通道
         final IActivityManager mgr = ActivityManager.getService();
-        mgr.attachApplication(mAppThread);
-    } else {
-        ...  // system 进程分支
-    }
+        mgr.attachApplication(mAppThread, startSeq);
+    } else { ... }
 }
 ```
 
-### 6.2 AMS.attachApplication
+### 6.2 AMS.attachApplication：核对、绑定与两段式
 
-AMS 按 pid 找到 ProcessRecord、按 startSeq 核对身份（呼应 5.3 节），然后做两件事（顺序很重要）：先 `bindApplication` 驱动创建 Application，再走 `mStackSupervisor.attachApplicationLocked(app)` 启动等待中的 Activity：
+attachApplicationLocked 先核对进程身份（呼应 5.2 节的 startSeq），再建立 Binder 绑定，最后分两段推进组件调度：
 
 ```java
-@Override
 public final void attachApplication(IApplicationThread thread, long startSeq) {
     synchronized (this) {
-        int callingPid = Binder.getCallingPid();       // 通过 Binder 获取 pid
+        int callingPid = Binder.getCallingPid();
         attachApplicationLocked(thread, callingPid, callingUid, startSeq);
     }
 }
 
-private final boolean attachApplicationLocked(IApplicationThread thread,
+private void attachApplicationLocked(IApplicationThread thread,
         int pid, int callingUid, long startSeq) {
     // 通过 pid 查找进程记录
     ProcessRecord app;
     synchronized (mPidsSelfLocked) {
         app = mPidsSelfLocked.get(pid);
-        // pid 命中但 startSeq/uid 对不上: pid 已被复用, 旧记录作废
-        if (app != null && (app.startUid != callingUid || app.startSeq != startSeq)) { ... }
-    }
-    // 兜底: 子进程比 AMS 更快 attach, pid 尚未登记, 按 startSeq 从 mPendingStarts 找回
-    if (app == null && startSeq > 0) { ... }
-
-    if (app == null) {
-        // 找不到记录: 超时的脏进程, 直接杀掉
-        killProcessQuiet(pid);
-        return false;
-    }
-
-    app.makeActive(thread, mProcessStats);             // 保存 ApplicationThread 代理
-    ...
-    mHandler.removeMessages(PROC_START_TIMEOUT_MSG, app);   // attach 成功, 撤销孵化超时
-
-    // 1. 绑定 Application: Binder 回调 App 进程创建 Application
-    thread.bindApplication(processName, appInfo, providers, ...,
-            new Configuration(getGlobalConfiguration()), app.compat, ...);
-
-    // 2. 启动等待在该进程中的 Activity (见 4.4)
-    if (normalMode) {
-        if (mStackSupervisor.attachApplicationLocked(app)) {
-            didSomething = true;
+        // pid 命中但 startSeq/uid 不符: pid 已被复用, 旧记录作废
+        if (app != null && (app.getStartUid() != callingUid || app.getStartSeq() != startSeq)) {
+            cleanUpApplicationRecordLocked(app, pid, ...);
+            app = null;
         }
     }
+    // 兜底: 子进程比 AMS 更快 attach, pid 尚未登记, 按 startSeq 从 mPendingStarts 找回
+    if (app == null && startSeq > 0) {
+        final ProcessRecord pending = mProcessList.mPendingStarts.get(startSeq);
+        if (pending != null && pending.getStartUid() == callingUid && ...
+                && mProcessList.handleProcessStartedLocked(pending, pid, ..., startSeq, true)) {
+            app = pending;
+        }
+    }
+    if (app == null) {
+        killProcessQuiet(pid);              // 找不到记录: 脏进程, 直接杀掉
+        return;
+    }
+
+    // 注册死亡通知: 进程死掉时 AMS 能收到回调
+    thread.asBinder().linkToDeath(new AppDeathRecipient(app, pid, thread), 0);
+    ...
+    // 收集该进程需要发布的 ContentProvider (进程起来后要先安装 providers)
+    List<ProviderInfo> providers = normalMode ? mCpHelper.generateApplicationProvidersLocked(app) : null;
+    ...
+
+    // 绑定 Application: Binder 回调 App 进程创建 Application (参数含进程名/应用信息/
+    // providers/instrumentation/配置/核心设置等一大串)
+    thread.bindApplication(processName, appInfo, ..., providerList, ...,
+            preBindInfo.configuration, ..., serializedSystemFontMap, ...);
+
+    // bindApplication 只是发起, Application 真正创建完还要一段时间:
+    // 挂 15 秒软超时, 撤销孵化阶段的 10 秒 PROC_START_TIMEOUT
+    Message msg = mHandler.obtainMessage(BIND_APPLICATION_TIMEOUT_SOFT_MSG);
+    msg.obj = app;
+    mHandler.sendMessageDelayed(msg, BIND_APPLICATION_TIMEOUT /* 15 秒 */);
+    mHandler.removeMessages(PROC_START_TIMEOUT_MSG, app);
+
+    app.makeActive(new ApplicationThreadDeferred(thread), mProcessStats);
+    ...
+    // 默认立即进入第二段; 打开 mEnableWaitForFinishAttachApplication 时
+    // 会等应用回调 finishAttachApplication (Application.onCreate 之后) 再推进
+    finishAttachApplicationInner(startSeq, callingUid, pid);
 }
 ```
 
-### 6.3 ApplicationThread.bindApplication
+第二段 finishAttachApplicationInner：核对 startSeq、撤销软/硬超时，然后依次调度等在这个进程里的组件——**顺序很重要**，Activity 优先于 service 与 broadcast：
 
-ApplicationThread 是 ActivityThread 的内部类。Binder 线程收到 bindApplication 后不直接处理，而是打包成 AppBindData 通过 H 切到主线程：
+```java
+private void finishAttachApplicationInner(long startSeq, int uid, int pid) {
+    final ProcessRecord app;
+    synchronized (mPidsSelfLocked) {
+        app = mPidsSelfLocked.get(pid);
+    }
+    if (app != null && app.getStartUid() == uid && app.getStartSeq() == startSeq) {
+        mHandler.removeMessages(BIND_APPLICATION_TIMEOUT_SOFT_MSG, app);
+        mHandler.removeMessages(BIND_APPLICATION_TIMEOUT_HARD_MSG, app);
+    } else { ... }
+
+    // 1. 启动等待在该进程中的 Activity (见 6.3)
+    didSomething = mAtmInternal.attachApplication(app.getWindowProcessController());
+    // 2. 启动等待的 service
+    didSomething |= mServices.attachApplicationLocked(app, processName);
+    // 3. 分发等待的 broadcast
+    didSomething |= mBroadcastQueue.onApplicationAttachedLocked(app);
+    ...
+}
+```
+
+与旧版本的一处结构差异：老代码在 attachApplicationLocked 里一口气做完 bindApplication 与组件调度；新版把"第二段"拆成 finishAttachApplicationInner，并给 bindApplication 配了**软/硬两级超时**——软超时（15 秒）先抓 trace 催办，硬超时才杀进程，给慢设备与大型应用留了缓冲。
+
+### 6.3 RootWindowContainer.attachApplication：找到等待中的 Activity
+
+ATMS 侧的 attach 入口遍历的正是 5.1 节登记的 mStartingProcessActivities，按 uid + processName 匹配后回到 realStartActivityLocked：
+
+```java
+// RootWindowContainer#attachApplication(摘编)
+boolean attachApplication(WindowProcessController app) throws RemoteException {
+    final ArrayList<ActivityRecord> activities = mService.mStartingProcessActivities;
+    for (int i = activities.size() - 1; i >= 0; i--) {
+        final ActivityRecord r = activities.get(i);
+        if (app.mUid != r.info.applicationInfo.uid || !app.mName.equals(r.processName)) {
+            continue;                        // 孵化中的 activity 不属于这个进程
+        }
+        activities.remove(i);                // 消费掉这条等待记录
+        ...
+        final boolean canResume = r.isFocusable() && r == tf.topRunningActivity();
+        mTaskSupervisor.realStartActivityLocked(r, app, canResume, true /* checkConfig */);
+    }
+    ...
+}
+```
+
+### 6.4 ApplicationThread.bindApplication 与 H
+
+ApplicationThread 是 ActivityThread 的内部类。Binder 线程收到 bindApplication 后不直接处理，而是把 AMS 传来的几十个参数打包成 AppBindData，通过 H 切到主线程：
 
 ```java
 private class ApplicationThread extends IApplicationThread.Stub {
 
-    public final void bindApplication(String processName, ApplicationInfo appInfo,
-            List<ProviderInfo> providers, ComponentName instrumentationName, ...) {
+    public final void bindApplication(String processName, ApplicationInfo appInfo, ...,
+            ProviderInfoList providerList, ComponentName instrumentationName, ...,
+            Configuration config, CompatibilityInfo compatInfo, ...,
+            SharedMemory serializedSystemFontMap, ...) {
         ...
-        // 把 AMS 传来的参数打包
         AppBindData data = new AppBindData();
         data.processName = processName;
         data.appInfo = appInfo;
-        data.providers = providers;
+        data.providers = providerList.getList();
         data.instrumentationName = instrumentationName;
+        data.config = config;
         ...
-        // 通过 ActivityThread 的 H 发消息, 切换到主线程处理
-        sendMessage(H.BIND_APPLICATION, data);
+        sendMessage(H.BIND_APPLICATION, data);       // 切到主线程处理
     }
 }
 ```
 
-### 6.4 H(Handler)
-
-H 是 ActivityThread 的主线程 Handler，所有生命周期消息（BIND_APPLICATION、LAUNCH_ACTIVITY 等）都在这里分发到对应的 handleXxx 方法：
+H 是 ActivityThread 的主线程 Handler。与老版本最大的不同：**生命周期消息没了**——`LAUNCH_ACTIVITY` 这类专属消息在 Android 9 已被统一的 `EXECUTE_TRANSACTION`（159）取代，所有生命周期都作为事务项在事务里执行：
 
 ```java
 private class H extends Handler {
     public static final int BIND_APPLICATION = 110;
-    public static final int LAUNCH_ACTIVITY = 100;
+    public static final int EXECUTE_TRANSACTION = 159;
 
     public void handleMessage(Message msg) {
         switch (msg.what) {
-            case LAUNCH_ACTIVITY: {
-                final ActivityClientRecord r = (ActivityClientRecord) msg.obj;
-                r.loadedApk = getLoadedApkNoCheck(...);
-                handleLaunchActivity(r, null, "LAUNCH_ACTIVITY");
-            } break;
-
             case BIND_APPLICATION:
                 AppBindData data = (AppBindData) msg.obj;
                 handleBindApplication(data);
                 break;
+
+            case EXECUTE_TRANSACTION:
+                final ClientTransaction transaction = (ClientTransaction) msg.obj;
+                try {
+                    mTransactionExecutor.execute(transaction);   // 事务执行, 见 7.3
+                } finally { ... }
+                break;
+            ...
         }
     }
-}
-
-private void sendMessage(int what, Object obj) {
-    // ... 打包 Message, 最终走 mH.sendMessage(msg)
-    mH.sendMessage(msg);
 }
 ```
 
 ### 6.5 handleBindApplication
 
-handleBindApplication 完成两件核心事：初始化 Instrumentation（默认直接 new，配置了 instrumentation 则反射加载）、通过 LoadedApk.makeApplication 创建 Application 并回调其 onCreate：
+handleBindApplication 完成两件核心事：初始化 Instrumentation（默认直接 new，配置了 instrumentation 则反射加载）、通过 LoadedApk 创建 Application 并回调其 onCreate：
 
 ```java
 private void handleBindApplication(AppBindData data) {
     // 1. 若配置了 instrumentation, 通过 PMS 查询其 InstrumentationInfo
     final InstrumentationInfo ii = ...;
-    final ContextImpl appContext = ContextImpl.createAppContext(this, data.loadedApk);
+    final ContextImpl appContext = ContextImpl.createAppContext(this, data.info);
 
     // 2. 初始化 Instrumentation: 默认直接 new; 配置了则用类加载器反射创建
     if (ii != null) {
@@ -944,34 +1026,16 @@ private void handleBindApplication(AppBindData data) {
     }
 
     // 3. 创建 Application 并回调 onCreate
-    Application app = data.loadedApk.makeApplication(data.restrictedBackupMode, null);
+    Application app = data.info.makeApplicationInner(data.restrictedBackupMode, null);
     mInitialApplication = app;
-    mInstrumentation.callApplicationOnCreate(app);      // Application.onCreate()
-}
-```
-
-其中 getInstrumentationInfo 由 ApplicationPackageManager 提供（PackageManager 的实现类，内部经 IPackageManager Binder 调用 PMS）：
-
-```java
-public class ApplicationPackageManager extends PackageManager {
-    private final ContextImpl mContext;
-    private final IPackageManager mPM;      // PMS 的 Binder 代理
-
-    @Override
-    public InstrumentationInfo getInstrumentationInfo(ComponentName className, int flags)
-            throws NameNotFoundException {
-        InstrumentationInfo ii = mPM.getInstrumentationInfo(className, flags);
-        if (ii != null) {
-            return ii;
-        }
-        throw new NameNotFoundException(className.toString());
-    }
+    ...
+    mInstrumentation.callApplicationOnCreate(app);    // Application.onCreate()
 }
 ```
 
 ### 6.6 LoadedApk.makeApplication
 
-从 makeApplication 的实现可以看出，如果 Application 已经被创建过了，那么就不会再重复创建了，这也意味着**一个应用（进程）只有一个 Application 对象**。Application 对象的创建也是通过 Instrumentation 来完成的，这个过程和 Activity 对象的创建一样，都是通过类加载器来实现的。Application 创建完毕后，系统会通过 Instrumentation 的 callApplicationOnCreate 来调用 Application 的 onCreate 方法。
+从 makeApplication 的实现可以看出，如果 Application 已经被创建过了就不会再重复创建，这也意味着**一个应用（进程）只有一个 Application 对象**。Application 对象的创建也是通过 Instrumentation 完成的，和 Activity 对象的创建一样，都通过类加载器实现：
 
 ```java
 public Application makeApplication(boolean forceDefaultAppClass, Instrumentation instrumentation) {
@@ -990,85 +1054,210 @@ public Application makeApplication(boolean forceDefaultAppClass, Instrumentation
     ContextImpl appContext = ContextImpl.createAppContext(mActivityThread, this);
     Application app = mActivityThread.mInstrumentation.newApplication(cl, appClass, appContext);
     appContext.setOuterContext(app);
-
     mApplication = app;
 
     // 回调 Application.onCreate
     if (instrumentation != null) {
         instrumentation.callApplicationOnCreate(app);
     }
-    ...
     return app;
 }
 ```
 
-## 7. 阶段③：App 进程创建 Activity
+performLaunchActivity 里实际调用的是同族的 `makeApplicationInner`，语义相同：冷启动时 Application 已在 handleBindApplication 创建过，那里直接返回同一个对象，对热启动新 Activity 基本是无操作。
 
-### 7.1 ApplicationThread.scheduleLaunchActivity
+## 7. 阶段③：ClientTransaction 事务的执行
 
-Binder 线程收到 realStartActivityLocked 的回调后，同样把参数打包为 ActivityClientRecord，发消息交给主线程的 H 处理。token 用于在 AMS 侧唯一标识这个 Activity，避免直接序列化 Activity 对象本身：
+阶段② 4.5 节打包的事务，在 App 进程侧如何执行？这一节把 Binder 到达、主线程派发、生命周期推进串起来。
 
-```java
-// we use token to identify this activity without having to send the
-// activity itself back to the activity manager. (matters more with ipc)
-public final void scheduleLaunchActivity(Intent intent, IBinder token, int ident,
-        ActivityInfo info, Configuration curConfig, ...) {
-    updateProcessState(procState, false);
+### 7.1 事务模型：ClientTransaction 与事务项
 
-    // 打包启动参数
-    ActivityClientRecord r = new ActivityClientRecord();
-    r.token = token;                    // AMS 侧该 Activity 的身份标识
-    r.intent = intent;
-    r.activityInfo = info;
-    r.state = state;                    // 保存的状态, 用于恢复
-    r.startsNotResumed = notResumed;
-    ...
+**ClientTransaction** 是"发给客户端的一批消息"的容器：一串 **ClientTransactionItem**（回调项，如 LaunchActivityItem）加一个可选的**最终生命周期状态项**（ActivityLifecycleItem，如 ResumeActivityItem）。服务端 add 进去的每一项都实现了 execute/postExecute 两个钩子，由客户端在主线程调用。
 
-    // 发送消息到消息队列, 由 ActivityThread 的 H 处理启动
-    sendMessage(H.LAUNCH_ACTIVITY, r);
+```mermaid
+classDiagram
+class ClientTransaction {
+	+schedule()
+	List~ClientTransactionItem~ items
+}
+
+class ClientTransactionItem {
+	+execute(handler, actions)
+	+postExecute(handler, actions)
+}
+
+class ActivityLifecycleItem {
+	+getTargetState() int
+}
+
+ClientTransactionItem <|-- LaunchActivityItem
+ClientTransactionItem <|-- ActivityLifecycleItem
+ActivityLifecycleItem <|-- ResumeActivityItem
+ActivityLifecycleItem <|-- PauseActivityItem
+ActivityLifecycleItem <|-- StopActivityItem
+ClientTransaction o-- ClientTransactionItem
+
+class LaunchActivityItem {
+	Intent mIntent
+	ActivityInfo mInfo
+	IBinder mActivityToken
+	+execute() → handleLaunchActivity
+}
+
+class ResumeActivityItem {
+	+getTargetState() ON_RESUME
+	+execute() → handleResumeActivity
 }
 ```
 
-### 7.2 handleLaunchActivity
+冷启动事务的构成：LaunchActivityItem（回调项，创建 Activity）+ ResumeActivityItem（最终状态，ON_RESUME）。TransactionExecutor 的工作就是把这两项按正确顺序、带着正确的中间状态执行完。
 
-H 收到 LAUNCH_ACTIVITY 后调用 handleLaunchActivity，它做全局初始化（WindowManagerGlobal 等），然后交给 performLaunchActivity 创建 Activity；成功后再走 handleResumeActivity 回调 onResume；若目标 Activity 需要以后台可见状态启动（如位于可见但非前台的任务中），则补一次 pause：
+### 7.2 Binder 到达：scheduleTransaction → H.EXECUTE_TRANSACTION
+
+服务端 ClientLifecycleManager 调 `transaction.schedule()`，最终走到 App 进程的 ApplicationThread：
 
 ```java
-private void handleLaunchActivity(ActivityClientRecord r, Intent customIntent, String reason) {
-    unscheduleGcIdler();
-    ...
-    WindowManagerGlobal.initialize();       // 初始化窗口系统连接
+// ApplicationThread(Binder Stub)
+@Override
+public void scheduleTransaction(ClientTransaction transaction) throws RemoteException {
+    ActivityThread.this.scheduleTransaction(transaction);   // 继承自 ClientTransactionHandler
+}
+```
 
-    Activity a = performLaunchActivity(r, customIntent);   // 创建 Activity, 回调 onCreate
+```java
+// ClientTransactionHandler
+void scheduleTransaction(ClientTransaction transaction) {
+    transaction.preExecute(this);        // 发送前的钩子: 更新进程状态、pending 配置等
+    sendMessage(ActivityThread.H.EXECUTE_TRANSACTION, transaction);   // 切主线程
+}
+```
 
-    if (a != null) {
-        // 回调 onResume, 之后 DecorView 上屏
-        handleResumeActivity(r.token, false, r.isForward, ...);
+注意 `preExecute` 在 Binder 线程就执行了——LaunchActivityItem 借它提前把 procState、配置缓存进 App 进程，不占主线程时间。之后消息进入 H 的队列，主线程取出后交给 TransactionExecutor：
 
-        // AMS 要求该 activity 以 paused 状态启动 (可见但非前台) 的场景:
-        // 正常走完启动流程后补一次 pause, 而不是走完整的 pause 周期
-        if (!r.activity.mFinished && r.startsNotResumed) {
-            performPauseActivityIfNeeded(r, reason);
+```java
+// H.handleMessage
+case EXECUTE_TRANSACTION:
+    final ClientTransaction transaction = (ClientTransaction) msg.obj;
+    mTransactionExecutor.execute(transaction);
+    break;
+```
+
+### 7.3 TransactionExecutor：按序执行与生命周期推进
+
+TransactionExecutor 是事务的"解释器"，逐项分派：生命周期项走 executeLifecycleItem（先 cycleToPath 推进到目标状态的前一站，再执行最终转换），非生命周期项走 executeNonLifecycleItem：
+
+```java
+public void execute(ClientTransaction transaction) {
+    executeTransactionItems(transaction);
+    mPendingActions.clear();
+}
+
+public void executeTransactionItems(ClientTransaction transaction) {
+    final List<ClientTransactionItem> items = transaction.getTransactionItems();
+    for (int i = 0; i < items.size(); i++) {
+        final ClientTransactionItem item = items.get(i);
+        if (item.isActivityLifecycleItem()) {
+            executeLifecycleItem(transaction, (ActivityLifecycleItem) item);
+        } else {
+            executeNonLifecycleItem(transaction, item, ...);
         }
-    } else {
-        // 创建失败, 通知 AMS 结束该 activity
-        ActivityManager.getService().finishActivity(r.token,
-                Activity.RESULT_CANCELED, null, Activity.DONT_FINISH_TASK_WITH_ACTIVITY);
+    }
+}
+
+private void executeLifecycleItem(ClientTransaction transaction,
+        ActivityLifecycleItem lifecycleItem) {
+    final IBinder token = lifecycleItem.getActivityToken();
+    ActivityClientRecord r = mTransactionHandler.getActivityClient(token);
+    ...
+    // 先推进到目标状态的前一站 (RESUME 的前一站是 START)
+    cycleToPath(r, lifecycleItem.getTargetState(), true /* excludeLastState */, transaction);
+    // 再执行最终转换 (带特定参数, 所以不放进通用路径)
+    lifecycleItem.execute(mTransactionHandler, mPendingActions);
+    lifecycleItem.postExecute(mTransactionHandler, mPendingActions);
+}
+```
+
+**cycleToPath 是生命周期状态机的核心**：从当前状态到目标状态算一条路径（ON_CREATE → ON_START → ON_RESUME …），路径上除最后一站外逐站调用对应的 handleXxx 方法：
+
+```java
+private void performLifecycleSequence(ActivityClientRecord r, IntArray path, ...) {
+    for (int i = 0; i < path.size(); i++) {
+        switch (path.get(i)) {
+            case ON_CREATE:
+                mTransactionHandler.handleLaunchActivity(r, mPendingActions, ...);
+                break;
+            case ON_START:
+                mTransactionHandler.handleStartActivity(r, mPendingActions, ...);
+                break;
+            case ON_RESUME:
+                mTransactionHandler.handleResumeActivity(r, false, ...);
+                break;
+            case ON_PAUSE:  → handlePauseActivity
+            case ON_STOP:   → handleStopActivity
+            case ON_DESTROY:→ handleDestroyActivity
+            ...
+        }
     }
 }
 ```
 
-### 7.3 performLaunchActivity 完成的四件事
+有了这台状态机，任何生命周期转换都变成"计算路径 + 逐站推进"：不只是启动，把处于 paused 状态的 Activity 恢复到前台（PAUSED → RESUMED）也只是换一条路径。这正是 Android 9 用事务机制替换一组 scheduleXxx 直调的动机——把生命周期统一为可组合的状态转换。
 
-performLaunchActivity 是 Activity 对象真正诞生的地方，可归纳为四步：取组件信息 → 创建 Activity → 创建 Application（若未创建）→ attach 初始化并回调 onCreate。
+### 7.4 LaunchActivityItem → performLaunchActivity：onCreate
+
+冷启动事务里第一个执行的是 LaunchActivityItem：execute 用携带的启动参数 new 一个 ActivityClientRecord，交给 handleLaunchActivity：
+
+```java
+// LaunchActivityItem
+public void preExecute(ClientTransactionHandler client) {
+    client.countLaunchingActivities(1);
+    client.updateProcessState(mProcState, false);        // Binder 线程提前缓存进程状态
+    client.updatePendingConfiguration(mCurConfig);
+    ...
+}
+
+public void execute(ClientTransactionHandler client, PendingTransactionActions pendingActions) {
+    final ActivityClientRecord r = new ActivityClientRecord(mActivityToken, mIntent, mIdent,
+            mInfo, mOverrideConfig, mReferrer, ..., mActivityWindowInfo);
+    client.handleLaunchActivity(r, pendingActions, mDeviceId, null /* customIntent */);
+}
+```
+
+handleLaunchActivity 做全局初始化（WindowManagerGlobal 等），然后交给 performLaunchActivity；成功后把"恢复状态、调 onPostCreate"的意图写进 pendingActions，供下一站 handleStartActivity 使用：
+
+```java
+public Activity handleLaunchActivity(ActivityClientRecord r,
+        PendingTransactionActions pendingActions, int deviceId, Intent customIntent) {
+    unscheduleGcIdler();
+    ...
+    WindowManagerGlobal.initialize();       // 初始化窗口系统连接
+
+    final Activity a = performLaunchActivity(r, customIntent);   // 创建 Activity, 回调 onCreate
+
+    if (a != null) {
+        ...
+        if (!r.activity.mFinished && pendingActions != null) {
+            pendingActions.setOldState(r.state);
+            pendingActions.setRestoreInstanceState(true);
+            pendingActions.setCallOnPostCreate(true);
+        }
+    } else {
+        // 创建失败, 通知 ATMS 结束该 activity
+        ActivityClient.getInstance().finishActivity(r.token, Activity.RESULT_CANCELED, ...);
+    }
+    return a;
+}
+```
+
+**performLaunchActivity 是 Activity 对象真正诞生的地方**，可归纳为四步：取组件信息 → 创建 Activity → 创建 Application（若未创建）→ attach 初始化并回调 onCreate。
 
 #### 1. 从 ActivityClientRecord 中获取待启动的 Activity 的组件信息
 
 ```java
 ActivityInfo aInfo = r.activityInfo;
-if (r.loadedApk == null) {
-    r.loadedApk = getLoadedApk(aInfo.applicationInfo, r.compatInfo,
-            Context.CONTEXT_INCLUDE_CODE);              // 拿到 apk 的类加载器等
+if (r.packageInfo == null) {
+    r.packageInfo = getPackageInfo(aInfo.applicationInfo, mCompatibilityInfo,
+            Context.CONTEXT_INCLUDE_CODE);          // 拿到 apk 的类加载器等
 }
 
 ComponentName component = r.intent.getComponent();
@@ -1082,10 +1271,10 @@ if (component == null) {
 #### 2. 通过 Instrumentation 的 newActivity 方法使用类加载器创建 Activity 对象
 
 ```java
-ContextImpl appContext = createBaseContextForActivity(r);
+ContextImpl activityBaseContext = createBaseContextForActivity(r);
 Activity activity = null;
 try {
-    java.lang.ClassLoader cl = appContext.getClassLoader();
+    java.lang.ClassLoader cl = activityBaseContext.getClassLoader();
     // 类加载器反射创建 Activity 实例
     activity = mInstrumentation.newActivity(cl, component.getClassName(), r.intent);
     ...
@@ -1102,70 +1291,98 @@ try {
 
 ```java
 try {
-    Application app = r.loadedApk.makeApplication(false, mInstrumentation);
+    Application app = r.packageInfo.makeApplicationInner(false, mInstrumentation);
     ...
-    r.paused = true;
-    mActivities.put(r.token, r);          // 以 token 为 key 缓存该记录
-} catch (Exception e) {
-    if (!mInstrumentation.onException(activity, e)) {
-        throw new RuntimeException("Unable to start activity " + component, e);
+    synchronized (mResourcesManager) {
+        mActivities.put(r.token, r);          // 以 token 为 key 缓存该记录
     }
-}
+} catch (Exception e) { ... }
 ```
 
-#### 4. 创建 ContextImpl 对象并通过 Activity 的 attach 方法来完成一些重要数据的初始化
+#### 4. 创建 ContextImpl 对象并通过 Activity 的 attach 方法完成重要数据的初始化
 
-attach 之后依次回调 `onCreate`（经 callActivityOnCreate）→ `onStart`（performStart）→ `onRestoreInstanceState` → `onPostCreate`。`activity.mCalled` 检查确保子类确实调用了 `super.onCreate()`，否则抛 SuperNotCalledException：
+attach 之后经 Instrumentation 回调 `onCreate`。`activity.mCalled` 检查确保子类确实调用了 `super.onCreate()`，否则抛 SuperNotCalledException。注意 main 分支里 **onStart 不在这里**——performLaunchActivity 以 `r.setState(ON_CREATE)` 收尾，onStart 由事务状态机在下一站推进：
 
 ```java
 if (activity != null) {
-    CharSequence title = r.activityInfo.loadLabel(appContext.getPackageManager());
+    CharSequence title = r.activityInfo.loadLabel(activityBaseContext.getPackageManager());
     ...
-    appContext.setOuterContext(activity);
+    activityBaseContext.setOuterContext(activity);
     // 初始化 Activity: Context、Instrumentation、Application、PhoneWindow 等 (见第8节)
-    activity.attach(appContext, this, getInstrumentation(), r.token,
+    activity.attach(activityBaseContext, this, getInstrumentation(), r.token,
             r.ident, app, r.intent, r.activityInfo, title, r.parent, ...);
 
     int theme = r.activityInfo.getThemeResource();
     if (theme != 0) {
-        activity.setTheme(theme);         // 设置主题
+        activity.setTheme(theme);             // 设置主题
     }
 
+    r.activity = activity;
     activity.mCalled = false;
     // 经 Instrumentation 回调 onCreate
     mInstrumentation.callActivityOnCreate(activity, r.state);
-    if (!activity.mCalled) {              // 未调 super.onCreate() 则抛异常
-        throw new SuperNotCalledException(
-            "Activity " + r.intent.getComponent().toShortString() +
-            " did not call through to super.onCreate()");
+    if (!activity.mCalled) {                  // 未调 super.onCreate() 则抛异常
+        throw new SuperNotCalledException(...);
     }
-    r.activity = activity;
-    r.stopped = true;
-    if (!r.activity.mFinished) {
-        activity.performStart();          // onStart
-        r.stopped = false;
-    }
-    if (!r.activity.mFinished && r.state != null) {
-        mInstrumentation.callActivityOnRestoreInstanceState(activity, r.state);  // 恢复状态
-    }
+}
+r.setState(ON_CREATE);                        // 记录状态: 状态机下一站从这里出发
+```
+
+### 7.5 状态推进：onStart 与 onResume
+
+LaunchActivityItem 执行完，Activity 处于 ON_CREATE。接着 executeLifecycleItem 处理 ResumeActivityItem：`cycleToPath(ON_CREATE → ON_RESUME, 排除最后一站)` 算出的路径是 `[ON_START]`，于是 handleStartActivity 被调用——onStart、onRestoreInstanceState、onPostCreate 都在这一站：
+
+```java
+public void handleStartActivity(ActivityClientRecord r,
+        PendingTransactionActions pendingActions, SceneTransitionInfo sceneTransitionInfo) {
+    final Activity activity = r.activity;
     ...
+    // Start
+    activity.performStart("handleStartActivity");      // onStart
+    r.setState(ON_START);
+
+    // Restore instance state (7.4 节 handleLaunchActivity 存进 pendingActions 的意图)
+    if (pendingActions.shouldRestoreInstanceState()) {
+        if (r.state != null) {
+            mInstrumentation.callActivityOnRestoreInstanceState(activity, r.state);
+        }
+    }
+
+    // Call postOnCreate()
+    if (pendingActions.shouldCallOnPostCreate()) {
+        activity.mCalled = false;
+        mInstrumentation.callActivityOnPostCreate(activity, r.state);
+        if (!activity.mCalled) {
+            throw new SuperNotCalledException(...);    // 同样要求调 super
+        }
+    }
+    updateVisibility(r, true /* show */);
 }
 ```
+
+路径走完，最后一站由 ResumeActivityItem 自己执行（最终转换带特定参数，所以不放进通用路径）：
+
+```java
+// ResumeActivityItem
+public void execute(ClientTransactionHandler client, ActivityClientRecord r,
+        PendingTransactionActions pendingActions) {
+    client.handleResumeActivity(r, true /* finalStateRequest */, mIsForward,
+            mShouldSendCompatFakeFocus, "RESUME_ACTIVITY");
+}
+
+public void postExecute(ClientTransactionHandler client, ...) {
+    // 通知 ATMS: resume 完成 (AMS 侧 4.5 节乐观设置的 RESUMED 状态在这里兑现)
+    ActivityClient.getInstance().activityResumed(getActivityToken(), ...);
+}
+```
+
+handleResumeActivity 先经 performResumeActivity 回调 `onResume`，然后把 DecorView 加入 WindowManager 完成上屏（见 8.2 节）。至此冷启动事务执行完毕：**onCreate 在 LaunchActivityItem、onStart 在 cycleToPath、onResume 在 ResumeActivityItem**——三者分属事务的不同位置，这与老链路"handleLaunchActivity 一口气调完三个回调"完全不同。
 
 ## 8. Activity 的 attach 与视图初显
 
 ### 8.1 attach
 
 attach 里完成了三件关键事：保存 Context/Instrumentation/Application 等引用、**创建 PhoneWindow 并把 Activity 自己设为窗口回调（Window.Callback，由此接收键盘/触摸事件）**、通过 setWindowManager 初始化 WindowManager：
-
-```java
-public class Activity extends ContextThemeWrapper implements LayoutInflater.Factory2,
-        Window.Callback, KeyEvent.Callback, OnCreateContextMenuListener,
-        ComponentCallbacks2, Window.OnWindowDismissedCallback, ... {
-    private Instrumentation mInstrumentation;
-    ...
-}
-```
 
 ```java
 final void attach(Context context, ActivityThread aThread, Instrumentation instr,
@@ -1176,7 +1393,6 @@ final void attach(Context context, ActivityThread aThread, Instrumentation instr
     // 创建 PhoneWindow, Activity 自身作为 Window.Callback 接收事件
     mWindow = new PhoneWindow(this, window, activityConfigCallback);
     mWindow.setCallback(this);
-    mWindow.setOnWindowDismissedCallback(this);
     ...
 
     // 保存各成员引用
@@ -1199,7 +1415,7 @@ final void attach(Context context, ActivityThread aThread, Instrumentation instr
 
 ### 8.2 setContentView 与 makeVisible
 
-`setContentView()` 只是委托给 PhoneWindow（由此触发 DecorView 的创建与布局装载），View 真正显示到屏幕上是在 `handleResumeActivity` 之后由 makeVisible 把 DecorView 添加到 WindowManager：
+`setContentView()` 只是委托给 PhoneWindow（由此触发 DecorView 的创建与布局装载），View 真正显示到屏幕上是在 handleResumeActivity 里——onResume 回调之后，DecorView 被加入 WindowManager：
 
 ```java
 public void setContentView(@LayoutRes int layoutResID) {
@@ -1208,7 +1424,20 @@ public void setContentView(@LayoutRes int layoutResID) {
 }
 ```
 
+handleResumeActivity 中窗口上屏的两步（摘编）：
+
 ```java
+// ActivityThread#handleResumeActivity(摘编)
+r = performResumeActivity(r, true, reason);         // 回调 onResume
+...
+ViewManager wm = a.getWindowManager();
+wm.addView(decor, l);                               // DecorView 添加到 WindowManager
+...
+r.activity.makeVisible();                           // 设为 VISIBLE, 触发测量布局绘制
+```
+
+```java
+// Activity#makeVisible
 void makeVisible() {
     if (!mWindowAdded) {
         ViewManager wm = getWindowManager();
@@ -1219,44 +1448,68 @@ void makeVisible() {
 }
 ```
 
-## 9. 全流程总结
+## 9. 演进备注：与旧版本资料的对照
+
+读网上资料或旧版本书籍时，按这张表把旧链路映射到本文：
+
+| 主题 | 旧写法（Android 9/10 及更早） | 本文写法（main 分支） |
+| --- | --- | --- |
+| Binder 入口 | `AMS.startActivity` | `ATMS.startActivity`（Android 10 起） |
+| 栈决策 | `startActivityMayWait → startActivity → startActivityUnchecked` | `executeRequest → startActivityInner`（中间的 startActivityUnchecked 只剩转发逻辑） |
+| 生命周期调度 | `scheduleLaunchActivity` + `H.LAUNCH_ACTIVITY`（Android 8.x 及更早） | ClientTransaction + `EXECUTE_TRANSACTION`（Android 9 起） |
+| 事务派发 | `scheduleTransaction` 单事务单发 | `scheduleTransactionItems`，普通事务可攒批、冷启动立即派发 |
+| 最终状态 | Resume/Pause 两选一 | Resume/Pause/Stop 三选一（不可见启动直接 Stop） |
+| 进程孵化 | `startProcessLocked` 链内直调 | `startProcessAsync` 先发消息摘 ATMS 锁，再异步孵化 |
+| 进程视图 | AMS 的 ProcessRecord 一份 | ProcessRecord（AMS）与 WindowProcessController（ATMS）双界对应 |
+| attach 流程 | attachApplicationLocked 单段完成 | 两段式：bindApplication + finishAttachApplicationInner，软/硬两级 bindApplication 超时 |
+| zygote 侧 | `ZygoteConnection.runOnce` | `processCommand` + `ZygoteCommandBuffer`，`forkSimpleApps` 批量 fork，USAP 进程池 |
+| ActivityStarter 复用查找 | `getReusableIntentActivity` | `getReusableTask` 等一族方法（思路一致） |
+
+另有两点初学者常被旧资料误导：其一，`ActivityStackSupervisor` 已随 ATMS 迁移演化为 **ActivityTaskSupervisor**，栈管理类也从 ActivityStack 演化为 Task/RootTask 体系（Android 12 起 Activity 退化为 TaskFragment 中的普通节点）；其二，老文章里"handleLaunchActivity 里接着调 performStart 和 handleResumeActivity"的描述对 Android 9+ 不再成立，onStart/onResume 已拆到事务状态机的不同位置。
+
+## 10. 全流程总结
 
 以冷启动（点击桌面图标）为例的时序：
 
 ```mermaid
 sequenceDiagram
     participant L as Launcher/App进程
-    participant A as AMS(system_server)
+    participant A as ATMS/AMS(system_server)
     participant Z as zygote
     participant T as ActivityThread(App进程)
 
     L->>A: startActivity(Binder IPC)
     A->>A: ActivityStarter 解析Intent/任务栈
     alt 目标进程未创建
-        A->>A: startProcessLocked 分配 startSeq
-        A->>Z: 经 socket 发送孵化参数
-        Z->>Z: forkAndSpecialize fork 并特化出子进程
+        A->>A: startProcessAsync 发消息转交 AMS 侧
+        A->>A: ProcessList startProcessLocked 分配 startSeq
+        A->>Z: ZygoteProcess 经 socket 发送孵化参数
+        Z->>Z: processCommand → forkAndSpecialize fork 并特化子进程
         Z-->>A: 返回新进程 pid
-        A->>A: 登记 pid 挂 10 秒超时
+        A->>A: handleProcessStartedLocked 登记 pid 挂 10 秒超时
         T->>T: 子进程 zygoteInit 到 ActivityThread.main
         T->>A: attachApplication 带回 startSeq
-        A->>T: bindApplication
+        A->>T: bindApplication(Binder IPC)
         T->>T: handleBindApplication 创建Application并回调onCreate
-        A->>T: realStartActivityLocked → scheduleLaunchActivity
+        A->>A: finishAttachApplicationInner 找到等待的Activity
+        A->>T: realStartActivityLocked 打包并派发ClientTransaction
     else 目标进程已存活
-        A->>T: scheduleLaunchActivity(Binder IPC)
+        A->>T: realStartActivityLocked 打包并派发ClientTransaction
     end
-    T->>T: H处理LAUNCH_ACTIVITY → handleLaunchActivity
-    T->>T: performLaunchActivity: newActivity → attach → onCreate → onStart
-    T->>T: handleResumeActivity: onResume → makeVisible DecorView上屏
+    T->>T: H处理EXECUTE_TRANSACTION → TransactionExecutor.execute
+    T->>T: LaunchActivityItem → performLaunchActivity: newActivity → attach → onCreate
+    T->>T: cycleToPath → handleStartActivity: onStart → onRestoreInstanceState → onPostCreate
+    T->>T: ResumeActivityItem → handleResumeActivity: onResume → DecorView上屏
 ```
 
 关键结论：
 
-- **一次 Binder 往返 + 一次 Binder 回调**：App → AMS 是 `startActivity`，AMS → App 是 `IApplicationThread` 上的 `scheduleLaunchActivity`；ApplicationThread 是接收方 Binder Stub。
-- **进程孵化走 zygote 的 socket 而非 Binder**：fork 只保留调用线程，zygote 必须保持单线程，socket 通信不引入线程；system_server 侧由 ZygoteProcess 维持长连接，主/次 zygote 按目标 ABI 选择。
-- **startSeq 是孵化请求的回执编号**：pid 可能被复用，attachApplication 带回 startSeq 才能确认进程身份；10 秒未 attach 即按超时处理。
-- **所有生命周期都在主线程执行**：Binder 线程只负责打包数据发 Handler 消息（H），真正的创建与回调在 main looper 上串行执行。
+- **一次 Binder 往返 + 一次 Binder 回调**：App → system_server 是 `startActivity`，system_server → App 是 `IApplicationThread` 上的 `scheduleTransaction`；ApplicationThread 是接收方 Binder Stub。
+- **生命周期是一部状态机**：ClientTransaction 把"做什么"（事务项）与"到哪去"（最终状态）打包，TransactionExecutor 用 cycleToPath 算路径逐站推进；onCreate 在 LaunchActivityItem、onStart 在路径中转、onResume 在 ResumeActivityItem，三者位置不同但同属一个事务。
+- **进程孵化走 zygote 的 socket 而非 Binder**：fork 只保留调用线程，zygote 必须保持单线程，socket 通信不引入线程；system_server 侧由 ZygoteProcess 维持长连接，主/次 zygote 按目标 ABI 选择，USAP 池把 fork 移出关键路径。
+- **startSeq 用于确认孵化请求的身份**：pid 可能被系统复用，attachApplication 带回 startSeq 才能确认进程身份；10 秒未 attach 按孵化超时处理，bindApplication 另有 15 秒软超时与硬杀两级。
+- **AMS 与 ATMS 双界对应**：进程孵化、超时、bindApplication 在 AMS（ProcessRecord）；栈调度、事务打包在 ATMS（WindowProcessController）；跨服务调用一律 post 消息避免锁序死锁。
+- **所有生命周期都在主线程执行**：Binder 线程只负责 preExecute 与发 Handler 消息，真正的创建与回调在 main looper 上串行执行。
 - **Instrumentation 是统一的 hook 点**：Activity/Application 的实例化和 onCreate 回调都经它，ActivityMonitor 也借此拦截启动。
 - **Application 每进程仅一个**：makeApplication 对已创建的情况直接返回；冷启动时它创建于 handleBindApplication，先于任何 Activity 的 onCreate。
-- **Window 结构**：attach 中创建 PhoneWindow，setContentView 装载布局到 DecorView，onResume 后 makeVisible 才把 DecorView 加入 WindowManager 完成显示。
+- **Window 结构**：attach 中创建 PhoneWindow，setContentView 装载布局到 DecorView，onResume 后 DecorView 才加入 WindowManager 完成显示。

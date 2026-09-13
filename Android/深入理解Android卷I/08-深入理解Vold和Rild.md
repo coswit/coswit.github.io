@@ -50,7 +50,7 @@ Netlink 加 Uevent 的目的只有一个：**让 Vold 随时获悉外部存储�
 
 有了事件源的概念，先看 Vold 的整体架构（原图 9-1）：
 
-![Vold 架构图](./images/ch0154_img01.jpg)
+![Vold 架构图](./images/ch0154_img01.jpg) ':width=600'
 
 从图中可知三个模块的分工：
 
@@ -182,7 +182,7 @@ start 分两步：创建 PF_NETLINK socket 并 bind（此后内核的 Uevent 就
 
 在代码结构简单的 Vold 程序中，NetlinkHandler（简称 NLH）有一个相对不简单的派生关系（原图 9-2）：
 
-![NLH 的派生关系图](./images/ch0157_img01.jpg)
+![NLH 的派生关系图](./images/ch0157_img01.jpg) ':width=600'
 
 三个构造函数一条链：NetlinkHandler 把 socket 交给 NetlinkListener，后者再以 `listen = false` 交给 SocketListener：
 
@@ -454,7 +454,7 @@ static int process_config(VolumeManager *vm) {
 
 process_config 的主要功能就是解析 /etc/vold.fstab，作用类似 Linux 的 fstab——设置存储设备的挂载点。作者 G7 手机上这个文件的内容（原图 9-3）：
 
-![G7 手机上的 vold.fstab 内容](./images/ch0158_img01.jpg)
+![G7 手机上的 vold.fstab 内容](./images/ch0158_img01.jpg) ':width=600'
 
 其中灰色框内一行 dev_mount 配置的含义：sdcard 为 volume 的名字；/mnt/sdcard 表示 mount 的位置；1 表示使用存储卡上的第一个分区（auto 表示没有分区，不少定制 ROM 要求 SD 卡上存在多个分区）；/devices/xxxx 等内容表示 MMC 设备在 sysfs 中的位置。根据这个文件即可构造出一个 DirectVolume 对象（刷的 ROM 不同，vold.fstab 会有较大差异）。
 
@@ -567,7 +567,7 @@ int DirectVolume::handleBlockEvent(NetlinkEvent *evt) {
 
 事件自下而上走 NM→VM，命令则自上而下走 CL。**CL 是 Vold 对框架侧的 socket 服务端，目前唯一的客户端就是 MountService**。和 NetlinkHandler 一样，CL 也有一个相对不简单的派生关系（原图 9-5）：
 
-![CommandListener 家族图谱](./images/ch0159_img01.jpg)
+![CommandListener 家族图谱](./images/ch0159_img01.jpg) ':width=600'
 
 CL 从 FrameworkListener 派生，FrameworkListener 又从 SocketListener 派生。CL 内部定义了一批 Command 相关的内部类，采用 Command 模式，**每个命令的处理函数都是 runCommand**（图中只列出部分 Command 类）。创建与注册：
 
@@ -962,7 +962,7 @@ public boolean onEvent(int code, String raw, String[] cooked) {
 
 至此整条链路闭合：应用监听到的 ACTION_MEDIA_MOUNTED 广播，源头是内核的一条 Uevent。原书用一张流程图总结 mountVol 在挂载方面的处理（原图 9-6）：
 
-![SD 卡插入事件处理流程图](./images/ch0160_img01.jpg)
+![SD 卡插入事件处理流程图](./images/ch0160_img01.jpg) ':width=600'
 
 可以看到 Vold 在安全性上做了不少考虑。原书最后留了一个思考题：**当 SD 卡拔出或挂载到电脑上时都会导致 SD 卡被卸载，这个切换过程中有一些应用程序会被系统 kill 掉，为什么？**——这可以解释很多测试人员报告的「SD 卡 mount 到电脑后有些应用突然退出」的 Bug，答案要从卸载流程对占用挂载点进程的处理中找。
 
@@ -981,7 +981,7 @@ Rild 运行在 AP 上，**它是 AP 和 BP 在软件层面通信的中枢**：AP
 
 这两个词指明了 AP 与 BP 的两种交互类型：**AP 发请求、BP 应答；BP 主动通知 AP**。Rild 在架构上面临的挑战是：有些手机把 AP 和 BP 集成在一块芯片上，它们之间的通信可能就不是 AT 指令了；即使使用 AT 指令，不同厂商的指令集差异很大且属于商业秘密——厂商不可能共享源码，只能给出二进制的库。Rild 的解法（原图 9-7）：
 
-![Rild 解决问题的方法](./images/ch0162_img01.jpg)
+![Rild 解决问题的方法](./images/ch0162_img01.jpg) ':width=600'
 
 - **Rild 动态加载厂商相关的动态库**（Linux 平台上用 dlopen 系统调用）。
 - **Rild 与动态库之间通过接口通信**：Rild 输出接口供动态库使用，动态库也输出接口供 Rild 使用。
@@ -1443,7 +1443,7 @@ static void listenCallback (int fd, short flags, void *param) {
 
 至此 Rild 的 main 全部分析完。原书用一张示意图总结 main 执行后的静态结果（原图 9-8）：
 
-![Rild main 函数执行后的结果示意图](./images/ch0167_img01.jpg)
+![Rild main 函数执行后的结果示意图](./images/ch0167_img01.jpg) ':width=600'
 
 其中：Rild 和 RefRil 库的交互通过 RIL_Env 和 RIL_RadioFunctions 这两个结构体完成；Rild 的 eventLoop 处理任务，对来自客户端的任务调用的处理函数是 processCommandsCallback；RefRil 库的 readerLoop 用来从串口设备中读取数据；RefRil 库中的 mainLoop 用来监视 readerLoop。图中的模块都是静态的，异步请求/处理的配合方式要看实例——这就是下一节的内容。
 
@@ -1899,7 +1899,7 @@ private void processSolicited (Parcel p) {
 
 **Linux 提供了 MTD（Memory Technology Device，内存技术设备）系统来针对 Flash 设备建立统一、抽象的接口**：有了 MTD，上层就不用考虑不同 Flash 设备硬件带来的差异了，也不必关心 Flash 是 NOR 还是 NAND。这一层的作用和 FTL（Flash Translation Layer，闪存转换层）很类似——**FTL 将文件系统的逻辑块地址对应到 Flash 存储器的物理地址上，对上层屏蔽 Flash 必须先擦除后写入的特性**；想在 Flash 上使用 FAT32 或 NTFS 这类普通文件系统，必须经过 FTL（针对 NOR Flash）或 NFTL（针对 NAND Flash）转换。Linux MTD 的系统层次（原图 9-10），其中 mtdblock 表示 MTD 块设备：
 
-![Linux MTD 系统层次图](./images/ch0171_img01.jpg)
+![Linux MTD 系统层次图](./images/ch0171_img01.jpg) ':width=600'
 
 尽管有了 FTL，但毕竟多了一层处理，对 IO 效率影响较大，所以人们开发了专门针对 Flash 的文件系统，其中应用比较广泛的是 **YAFFS（Yet Another Flash File System）**。它有 YAFFS 和 YAFFS2 两个版本，主要区别是 YAFFS2 可支持大容量的 NAND Flash，而 YAFFS 只支持页大小为 512 字节的 NAND Flash。**YAFFS 使用 OOB（Out of Band）区域来组织文件的结构信息**。
 

@@ -19,7 +19,7 @@
 
 图 2-1 展示了 JNI 在 Android 平台中所处的位置：Java 世界与 Native 世界之间的桥梁。
 
-![](./images/ch0018_img01.jpg)
+![](./images/ch0018_img01.jpg) ':width=600'
 
 原书说明：虽然 JNI 层代码是用 Native 语言写的，但书中把与 JNI 相关的模块单独归为一层，即 JNI 层。
 
@@ -27,7 +27,7 @@
 
 本章不空谈 API，而是盯着源码里的一处真实实例——MediaScanner。它是 Android 多媒体系统的重要组成部分，功能是扫描媒体文件，提取歌曲时长、作者等媒体信息，存入媒体数据库供其他应用使用。它与 JNI 相关的部分如图 2-2 所示。
 
-![](./images/ch0019_img01.jpg)
+![](./images/ch0019_img01.jpg) ':width=600'
 
 对照图 2-1 与图 2-2，可以得到三层对应关系：
 
@@ -342,7 +342,7 @@ android_media_MediaScanner_processFile(JNIEnv *env, jobject thiz,
 
 基本数据类型的转换很简单，原书表 2-1 如下：
 
-![](./images/ch0025_img01.jpg)
+![](./images/ch0025_img01.jpg) ':width=600'
 
 转录成 Markdown 表（内容同表 2-1，即 jni.h 中的标准映射）：
 
@@ -363,7 +363,7 @@ android_media_MediaScanner_processFile(JNIEnv *env, jobject thiz,
 
 引用数据类型的转换对应原书表 2-2：
 
-![](./images/ch0025_img02.jpg)
+![](./images/ch0025_img02.jpg) ':width=600'
 
 转录成 Markdown 表（内容同表 2-2）：**除了数组、Class、String 和 Throwable 有专门的 JNI 类型外，其余所有 Java 引用类型转换后都用 jobject 表示**。
 
@@ -400,7 +400,7 @@ jobject 透明不可直接操作，全部操作能力都由 JNIEnv 提供。本�
 
 **JNIEnv 是一个与线程相关的、代表 JNI 环境的结构体**，图 2-3 是它的内部结构简图。
 
-![](./images/ch0026_img01.jpg)
+![](./images/ch0026_img01.jpg) ':width=600'
 
 从图中可知，**JNIEnv 内部实际保存的是一张 JNI 系统函数表的指针**，通过这些函数可以：调用 Java 的函数；操作 jobject 对象等。后面几节的内容（FindClass、GetMethodID、CallVoidMethod、NewStringUTF……）全部来自这张函数表。
 
@@ -565,7 +565,7 @@ jstring mimeType, jobject client)
 
 括号内依次是参数类型的标识，最右边是返回值类型的标识，void 对应 V。当参数是引用类型时，格式是 `L包名;`，其中包名中的「.」换成「/」，例如 `Ljava/lang/String;` 表示一个 Java String 类型。常见的类型标识见原书表 2-3：
 
-![](./images/ch0029_img01.jpg)
+![](./images/ch0029_img01.jpg) ':width=600'
 
 转录成 Markdown 表（内容同表 2-3）：
 
@@ -585,7 +585,7 @@ jstring mimeType, jobject client)
 
 两点注意：**如果 Java 类型是数组，标识中会有一个「[」；引用类型（基本类型的数组除外）的标识最后都有一个「`;`」**。再看原书表 2-4 的函数签名小例子：
 
-![](./images/ch0029_img02.jpg)
+![](./images/ch0029_img02.jpg) ':width=600'
 
 函数签名不仅看起来别扭，写起来更容易错，稍微写错一个标点就会导致注册失败。两个实践建议：
 

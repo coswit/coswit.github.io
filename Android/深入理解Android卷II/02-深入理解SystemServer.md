@@ -1,6 +1,6 @@
 ## 2.1 概述
 
-SystemServer 是 Android Java 世界的两大支柱之一（另一根是 Zygote）：Zygote fork 出的第一个进程，**几乎所有核心系统服务——ActivityManagerService（AMS）、PackageManagerService（PMS）、WindowManagerService（WMS）等——都运行在这一个进程里**。应用进程的一切"系统功能"请求，最终都落到 system_server 中的某个服务上；它若崩溃，由 init 进程负责重启整个 Java 世界。
+SystemServer 是 Android Java 世界的两大支柱之一（另一根是 Zygote）：Zygote fork 出的第一个进程，**几乎所有核心系统服务——ActivityManagerService（AMS）、PackageManagerService（PMS）、WindowManagerService（WMS）等——都运行在这一个进程里**。应用进程的一切"系统功能"请求，最终都落到 system_server 中的某个服务上；它若崩溃，由 init 进程负责重启整个 Java 世界。用 `ps` 命令看到的进程名是 system_server，而在 DDMS（Dalvik Debug Monitor Service）中它的进程名显示为 system_process。
 
 原书第 3 章的套路是：先分析 SystemServer 的启动流程（main → init1 → init2 → ServerThread），再把其中几十个服务分成七大类，挑出**功能单一、依赖简单的第五类**逐个走读源码，借此展示系统服务的通用写法。本章小节与原书的对应关系：
 
@@ -46,19 +46,18 @@ Java 世界的入口 `SystemServer.main`（Android 4.0，`frameworks/base/servic
 public class SystemServer {
 
     private static final String TAG = "SystemServer";
-    // 系统时钟不允许早于 2012-01-01：手机没有 RTC 后备电池时，
+    // 系统时钟不允许早于 1970 年：手机没有 RTC 后备电池时，
     // 时钟可能停在 epoch 附近，证书校验等逻辑会全线崩溃
-    private static final long EARLIEST_SUPPORTED_TIME = 1325376000000L;
+    private static final long EARLIEST_SUPPORTED_TIME = 0L;
 
     public static void main(String[] args) {
-        // ① 检查系统时钟，过早则重设
+        // (1) 检查系统时钟，过早则重设
         if (System.currentTimeMillis() < EARLIEST_SUPPORTED_TIME) {
-            Slog.w(TAG, "System clock is before "
-                    + EARLIEST_SUPPORTED_TIME + "; setting to that.");
+            Slog.w(TAG, "System clock is before 1970; setting to 1970.");
             SystemClock.setCurrentTimeMillis(EARLIEST_SUPPORTED_TIME);
         }
 
-        // ② 若启用了采样统计，设置定时器：每小时输出一次 system_server 快照
+        // (2) 若启用了采样统计，设置定时器：每小时输出一次 system_server 快照
         if (SamplingProfilerIntegration.isEnabled()) {
             SamplingProfilerIntegration.start();
             timer = new Timer();
@@ -70,12 +69,12 @@ public class SystemServer {
             }, SNAPSHOT_INTERVAL, SNAPSHOT_INTERVAL);
         }
 
-        // ③ dalvik 虚拟机设置：system_server 必须常驻，内存使用要高效
+        // (3) dalvik 虚拟机设置：system_server 必须常驻，内存使用要高效
         //    清除 growth limit（解除堆上限），并把堆利用率提到 0.8
         VMRuntime.getRuntime().clearGrowthLimit();
         VMRuntime.getRuntime().setTargetHeapUtilization(0.8f);
 
-        // ④ 加载 JNI 库，随后进入 native 层的 init1
+        // (4) 加载 JNI 库，随后进入 native 层的 init1
         System.loadLibrary("android_servers");
         init1(args);
     }
@@ -91,7 +90,7 @@ public class SystemServer {
 
 ### 2.2.2 init1 与 native 层的初始化
 
-init1 的 JNI 实现只有一行转发，真正的工作在 `System_init.cpp` 的 `system_init`（节选）：
+init1 的 JNI 实现位于 `com_android_server_SystemServer.cpp`（编译进 `libandroid_servers.so`），只有一行转发，真正的工作在 `libsystem_server.so` 中 `System_init.cpp` 的 `system_init`（节选）：
 
 ```cpp
 // frameworks/base/services/jni/System_init.cpp（节选）
@@ -109,31 +108,31 @@ extern "C" status_t system_init()
 {
     ALOGI("Entered system_init()");
     sp<ProcessState> proc(ProcessState::self());
-    // ① 初始化 Binder 并获得 ServiceManager 的客户端
+    // (1) 初始化 Binder 并获得 ServiceManager 的客户端
     sp<IServiceManager> sm = defaultServiceManager();
     sp<GrimReaper> grim = new GrimReaper();
-    // ② 注册 SM 死亡通知：NameService 都没了，留着服务也无意义
+    // (2) 注册 SM 死亡通知：NameService 都没了，留着服务也无意义
     sm->asBinder()->linkToDeath(grim, grim.get(), 0);
 
     char propBuf[PROPERTY_VALUE_MAX];
-    // ③ 由系统属性决定 SurfaceFlinger 是否跑在本进程
+    // (3) 由系统属性决定 SurfaceFlinger 是否跑在本进程
     //    （后续版本拆为独立进程，见 2.4.4）
     property_get("system_init.startsurfaceflinger", propBuf, "1");
     if (strcmp(propBuf, "1") == 0) {
         SurfaceFlinger::instantiate();
     }
-    // ④ SensorService 同理
+    // (4) SensorService 同理
     property_get("system_init.startsensorservice", propBuf, "1");
     if (strcmp(propBuf, "1") == 0) {
         SensorService::instantiate();
     }
 
     ALOGI("System server: starting Android services.\n");
-    // ⑤ 回调 Java 层的 init2——启动 Java 世界的大部队
+    // (5) 回调 Java 层的 init2——启动 Java 世界的大部队
     AndroidRuntime* runtime = AndroidRuntime::getRuntime();
     runtime->callStatic("com/android/server/SystemServer", "init2");
 
-    // ⑥ 主线程加入 Binder 线程池，从此在 native 侧服务 Binder 请求
+    // (6) 主线程加入 Binder 线程池，从此在 native 侧服务 Binder 请求
     if (proc->supportsProcesses()) {
         ProcessState::self()->startThreadPool();
         IPCThreadState::self()->joinThreadPool();
@@ -155,6 +154,7 @@ init2 非常简单——只创建并启动一个线程：
 public static final void init2() {
     Slog.i(TAG, "Entered the Android system server!");
     Thread thr = new ServerThread();
+    thr.setName("android.server.ServerThread");
     thr.start();
 }
 ```
@@ -246,29 +246,31 @@ public final class EntropyService extends Binder {
 
     private static final int ENTROPY_WHAT = 1;
     private static final long ENTROPY_WRITE_PERIOD = 3 * 60 * 60 * 1000; // 3 小时
-    private static final String DEVICE_NAME = "/dev/urandom";            // 内核熵设备
 
-    private final File randomFile;      // /data/system/entropy.dat
+    private final String randomDevice;  // /dev/urandom，Linux 产生随机数的设备
+    private final String entropyFile;   // /data/system/entropy.dat，保存此前的熵信息
     private final FileHandler mFileHandler;
 
     public EntropyService() {
-        this(new File(Environment.getDataDirectory(), "system/entropy.dat"));
+        // getSystemDir 返回 /data/system 目录
+        this(getSystemDir() + "/entropy.dat", "/dev/urandom");
     }
 
-    EntropyService(File file) {
-        randomFile = file;
+    EntropyService(String entropyFile, String randomDevice) {
+        this.randomDevice = randomDevice;
+        this.entropyFile = entropyFile;
         mFileHandler = new FileHandler();
-        loadInitialEntropy();       // ① 开机补种
-        addDeviceSpecificEntropy(); // ② 混入设备特定信息
-        writeEntropy();             // ③ 立即写一次新熵
-        scheduleEntropyWriter();    // ④ 定期滚动
+        loadInitialEntropy();       // (1) 开机补种
+        addDeviceSpecificEntropy(); // (2) 混入设备特定信息
+        writeEntropy();             // (3) 立即写一次新熵
+        scheduleEntropyWriter();    // (4) 定期滚动
     }
 
-    /** ① 读取上次保存的熵文件，写入内核 /dev/urandom 补种 */
+    /** (1) 读取上次保存的熵文件，写入内核 /dev/urandom 补种 */
     private void loadInitialEntropy() {
         try {
-            if (randomFile.exists()) {
-                RandomAccessFile in = new RandomAccessFile(randomFile, "r");
+            if (new File(entropyFile).exists()) {
+                RandomAccessFile in = new RandomAccessFile(entropyFile, "r");
                 byte[] existingBytes = new byte[(int) in.length()];
                 in.readFully(existingBytes);
                 in.close();
@@ -278,17 +280,17 @@ public final class EntropyService extends Binder {
         } catch (IOException e) { Slog.w(TAG, "unable to load initial entropy"); }
     }
 
-    /** ③ 从 /dev/urandom 读一块新熵，覆盖写入熵文件 */
+    /** (3) 从 /dev/urandom 读一块新熵，覆盖写入熵文件 */
     private void writeEntropy() {
         try {
-            RandomAccessFile out = new RandomAccessFile(randomFile, "rw");
+            RandomAccessFile out = new RandomAccessFile(entropyFile, "rw");
             byte[] randomBytes = getRandomBytes(out.length()); // 读 urandom
             out.write(randomBytes);
             out.close();
         } catch (IOException e) { Slog.w(TAG, "unable to write entropy"); }
     }
 
-    /** ④ 每 3 小时重复一次 writeEntropy */
+    /** (4) 每 3 小时重复一次 writeEntropy */
     private void scheduleEntropyWriter() {
         mFileHandler.removeMessages(ENTROPY_WHAT);
         mFileHandler.sendEmptyMessageDelayed(ENTROPY_WHAT, ENTROPY_WRITE_PERIOD);
@@ -296,13 +298,13 @@ public final class EntropyService extends Binder {
 }
 ```
 
-四个函数各司其职：`loadInitialEntropy`（开机补种）、`addDeviceSpecificEntropy`（把设备序列号等信息追加进 urandom）、`writeEntropy`（滚动更新文件）、`scheduleEntropyWriter`（3 小时定时）。FileHandler 运行在专属的 HandlerThread 上，与主线程解耦。
+四个函数各司其职：`loadInitialEntropy`（开机补种，把 entropy.dat 的内容写进内核的 entropy pool——刚开机时 pool 为空，早期生成的随机数可预测）、`addDeviceSpecificEntropy`（把设备序列号、bootmode、硬件版本等系统属性连同当前时间追加进 urandom；原书特别指出，即使写入的是固定信息，也能增加随机数生成的随机性——熵池内容越多，随机数越无规律）、`writeEntropy`（滚动更新文件）、`scheduleEntropyWriter`（3 小时定时）。FileHandler 运行在专属的 HandlerThread 上，与主线程解耦。
 
 它展示了最小系统服务的形态：**一个 Binder 服务 + 一个 Handler 定时任务 + 一个持久化文件**，全部不到 200 行。也演示了 `/data/system/` 这个"系统级持久化目录"的用法（packages.xml、dropbox、entropy.dat 都在这里）。不过它并没有活太久：Android 5.0（L）前后即被 EntropyMixer 取代（见 2.4.5）。
 
 ### 2.3.2 DropBoxManagerService：异常现场收集箱
 
-DropBoxManagerService（DBMS，名字源自飞机的黑匣子"回收箱"）负责**收集系统运行时的异常现场**：应用 crash、ANR、wtf（What a Terrible Failure，`Log.wtf` 触发）、系统重启等，是 `bugreport` 数据的重要源头。
+DropBoxManagerService（DBMS）负责**收集系统运行时的异常现场**：应用 crash、ANR、wtf（What a Terrible Failure，`Log.wtf` 触发）、系统重启等，是 `bugreport` 数据的重要源头。
 
 #### 1. 日志文件与 tag 规则
 
@@ -331,12 +333,20 @@ DropBoxManagerService（DBMS，名字源自飞机的黑匣子"回收箱"）负�
 // ActivityManagerService.java :: addErrorToDropBox（节选）
 public void addErrorToDropBox(String tag, ProcessRecord process, ...) {
     final String dropboxTag = processClass(process) + "_" + tag;
-    if (dbox == null || dbox.isTagEnabled(dropboxTag)) return; // tag 被禁止则放弃
+    if (dbox == null || !dbox.isTagEnabled(dropboxTag)) return; // tag 被禁止则放弃
     StringBuilder sb = new StringBuilder(1024);
-    appendDropBoxProcessHeaders(db, process, processName, sb);  // 进程头信息
-    ...                       // 可读取 logcat（最多 128KB，截断标记 [[TRUNCATED]]）
-    sb.append(crashInfo.stackTrace);     // 附带崩溃堆栈
-    dbox.addText(dropboxTag, sb);        // 送入 DBMS
+    appendDropBoxProcessHeaders(process, sb);       // 进程头信息
+    // 有 log 文件则读入（最多 128KB，超出截断并标记 [[TRUNCATED]]）
+    // crashInfo.stackTrace 崩溃堆栈；若 Settings 中配置了该 tag 的行数限制
+    // （ERROR_LOGCAT_PREFIX + tag），还会起一个 logcat 进程抓取最后 N 行日志
+    Thread worker = new Thread("Error dump: " + dropboxTag) {
+        public void run() { dbox.addText(dropboxTag, sb.toString()); }
+    };
+    if (process == null || process.pid == MY_PID) {
+        worker.run();   // system_server 自己崩溃时不能另起线程，只能在当前线程执行
+    } else {
+        worker.start();
+    }
 }
 ```
 
@@ -347,15 +357,19 @@ DBMS 侧 `add` 的核心（节选）：
 public void add(DropBoxManager.Entry entry) {
     File temp = null;
     try {
+        final String tag = entry.getTag();
+        init();                                   // (1) 生成 dropbox 目录、统计已有文件
+        if (!isTagEnabled(tag)) return;           // (2) tag 被禁止则放弃
+        long max = trimToFit();                   // (3) 先按配置项清理旧文件腾空间
         temp = new File(mDropBoxDir, "drop" + Thread.currentThread().getId() + ".tmp");
-        // ① 先写临时文件，按 mBlockSize（4KB）分块读取数据
-        // ② 超过一个 BlockSize 的内容用 GZIPOutputStream 压缩——
-        //    原书实例：42KB 的日志压缩后只有 6.1KB，非常划算
-        // ③ createEntry：临时文件改名为 tag@timestamp(.txt.gz)，
-        //    生成 EntryFile 记录并存入内部数据容器（mAllFiles/mFilesByTag）
+        // (4) 按 mBlockSize（4KB）从 Entry 读数据、先写临时文件；
+        //     读满一个 BlockSize 且未标记压缩的内容用 GZIPOutputStream 压缩——
+        //     原书实例：42KB 的日志压缩后只有 6.1KB，DBMS 很珍惜 /data 分区
+        // (5) createEntry：临时文件改名为 tag@timestamp(.txt.gz)，
+        //     生成 EntryFile 记录并存入内部数据容器（mAllFiles/mFilesByTag）
         ...
-        // ④ trimToFit()：按 2.4 中的配置项清理旧文件腾空间
-        // ⑤ 发送 ACTION_DROPBOX_ENTRY_ADDED 广播（需 READ_LOGS 权限）
+        // (6) 发送 ACTION_DROPBOX_ENTRY_ADDED 广播（需 READ_LOGS 权限；
+        //     boot 完成前加 FLAG_RECEIVER_REGISTERED_ONLY。当时系统中还没有接收者）
     } finally { ...删除临时文件... }
 }
 ```
@@ -414,8 +428,10 @@ public DeviceStorageMonitorService(Context context) {
     mRestatDataDir = mDataDirStat = new StatFs(DATA_PATH);     // /data
     mSystemDirStat = new StatFs(SYSTEM_PATH);                  // /system
     mCacheDirStat = new StatFs(CACHE_PATH);                    // /cache
-    // mTotalMemory 取 data 分区总量的十分之一，作为清理量的基准
-    mTotalMemory = (long) mDataDirStat.getTotalBytes() / 10L;
+    // mTotalMemory 取 data 分区总量的百分之一（blockCount × blockSize / 100），
+    // 作为计算低水位阈值的基准（默认阈值 = 10% 分区总量）
+    mTotalMemory = ((long) mDataDirStat.getBlockCount()
+            * mDataDirStat.getBlockSize()) / 100L;
     // 四个通知 Intent，都带 FLAG_RECEIVER_REGISTERED_ONLY_BEFORE_BOOT：
     // 只能被系统服务接收，不给 App 可乘之机
     mStorageLowIntent = new Intent(Intent.ACTION_DEVICE_STORAGE_LOW);
@@ -466,7 +482,7 @@ class CachePackageDataObserver extends IPackageDataObserver.Stub {
 }
 ```
 
-收到 LOW 广播的缓存型应用（浏览器、地图离线包）应清理缓存；DBMS（2.3.2）收到后删旧日志——这是 4.0 时代"存储压力协同"的全部机制。作者认为 1 分钟的检查间隔偏短——这一点在后续版本得到了正面回应（见 2.4.5）。
+收到 LOW 广播的缓存型应用（浏览器、地图离线包）应清理缓存；DBMS（2.3.2）收到后删旧日志——这是 4.0 时代"存储压力协同"的全部机制。固定 1 分钟的轮询间隔以今天的眼光看偏短，现代版本改成了双频轮询（见 2.4.5）。
 
 ### 2.3.4 SamplingProfilerService：采样快照搬运工
 
@@ -485,9 +501,9 @@ public class SamplingProfilerService extends Binder {
 
     private void startWorking(Context context) {
         DropBoxManager dropbox = (DropBoxManager) context.getSystemService(...);
-        // ① 把 snapshots 目录下已有的快照文件逐个转入 dropbox，然后删除
+        // (1) 把 snapshots 目录下已有的快照文件逐个转入 dropbox，然后删除
         for (File file : SNAPSHOT_DIR.listFiles()) handleSnapshotFile(file, dropbox);
-        // ② 用 FileObserver 监控该目录（底层是 Linux 的 inotify 机制）：
+        // (2) 用 FileObserver 监控该目录（底层是 Linux 的 inotify 机制）：
         //    ATTRIB 事件（新文件到达）触发搬运
         mObserver = new FileObserver(SNAPSHOT_DIR.getPath(), FileObserver.ATTRIB) {
             @Override
@@ -500,7 +516,7 @@ public class SamplingProfilerService extends Binder {
 }
 ```
 
-真正的采样由 `SamplingProfilerIntegration` 完成（非 SDK 公开类，封装 dalvik 的 SamplingProfiler）：
+真正的采样由 `SamplingProfilerIntegration` 完成（非 SDK 公开类，要用只能靠源码编译；核心是封装 dalvik 提供的 SamplingProfiler，定义在 `libcore/dalvik/src/main/java/dalvik/system/profiler/SamplingProfiler.java`。原书作者补充：实际开发中一般用 `Debug` 类提供的方法做性能统计）：
 
 - 其 **static 块**读取系统属性 `persist.sys.profiler_ms`（默认 0，即**默认禁用**）与 `persist.sys.profiler_depth`（默认 4）；仅当毫秒值 > 0 时创建 snapshots 目录、启用采样。控制放在 static 块，改属性须重启目标进程才生效
 - 以 Zygote 为例（`ZygoteInit.main`）：启动时 `SamplingProfilerIntegration.start()`（创建线程集并开始采样），工作完成后 `writeZygoteSnapshot()` 落盘——文件命名"进程名_开始统计时刻.snapshot"，头部由 `generateSnapshotHeader` 写入版本号、编译信息等，最后 `shutdown()` 停止采样
@@ -509,7 +525,7 @@ public class SamplingProfilerService extends Binder {
 
 ### 2.3.5 ClipboardService：URI 权限管理才是重点
 
-原书明确指出：ClipboardService（CBS）的难点不在剪贴板本身，而在 **URI 权限的临时授予机制**。
+原书明确指出：ClipboardService（CBS）是元老级服务（Android 1.0 起就有），但 4.0 中难点不在剪贴板本身，而在 **URI 权限的临时授予机制**。以下示例取自 Android SDK 自带的 NotePad 示例（android-14）。
 
 #### 1. 剪贴板家族与数据模型
 
@@ -532,17 +548,17 @@ graph TD
 
 ```java
 // ClipboardService.java :: setPrimaryClip（节选）
-public void setPrimaryClip(ClipData clip, String callingPackage) {
+public void setPrimaryClip(ClipData clip) {
     synchronized (this) {
-        // ① 检查 copy 方是否有权处置这些数据（防泄露，见下文）
+        // (1) 检查 copy 方是否有权处置这些数据（防泄露，见下文）
         checkDataOwnerLocked(clip, Binder.getCallingUid());
-        // ② 换新数据前，撤销旧 ClipData 上已授予 paste 方的临时权限
+        // (2) 换新数据前，撤销旧 ClipData 上已授予 paste 方的临时权限
         clearActiveOwnersLocked();
-        mPrimaryClip = clip;                       // ③ 保存（仅在内存，不落盘）
+        mPrimaryClip = clip;                       // (3) 保存（仅在内存，不落盘）
         final int n = mPrimaryClipListeners.beginBroadcast();
         for (int i = 0; i < n; i++) {
             try {
-                // ④ 通知所有监听者——RemoteCallbackList 是需要掌握的重要常用类
+                // (4) 通知所有监听者——RemoteCallbackList 是需要掌握的重要常用类
                 mPrimaryClipListeners.getBroadcastItem(i)
                         .dispatchPrimaryClipChanged();
             } catch (RemoteException e) { /* 监听者进程已死则忽略 */ }
@@ -556,17 +572,27 @@ public void setPrimaryClip(ClipData clip, String callingPackage) {
 
 #### 3. Paste 流程与 URI 权限
 
-问题场景：把 Contacts 的联系人 URI 复制到剪贴板，第三方程序 paste 后要 query 该 URI——但它无法预知该声明什么权限。解法是**临时授权**：ContentProvider 在 Manifest 中声明 `grant-uri-permission`（配合 `pathPattern`）允许系统临时授权，paste 时系统判断 URI 是否命中规则，命中则授权成功，否则失败。前提是 copy 方自己得有权限，于是有 copy 方检查：
+问题场景：把 Contacts 的联系人 URI 复制到剪贴板，第三方程序 paste 后要 query 该 URI——但它无法预知该声明什么权限（ContactsProvider 的读权限今天是 READ_CONTACTS，明天可能换成 READ_CONTACTS_EXTEND）。为此 Android 提供了一套专门针对 URI 的权限管理，ContactsProvider 在 Manifest 中是这样声明的：
+
+```xml
+<!-- ContactsProvider 的 AndroidManifest.xml（节选） -->
+<provider android:name="ContactsProvider2"
+    android:readPermission="android.permission.READ_CONTACTS"
+    android:writePermission="android.permission.WRITE_CONTACTS">
+    <grant-uri-permission android:pathPattern=".*" />
+</provider>
+```
+
+`readPermission` 管控 query，`writePermission` 管控 update/insert。`grant-uri-permission` 允许系统临时授权：paste 时系统判断是否为 paste 方授权，只要所粘贴的 URI 匹配 `pathPattern`，授权就成功；Provider 未声明该标签或 URI 不匹配，则授权失败。前提是 copy 方自己得有权限，于是有 copy 方检查：
 
 ```java
 // ClipboardService.java（节选）
 /** copy 方检查：无权处置该 URI 则抛 SecurityException */
 private void checkUriOwnerLocked(Uri uri, int uid) {
-    // 委托 AMS 检查 uid 对该 URI 的 FLAG_GRANT_READ_URI_PERMISSION
-    if (mAm.checkGrantUriPermission(uid, null, uri,
-            Intent.FLAG_GRANT_READ_URI_PERMISSION) < 0) {
-        throw new SecurityException("Caller " + uid + " does not own " + uri);
-    }
+    // 委托 AMS 的 checkGrantUriPermission 检查 uid 对该 URI 的
+    // FLAG_GRANT_READ_URI_PERMISSION，不允许时直接抛 SecurityException
+    mAm.checkGrantUriPermission(uid, null, uri,
+            Intent.FLAG_GRANT_READ_URI_PERMISSION);
 }
 ```
 
@@ -616,14 +642,14 @@ public class Watchdog extends Thread {
         boolean waitedHalf = false;
         while (true) {
             mCompleted = false;
-            // ① 发心跳消息：HeartbeatHandler 收到后依次调用各 Monitor。
+            // (1) 发心跳消息：HeartbeatHandler 收到后依次调用各 Monitor。
             //    monitor() 内部尝试拿服务的关键锁，某线程长期持锁时会阻塞在这里
             mHandler.sendEmptyMessage(MONITOR);
             synchronized (this) {
                 long timeout = TIME_TO_WAIT;
-                // ② 健康路径：30 秒内心跳完成（mCompleted 置真），
+                // (2) 健康路径：30 秒内心跳完成（mCompleted 置真），
                 //    重置 waitedHalf 继续下一轮
-                // ③ 半程 / 全程超时的分支见下方骨架
+                // (3) 半程 / 全程超时的分支见下方骨架
                 ...
             }
         }
@@ -672,7 +698,7 @@ system_server 是被 Treble 与 Project Mainline 改造最深的进程之一。�
 | 线程模型 | 单一 ServerThread 主线程 | android.ui / android.fg / android.display / android.io 等 HandlerThread 组 + Binder 线程池 | 服务的工作 Handler 按职责归组，Watchdog 按组注册 HandlerChecker；多用户生命周期回调由 SystemServiceManager 的线程池并行分发。见 2.4.3 |
 | 进程边界 | 所有服务挤在 system_server | Treble 拆分：surfaceflinger、netd、statsd、tombstoned、audioserver 等独立进程 | mediaserver 大进程裂变为多个媒体服务进程；APEX 模块自带系统服务（startApexServices）。原书"一个进程看全部服务"的阅读法要调整为"按 AIDL 接口找进程"。见 2.4.4 |
 | EntropyService | 存在 | Android 5.0（L）前后被 EntropyMixer 取代 | 不再是 Binder 服务，也不再持久化 entropy.dat；内核随机数机制成熟后用户态补种意义弱化，但 EntropyMixer 延续至今。见 2.4.5 |
-| DeviceStorageMonitor | 独立定时服务，固定 1 分钟轮询 | 仍是 devicestoragemonitor，自身已 SystemService 化 | 低水位 1 分钟、健康时 10 小时的双频轮询（正面回应了作者"1 分钟偏短"的点评）；清缓存职责移交 StorageManagerService 的配额体系。见 2.4.5 |
+| DeviceStorageMonitor | 独立定时服务，固定 1 分钟轮询 | 仍是 devicestoragemonitor，自身已 SystemService 化 | 低水位 1 分钟、健康时 10 小时的双频轮询（修正了 4.0 固定 1 分钟偏短的问题）；清缓存职责移交 StorageManagerService 的配额体系。见 2.4.5 |
 | SamplingProfiler | SamplingProfilerIntegration + 搬运服务 | 已移除 | 被 ART 与 perfetto（traced / traced_probes、heapprofd）及 statsd 的事件流水线取代。见 2.4.5 |
 | Dropbox | 手工 addData | 语义原样保留 | 目录、tag@timestamp、trimToFit、isTagEnabled 全部未变；incident/dumpstate 流水线把它纳入结构化 bugreport。见 2.4.5 |
 | 剪贴板 | URI 临时授权 + 属主记录 | 权限模型未变，隐私管控加强 | Android 10 起后台/无焦点进程读剪贴板被拒；Android 12 前台读取弹提示、`ClipDescription` 增加 `EXTRA_IS_SENSITIVE`；URI 授权管家从 AMS 换成 UriGrantsManagerService。见 2.4.5 |
@@ -707,10 +733,10 @@ private void run() {
     LocalServices.addService(SystemServiceManager.class, mSystemServiceManager);
     ...
     t.traceBegin("StartServices");
-    startBootstrapServices(t);    // ① 引导服务：AMS/PMS/PowerManager 等依赖链最深的先起
-    startCoreServices(t);         // ② 核心服务：Battery、UsageStats 等
-    startOtherServices(t);        // ③ 其余绝大多数服务（方法长达数千行）
-    startApexServices(t);         // ④ APEX 模块内的服务（Project Mainline）
+    startBootstrapServices(t);    // (1) 引导服务：AMS/PMS/PowerManager 等依赖链最深的先起
+    startCoreServices(t);         // (2) 核心服务：Battery、UsageStats 等
+    startOtherServices(t);        // (3) 其余绝大多数服务（方法长达数千行）
+    startApexServices(t);         // (4) APEX 模块内的服务（Project Mainline）
     t.traceEnd();
     ...
     // Loop forever.
@@ -998,7 +1024,7 @@ public class DeviceStorageMonitorService extends SystemService {
 ```
 
 - 自身已是 SystemService（不再由别处 new + addService），onStart 里 publishBinderService + publishLocalService 双通道发布——LocalService 是 2.4.2 提到的同进程直连机制的标准示范
-- 轮询改为双频：低水位时 LOW_CHECK_INTERVAL = 1 分钟，健康时 HIGH_CHECK_INTERVAL = 10 小时——正面回应了原书作者"1 分钟偏短"的点评
+- 轮询改为双频：低水位时 LOW_CHECK_INTERVAL = 1 分钟，健康时 HIGH_CHECK_INTERVAL = 10 小时——4.0 时代固定 1 分钟的轮询就此成为历史
 - 广播只针对主存储卷（UUID_PRIVATE_INTERNAL）；4.0 里 clearCache 直接跨服务调 PKMS.freeStorageAndNotify 的路径，已由 StorageManagerService 统一的缓存配额与 allocateBytes 机制取代
 
 **SamplingProfilerService**：连同 SamplingProfilerIntegration 一起移除。性能采样改由 ART 与 perfetto 体系承担（traced / traced_probes、heapprofd），数据走 protobuf 流水线与 statsd，不再有"snapshot 文件 + inotify 搬运 + dropbox 落盘"这条手工流水线。

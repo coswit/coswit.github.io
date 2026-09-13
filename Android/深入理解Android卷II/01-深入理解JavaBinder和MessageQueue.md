@@ -1,11 +1,11 @@
 ## 1.1 概述
 
-作为全书 Android 分析之旅的开篇,本章关注两个基础知识点:
+作为全书 Android 分析之旅的开篇，本章关注两个基础知识点：
 
-- **Binder 系统在 Java 层的布局和工作方式**:Java 层 Binder 是 Native 层 Binder 的一个"镜像",但镜像终归要借助 Native 层工作,二者关系在框架初始化和每次跨进程调用中都有体现
-- **MessageQueue 的新职责**:Android 2.3 起 MessageQueue 的核心部分下移到 Native 层,从此它"心系两界"——不仅服务 Java 层的 Message,还处理 Native 层的 Message 与被监控文件句柄的事件
+- **Binder 系统在 Java 层的布局和工作方式**：Java 层 Binder 是 Native 层 Binder 的一个"镜像"，但镜像终归要借助 Native 层工作，二者关系在框架初始化和每次跨进程调用中都有体现
+- **MessageQueue 的新职责**：Android 2.3 起 MessageQueue 的核心部分下移到 Native 层，从此它"心系两界"——不仅服务 Java 层的 Message，还处理 Native 层的 Message 与被监控文件句柄的事件
 
-涉及的源码文件(均在 4.0 源码树中):
+涉及的源码文件（均在 4.0 源码树中）：
 
 | 文件 | 位置 |
 |---|---|
@@ -13,16 +13,17 @@
 | BinderInternal.java | `frameworks/base/core/java/com/android/internal/os/` |
 | android_util_Binder.cpp | `frameworks/base/core/jni/` |
 | android_os_MessageQueue.cpp | `frameworks/base/core/jni/` |
-| Looper.cpp / Looper.h | `frameworks/base/native/android/`(Native Looper) |
-| ActivityManagerService.java | `frameworks/base/services/java/com/android/server/` |
+| Looper.cpp | `frameworks/base/libs/utils/android/`(Native Looper) |
+| Looper.h | `frameworks/base/include/utils/` |
+| ActivityManagerService.java | `frameworks/base/services/java/com/android/server/am/` |
 
-原书建议先读卷 I 第 6 章"深入理解 Binder"(Native 层)与卷 I 第 2 章(JNI),本章不重复展开 Native Binder 的驱动交互细节。
+原书建议先读卷 I 第 6 章"深入理解 Binder"（Native 层）与卷 I 第 2 章(JNI)，本章不重复展开 Native Binder 的驱动交互细节。
 
 ## 1.2 Java 层 Binder 架构分析
 
 ### 1.2.1 Binder 架构总览
 
-Java 层 Binder 也是一个 C/S 架构,且类命名尽量与 Native 层保持一致——**Java 层 Binder 架构是 Native 层 Binder 架构的一个镜像**。家族成员如下:
+Java 层 Binder 也是一个 C/S 架构，且类命名尽量与 Native 层保持一致——**Java 层 Binder 架构是 Native 层 Binder 架构的一个镜像**。家族成员如下：
 
 ```mermaid
 graph TD
@@ -34,18 +35,18 @@ graph TD
     SM[ServiceManager-服务管理的Java入口]
 ```
 
-- 系统定义了 **IBinder** 接口类与 **DeathRecipient** 接口(死亡通知,见 1.2.7)
-- **Binder** 类与 **BinderProxy** 类分别实现 IBinder:Binder 是服务端 Bn 端的代表,BinderProxy 是客户端 Bp 端的代表
-- **BinderInternal** 是仅供 Binder 框架内部使用的类,其中的 GcWatcher 专门处理与 Binder 相关的垃圾回收
+- 系统定义了 **IBinder** 接口类与 **DeathRecipient** 接口（死亡通知，见 1.2.7）
+- **Binder** 类与 **BinderProxy** 类分别实现 IBinder：Binder 是服务端 Bn 端的代表，BinderProxy 是客户端 Bp 端的代表
+- **BinderInternal** 是仅供 Binder 框架内部使用的类，其中的 GcWatcher 专门处理与 Binder 相关的垃圾回收
 - **Parcel** 承载通信数据
 
-IBinder 接口中定义了一个重要的整型标志 **FLAG_ONEWAY**:普通 Binder 调用与普通函数调用一样,客户端阻塞直到服务端返回;而指定 FLAG_ONEWAY 后,**客户端只要把请求发送到 Binder 驱动即可返回,不必等服务端结果**。Native 层的 Binder 调用基本都是阻塞式的,但 Java 层 framework 中 FLAG_ONEWAY 的使用非常多。
+IBinder 接口中定义了一个重要的整型标志 **FLAG_ONEWAY**：普通 Binder 调用与普通函数调用一样，客户端阻塞直到服务端返回；而指定 FLAG_ONEWAY 后，**客户端只要把请求发送到 Binder 驱动即可返回，不必等服务端结果**。Native 层的 Binder 调用基本都是阻塞式的，但 Java 层 framework 中 FLAG_ONEWAY 的使用非常多。
 
-> **思考:使用 FLAG_ONEWAY 的程序在设计上有什么特点?** 客户端发出请求后并不确定服务端何时处理完,所以客户端一般会向服务端注册一个回调(同样是跨进程 Binder 调用),服务端处理完后调用回调通知结果——这种回调也大多采用 FLAG_ONEWAY 方式。
+> **思考：使用 FLAG_ONEWAY 的程序在设计上有什么特点？** 客户端发出请求后并不确定服务端何时处理完，所以客户端一般会向服务端注册一个回调（同样是跨进程 Binder 调用），服务端处理完后调用回调通知结果——这种回调也大多采用 FLAG_ONEWAY 方式。
 
 ### 1.2.2 初始化 Java 层 Binder 框架
 
-Java 初创时期,系统会提前注册一批 JNI 函数,其中 `register_android_os_Binder` 专门负责搭建 Java Binder 与 Native Binder 的交互关系:
+Java 初创时期，系统会提前注册一批 JNI 函数，其中 `register_android_os_Binder` 专门负责搭建 Java Binder 与 Native Binder 的交互关系：
 
 ```cpp
 // android_util_Binder.cpp :: register_android_os_Binder
@@ -129,13 +130,13 @@ static int int_register_android_os_BinderProxy(JNIEnv* env) {
 }
 ```
 
-除了 BinderProxy 自身,这里还额外缓存了 WeakReference、Error、Class 三个类的信息——**BinderProxy 对象的生命周期会委托 WeakReference 管理**,所以 JNI 层需要 WeakReference.get 的 methodID。
+除了 BinderProxy 自身，这里还额外缓存了 WeakReference、Error、Class 三个类的信息——**BinderProxy 对象的生命周期会委托 WeakReference 管理**，所以 JNI 层需要 WeakReference.get 的 methodID。
 
-初始化工作总结:**框架初始化就是提前获取 JNI 层要用的 methodID/fieldID 并注册 native 函数实现**。这项工作必不可少——每次使用时再去查询这些 ID 会浪费时间,Binder 调用频繁时累积开销不容小觑。
+初始化工作总结：**框架初始化就是提前获取 JNI 层要用的 methodID/fieldID 并注册 native 函数实现**。这项工作必不可少——每次使用时再去查询这些 ID 会浪费时间，Binder 调用频繁时累积开销不容小觑。
 
-### 1.2.3 addService 实例分析:窥一斑而见全豹
+### 1.2.3 addService 实例分析：窥一斑而见全豹
 
-本节以 AMS 为例揭示 Java 层 Binder 的工作原理,分两步:先分析 AMS 如何把自己注册到 ServiceManager,再分析它如何响应客户端请求。起点是 `setSystemProcess`:
+本节以 AMS 为例揭示 Java 层 Binder 的工作原理，分两步：先分析 AMS 如何把自己注册到 ServiceManager，再分析它如何响应客户端请求。起点是 `setSystemProcess`:
 
 ```java
 // ActivityManagerService.java :: setSystemProcess(节选)
@@ -150,7 +151,7 @@ public static void setSystemProcess() {
 }
 ```
 
-Android 系统中有一个 Native 的 **ServiceManager**(下称 SM)进程,统筹管理所有 Service;成为 Service 的首要条件是在 SM 中注册。
+Android 系统中有一个 Native 的 **ServiceManager**（下称 SM）进程，统筹管理所有 Service；成为 Service 的首要条件是在 SM 中注册。
 
 #### 1. 创建 ServiceManagerProxy
 
@@ -171,7 +172,7 @@ private static IServiceManager getIServiceManager() {
 }
 ```
 
-`BinderInternal.getContextObject()` 是 native 函数:
+`BinderInternal.getContextObject()` 是 native 函数：
 
 ```cpp
 // android_util_Binder.cpp :: android_os_BinderInternal_getContextObject
@@ -227,9 +228,9 @@ jobject javaObjectForIBinder(JNIEnv* env, const sp<IBinder>& val) {
 }
 ```
 
-该函数完成两件事:**创建一个 Java 层的 BinderProxy 对象;并通过 JNI 把它与一个 Native 的 BpBinder 对象挂钩**,该 BpBinder 的通信目标就是 ServiceManager。
+该函数完成两件事：**创建一个 Java 层的 BinderProxy 对象；并通过 JNI 把它与一个 Native 的 BpBinder 对象挂钩**，该 BpBinder 的通信目标就是 ServiceManager。
 
-Native 层有著名的 `interface_cast` 宏,Java 层没有宏,但定义了类似的 **asInterface** 函数:
+Native 层有著名的 `interface_cast` 宏，Java 层没有宏，但定义了类似的 **asInterface** 函数：
 
 ```java
 // ServiceManagerNative.java :: asInterface(节选)
@@ -240,7 +241,7 @@ static public IServiceManager asInterface(IBinder obj) {
 }
 ```
 
-这与 `interface_cast<IServiceManager>(...)` 完全类似:以一个 BpBinder 对象为参数,构造一个与业务相关的 Proxy 对象。ServiceManagerProxy 的各业务函数将请求打包后交给 BpBinder,最终由 BpBinder(实际是 IPCThreadState)发给 Binder 驱动。
+这与 `interface_cast<IServiceManager>(...)` 完全类似：以一个 BpBinder 对象为参数，构造一个与业务相关的 Proxy 对象。ServiceManagerProxy 的各业务函数将请求打包后交给 BpBinder，最终由 BpBinder（实际是 IPCThreadState）发给 Binder 驱动。
 
 #### 2. addService 函数分析
 
@@ -260,7 +261,7 @@ public void addService(String name, IBinder service) throws RemoteException {
 }
 ```
 
-`BinderProxy.transact` 是 native 函数:
+`BinderProxy.transact` 是 native 函数：
 
 ```cpp
 // android_util_Binder.cpp :: android_os_BinderProxy_transact(节选)
@@ -284,11 +285,11 @@ static jboolean android_os_BinderProxy_transact(JNIEnv* env, jobject obj,
 }
 ```
 
-**Java 层的 Binder 最终还是要借助 Native 的 Binder 进行通信**。原书在此有一段架构体会:Binder 的目的是简单的——打开 binder 设备、读请求、写回复;架构是复杂的——各种接口类与封装类。ServiceManager 作为 Binder 的核心程序,甚至完全不走这套架构,直接读 `/dev/binder`。研究源码时要先搞清目的,脱离目的的实现如缘木求鱼。
+**Java 层的 Binder 最终还是要借助 Native 的 Binder 进行通信**。原书在此有一段架构体会：Binder 的目的是简单的——打开 binder 设备、读请求、写回复；架构是复杂的——各种接口类与封装类。ServiceManager 作为 Binder 的核心程序，甚至完全不走这套架构，直接读 `/dev/binder`。研究源码时要先搞清目的，脱离目的的实现如缘木求鱼。
 
-#### 3. 三人行:Binder、JavaBBinderHolder 和 JavaBBinder
+#### 3. 三人行：Binder、JavaBBinderHolder 和 JavaBBinder
 
-`writeStrongBinder` 特殊在哪?AMS 从 ActivityManagerNative 派生,而 ActivityManagerNative 又从 Binder 派生:
+`writeStrongBinder` 特殊在哪？AMS 从 ActivityManagerNative 派生，而 ActivityManagerNative 又从 Binder 派生：
 
 ```java
 // ActivityManagerNative.java(节选)
@@ -334,7 +335,7 @@ private:
 };
 ```
 
-JavaBBinderHolder 仅从 RefBase 派生,**不属于 Binder 家族**——但它的 get 函数创建的 JavaBBinder 正是从 BBinder(即 Bn 端基类)派生的。get 函数的调用点就在 writeStrongBinder 中:
+JavaBBinderHolder 仅从 RefBase 派生，**不属于 Binder 家族**——但它的 get 函数创建的 JavaBBinder 正是从 BBinder（即 Bn 端基类）派生的。get 函数的调用点就在 writeStrongBinder 中：
 
 ```cpp
 // android_util_Binder.cpp :: android_os_Parcel_writeStrongBinder
@@ -361,7 +362,7 @@ sp<IBinder> ibinderForJavaObject(JNIEnv* env, jobject obj) {
 }
 ```
 
-**addService 实际添加到 Parcel 的并不是 AMS 本身,而是一个 JavaBBinder 对象**——是它最终被传递到 Binder 驱动。三者关系:
+**addService 实际添加到 Parcel 的并不是 AMS 本身，而是一个 JavaBBinder 对象**——是它最终被传递到 Binder 驱动。由此可以推广：**Java 层所有的 Binder 对象在 Native 层对应的都是 JavaBBinder，不同的 Binder 对象对应不同的 JavaBBinder 对象**。三者关系：
 
 ```mermaid
 graph LR
@@ -374,11 +375,11 @@ graph LR
 - JavaBBinderHolder 通过 `mBinder` 指向 JavaBBinder
 - JavaBBinder 又通过自己的 `mObject` 指回 Java 层的 Binder 对象
 
-为什么不让 Binder 直接指向 JavaBBinder?原书的推测是**与垃圾回收有关**——mBinder 被定义成弱引用 `wp<JavaBBinder>`,没有强引用阻拦,JavaBBinder(以及它持有的 Java 对象引用)可按 GC 规则正常回收。
+为什么不让 Binder 直接指向 JavaBBinder？原书的推测是**与垃圾回收有关**——mBinder 被定义成弱引用 `wp<JavaBBinder>`，没有强引用阻拦，JavaBBinder（以及它持有的 Java 对象引用）可按 GC 规则正常回收。
 
-### 1.2.4 AMS 响应请求:JavaBBinder 是个传声筒
+### 1.2.4 AMS 响应请求：JavaBBinder 是个传声筒
 
-Native 层的 Binder 架构中,Bn 端对象本身就是业务对象(如 MediaPlayerService);而 JavaBBinder 却**与业务完全无关**。它如何实现不同业务?看它的 onTransact:
+Native 层的 Binder 架构中，Bn 端对象本身就是业务对象（如 MediaPlayerService）；而 JavaBBinder 却**与业务完全无关**。它如何实现不同业务？看它的 onTransact:
 
 ```cpp
 // android_util_Binder.cpp :: JavaBBinder::onTransact(节选)
@@ -432,7 +433,7 @@ public boolean onTransact(int code, Parcel data, Parcel reply, int flags)
 }
 ```
 
-**JavaBBinder 仅是一个传声筒**:收到请求 → 调用所绑定的 Java Binder 对象的 `execTransact` → `execTransact` 调用子类重载的 `onTransact` → 子类把业务派发给真正的实现(AMS.startActivity)。注意其中的多层继承关系:
+**JavaBBinder 仅是一个传声筒**：收到请求 → 调用所绑定的 Java Binder 对象的 `execTransact` → `execTransact` 调用子类重载的 `onTransact` → 子类把业务派发给真正的实现(AMS.startActivity)。注意其中的多层继承关系：
 
 ```mermaid
 sequenceDiagram
@@ -449,16 +450,16 @@ sequenceDiagram
     AMS-->>NB: 写reply返回
 ```
 
-注意 `execTransact` 运行在**Binder 线程池的线程**上(不是主线程),所以 `onTransact` 里若要操作 UI 必须自己切线程。
+注意 `execTransact` 运行在**Binder 线程池的线程**上（不是主线程），所以 `onTransact` 里若要操作 UI 必须自己切线程。
 
 ### 1.2.5 Java 层 Binder 架构总结
 
 | Java 端 | Native 端对应物 | 职责 |
 |---|---|---|
 | `IBinder` 接口 + `DeathRecipient` 接口 | `IBinder` | 跨进程标识一个对象 |
-| `Binder` | `JavaBBinder`(继承 `BBinder`) | Bn 端代表,业务服务端继承它 |
-| `BinderProxy` | `BpBinder` | Bp 端代表,客户端持有的代理 |
-| `BinderInternal` | — | 框架内部类,GcWatcher 处理 Binder 相关 GC |
+| `Binder` | `JavaBBinder`（继承 `BBinder`） | Bn 端代表，业务服务端继承它 |
+| `BinderProxy` | `BpBinder` | Bp 端代表，客户端持有的代理 |
+| `BinderInternal` | — | 框架内部类，GcWatcher 处理 Binder 相关 GC |
 | `Parcel` | `android::Parcel` | 承载 IPC 数据的容器 |
 | `IInterface`/Stub/Proxy | `IInterface`/BnInterface/BpInterface | 业务接口与 AIDL 生成骨架 |
 | `ServiceManager`/`ServiceManagerNative` | servicemanager 守护进程 | 按名字注册/查询服务 |
@@ -472,15 +473,15 @@ graph TD
     SMJ[ServiceManager-Java接口] --> NBP
 ```
 
-- 客户端:Java 层 BinderProxy 在 Native 层对应一个 BpBinder。凡是从 Java 层发出的请求,先从 BinderProxy 传递到 BpBinder,再由 BpBinder(实际是 IPCThreadState)发送到 Binder 驱动
-- 服务端:Java 层的 Binder 在 Native 层对应一个 JavaBBinder,它仅起中转作用——把来自客户端的请求从 Native 层传递到 Java 层的 `execTransact`/`onTransact`
+- 客户端：Java 层 BinderProxy 在 Native 层对应一个 BpBinder。凡是从 Java 层发出的请求，先从 BinderProxy 传递到 BpBinder，再由 BpBinder（实际是 IPCThreadState）发送到 Binder 驱动
+- 服务端：Java 层的 Binder 在 Native 层对应一个 JavaBBinder，它仅起中转作用——把来自客户端的请求从 Native 层传递到 Java 层的 `execTransact`/`onTransact`
 - 系统中依然只有一个 Native 的 ServiceManager
 
-**关键认知:Java 层 Binder 非常依赖 Native 层 Binder,真正的通信始终由 Native 层完成。**
+**关键认知：Java 层 Binder 非常依赖 Native 层 Binder，真正的通信始终由 Native 层完成。**
 
 ### 1.2.6 ServiceManager 的 Java 接口与服务获取
 
-注册的对称操作是获取:
+注册的对称操作是获取：
 
 ```java
 // ServiceManager.java(节选)
@@ -522,13 +523,13 @@ sequenceDiagram
     S-->>C: reply
 ```
 
-注意:**查询走 servicemanager,但后续业务调用不经过 servicemanager**——客户端凭句柄直连服务端,路由只发生一次,之后是端到端通信。这是 Binder 相比传统"总线式"IPC 的高效之处。
+注意：**查询走 servicemanager，但后续业务调用不经过 servicemanager**——客户端凭句柄直连服务端，路由只发生一次，之后是端到端通信。这是 Binder 相比传统"总线式"IPC 的高效之处。
 
 ### 1.2.7 AIDL、Parcel 与死亡通知
 
 #### 1. Stub 与 Proxy
 
-手写 `enforceInterface`/`writeInterfaceToken` 配对繁琐且易错,AIDL 工具从 `.aidl` 接口描述自动生成 Stub(服务端骨架)与 Proxy(客户端代理),其套路与 ServiceManagerNative 完全一致:
+手写 `enforceInterface`/`writeInterfaceToken` 配对繁琐且易错，AIDL 工具从 `.aidl` 接口描述自动生成 Stub（服务端骨架）与 Proxy（客户端代理），其套路与 ServiceManagerNative 完全一致：
 
 ```java
 // IHelloService.aidl 生成的代码结构(节选)
@@ -570,22 +571,22 @@ public interface IHelloService extends android.os.IInterface {
 }
 ```
 
-`queryLocalInterface` 分支体现了 Binder 的**同进程优化**:同进程时 binder 对象在本进程内传递,驱动直接传指针,方法调用退化为普通 Java 调用。这个分支让系统代码在"服务与调用方可能在也可能不在同一进程"时无需写两套逻辑。
+`queryLocalInterface` 分支体现了 Binder 的**同进程优化**：同进程时 binder 对象在本进程内传递，驱动直接传指针，方法调用退化为普通 Java 调用。这个分支让系统代码在"服务与调用方可能在也可能不在同一进程"时无需写两套逻辑。
 
-AIDL 只支持有限类型:基础类型、`String`/`CharSequence`、`List`/`Map`、`Parcelable`、其他 AIDL 接口及它们的数组;`in`/`out`/`inout` 定方向。
+AIDL 只支持有限类型：基础类型、`String`/`CharSequence`、`List`/`Map`、`Parcelable`、其他 AIDL 接口及它们的数组；`in`/`out`/`inout` 定方向。
 
-#### 2. Parcel:不只是序列化容器
+#### 2. Parcel：不只是序列化容器
 
-`Parcel` 不是通用序列化框架,而是**专为 Binder 设计的二进制协议缓冲**,它还能传两类特殊资源:
+`Parcel` 不是通用序列化框架，而是**专为 Binder 设计的二进制协议缓冲**，它还能传两类特殊资源：
 
-- **binder 对象**:`writeStrongBinder`(即 1.2.3 分析的链路)把一个 Binder 实体放进 Parcel,驱动在传递时做"实体→引用"的翻译,接收方 `readStrongBinder` 得到 BinderProxy——1.2.6 中 getService 正是这样把服务的 binder 交给客户端的
-- **文件描述符**:`writeFileDescriptor` 借助驱动的 fd 偏移数组,把一个打开的 FD"复制"到目标进程。SharedMemory/MemoryFile(基于 Ashmem,Anonymous Shared Memory,匿名共享内存)、图形缓冲区句柄、`ParcelFileDescriptor` 都建立在它之上
+- **binder 对象**：`writeStrongBinder`（即 1.2.3 分析的链路）把一个 Binder 实体放进 Parcel，驱动在传递时做"实体→引用"的翻译，接收方 `readStrongBinder` 得到 BinderProxy——1.2.6 中 getService 正是这样把服务的 binder 交给客户端的
+- **文件描述符**：`writeFileDescriptor` 借助驱动的 fd 偏移数组，把一个打开的 FD"复制"到目标进程。SharedMemory/MemoryFile（基于 Ashmem,Anonymous Shared Memory，匿名共享内存）、图形缓冲区句柄、`ParcelFileDescriptor` 都建立在它之上
 
-由此还可以理解**匿名 Binder**:binder 实体并非只能通过 ServiceManager 发布——任何 Parcel 都能携带它。典型例子是 `registerReceiver`:客户端把 `InnerReceiver`(LoadedApk.ReceiverDispatcher 的内部类)通过 `writeStrongBinder` 直接递给 AMS,这个 binder 服务从未在 SM 注册过,只有 AMS 拿得到它的引用。
+由此还可以理解**匿名 Binder**:binder 实体并非只能通过 ServiceManager 发布——任何 Parcel 都能携带它。典型例子是 `registerReceiver`：客户端把 `InnerReceiver`（LoadedApk.ReceiverDispatcher 的内部类）通过 `writeStrongBinder` 直接递给 AMS，这个 binder 服务从未在 SM 注册过，只有 AMS 拿得到它的引用。
 
-Parcel 未附带长度前缀的结构必须严格按写入顺序读出——这是跨版本接口兼容问题的根源之一(见 1.4)。
+Parcel 未附带长度前缀的结构必须严格按写入顺序读出——这是跨版本接口兼容问题的根源之一（见 1.4）。
 
-#### 3. 死亡通知:DeathRecipient
+#### 3. 死亡通知：DeathRecipient
 
 ```java
 // IBinder.java(节选)
@@ -602,19 +603,19 @@ binder.linkToDeath(new IBinder.DeathRecipient() {
 }, 0);   // flags=0,保留参数
 ```
 
-native 侧的落点正是 1.2.3 中挂在 BinderProxy `mOrgue` 字段上的 **DeathRecipientList**:`linkToDeath` 经 JNI 创建 JavaDeathRecipient 存入该 list,并向驱动发 `BC_REQUEST_DEATH_NOTIFICATION`;服务端进程退出时驱动投递死亡通知,native 层回调 `sendDeathNotification` → Java 层的 `binderDied`。三个实战要点:
+native 侧的落点正是 1.2.3 中挂在 BinderProxy `mOrgue` 字段上的 **DeathRecipientList**:`linkToDeath` 经 JNI 创建 JavaDeathRecipient 存入该 list，并向驱动发 `BC_REQUEST_DEATH_NOTIFICATION`；服务端进程退出时驱动投递死亡通知，native 层回调 `sendDeathNotification` → Java 层的 `binderDied`。三个实战要点：
 
-- `binderDied` 回调发生在 binder 线程,不能直接操作 UI
-- 服务端死后,该 BinderProxy 的后续 `transact` 抛 `DeadObjectException`(`RemoteException` 子类)
+- `binderDied` 回调发生在 binder 线程，不能直接操作 UI
+- 服务端死后，该 BinderProxy 的后续 `transact` 抛 `DeadObjectException`（`RemoteException` 子类）
 - 这是 AMS 感知应用进程死亡(AppDeathRecipient)、ServiceConnection 断线重连、`RemoteCallbackList` 自动清理失效监听者的共同基础
 
 #### 4. binder 线程池与同步调用代价
 
-每个使用 binder 的进程在首次打开 `/dev/binder` 时由 ProcessState 初始化线程池(默认上限 15 + 1 主 binder 线程)。两个推论:服务端并发 `onTransact` 占满线程池、且实现内部又同步调回正在等它的客户端时,会形成**跨进程死锁**;同步 `transact` 阻塞调用线程,在主线程做远程调用是 ANR 的经典成因。规避手段是 `FLAG_ONEWAY` 异步调用 + 回调接口(`RemoteCallbackList` 管理),这也是 AIDL 里 `oneway` 关键字的用途。
+每个使用 binder 的进程在首次打开 `/dev/binder` 时由 ProcessState 初始化线程池（默认上限 15 + 1 主 binder 线程）。两个推论：服务端并发 `onTransact` 占满线程池、且实现内部又同步调回正在等它的客户端时，会形成**跨进程死锁**；同步 `transact` 阻塞调用线程，在主线程做远程调用是 ANR 的经典成因。规避手段是 `FLAG_ONEWAY` 异步调用 + 回调接口（`RemoteCallbackList` 管理），这也是 AIDL 里 `oneway` 关键字的用途。
 
 ## 1.3 心系两界的 MessageQueue
 
-Android 2.3 以前,只有 Java 世界的居民有资格向 MessageQueue 添加消息;从 2.3 开始,**MessageQueue 的核心部分下移至 Native 层**,Native 世界也能利用消息循环处理自己世界的事情。从此 MessageQueue 心系 Native 和 Java 两个世界。
+Android 2.3 以前，只有 Java 世界的居民有资格向 MessageQueue 添加消息；从 2.3 开始，**MessageQueue 的核心部分下移至 Native 层**，Native 世界也能利用消息循环处理自己世界的事情。从此 MessageQueue 心系 Native 和 Java 两个世界。
 
 ### 1.3.1 MessageQueue 的创建
 
@@ -652,11 +653,11 @@ NativeMessageQueue::NativeMessageQueue() {
 }
 ```
 
-Native 的 Looper 是 Native 世界参与消息循环的重要角色。**它的类名与 Java 层的 Looper 类一样,但二者并无任何关系**。
+Native 的 Looper 是 Native 世界参与消息循环的重要角色。**它的类名与 Java 层的 Looper 类一样，但二者并无任何关系**。
 
-### 1.3.2 提取消息:next 与投递消息:enqueueMessage
+### 1.3.2 提取消息：next 与投递消息：enqueueMessage
 
-消息循环中,Looper 在循环里调用 `MessageQueue.next()` 提取消息,队列为空时 next 阻塞:
+消息循环中，Looper 在循环里调用 `MessageQueue.next()` 提取消息，队列为空时 next 阻塞：
 
 ```java
 // MessageQueue.java :: next(4.0 节选)
@@ -668,52 +669,45 @@ final Message next() {
         nativePollOnce(mPtr, nextPollTimeoutMillis);
         synchronized (this) {
             final long now = SystemClock.uptimeMillis();
-            Message prevMsg = null;
-            Message msg = mMessages;      // mMessages 是消息链表头
-            if (msg != null && msg.target == null) {
-                // 同步屏障:target 为 null 的消息是屏障,
-                // 跳过所有同步消息,找第一条异步消息
-                do { prevMsg = msg; msg = msg.next; }
-                while (msg != null && !msg.isAsynchronous());
-            }
+            final Message msg = mMessages;   // mMessages 用来存储消息,从中取一个处理
             if (msg != null) {
-                if (now < msg.when) {
-                    // 还没到执行时间:计算下次等待的时长
-                    nextPollTimeoutMillis = (int) Math.min(msg.when - now,
-                            Integer.MAX_VALUE);
-                } else {
-                    // 取出该消息,从链表摘除
+                final long when = msg.when;
+                if (now >= when) {
+                    // 到达执行时间:从链表头取出该消息返回给 Looper 派发
                     mBlocked = false;
-                    if (prevMsg != null) prevMsg.next = msg.next;
-                    else mMessages = msg.next;
+                    mMessages = msg.next;
                     msg.next = null;
                     msg.markInUse();
                     return msg;
+                } else {
+                    // 还没到执行时间:计算下次等待的时长
+                    nextPollTimeoutMillis = (int) Math.min(when - now,
+                            Integer.MAX_VALUE);
                 }
             } else {
                 nextPollTimeoutMillis = -1;   // 无消息,无限期阻塞
             }
-            if (mQuiting) { dispose(); return null; }
-            // 处理注册的 IdleHandler:队列空闲时做一些工作(如垃圾回收)
-            if (pendingIdleHandlerCount < 0)
-                pendingIdleHandlerCount = mIdleHandlers.size();
-            if (pendingIdleHandlerCount <= 0) {
-                mBlocked = true;      // 没有 IdleHandler,继续阻塞
-                continue;
-            }
-            ...... // 逐个执行 IdleHandler 的 queueIdle
+            ......
+            /*
+             * 处理注册的 IdleHandler:当 MessageQueue 中没有 Message 时,
+             * Looper 会调用 IdleHandler 做一些工作,例如垃圾回收。
+             * 原书提醒务必记住此处的处置逻辑,后面分析 Activity 启动时会用到
+             */
+            ......
+            pendingIdleHandlerCount = 0;
         }
-        pendingIdleHandlerCount = 0;
     }
 }
 ```
 
-这段代码引出两个问题:
+> 版本注意：4.0 的 next() 中没有同步屏障逻辑，`Message.isAsynchronous()` 与 `postSyncBarrier` 是后续版本引入的；4.0 中 target 为 null 的消息承担的是另一职责——退出队列，见下面 enqueueMessage 的第一个分支。
 
-- `nativePollOnce` 返回后,next 从 mMessages 中提取消息——要让 nativePollOnce 返回,至少要有一个消息进队,否则它就是做了一次无用功
-- Message 类和 Native 层没有建立任何关系,**nativePollOnce 到底在等什么?**
+这段代码引出两个问题：
 
-答案是:nativePollOnce 不仅等待 Java 层的 Message,**它还在 Native 层做了大量工作**(1.3.3 节展开)。先看 Java 层投递消息、触发它返回的路径:
+- `nativePollOnce` 返回后，next 从 mMessages 中提取消息——要让 nativePollOnce 返回，至少要有一个消息进队，否则它就是做了一次无用功
+- Message 类和 Native 层没有建立任何关系，**nativePollOnce 到底在等什么？**
+
+答案是：nativePollOnce 不仅等待 Java 层的 Message，**它还在 Native 层做了大量工作**（1.3.3 节展开）。先看 Java 层投递消息、触发它返回的路径：
 
 ```java
 // MessageQueue.java :: enqueueMessage(节选)
@@ -723,7 +717,12 @@ final boolean enqueueMessage(Message msg, long when) {
     synchronized (this) {
         if (mQuiting) {
             return false;
+        } else if (msg.target == null) {
+            // 4.0 中 target 为 null 的消息是退出信号:置 mQuiting,
+            // next() 检测到后返回 null,Looper 的循环随之结束
+            mQuiting = true;
         }
+    }
         msg.when = when;
         Message p = mMessages;
         if (p == null || when == 0 || when < p.when) {
@@ -751,7 +750,7 @@ final boolean enqueueMessage(Message msg, long when) {
 }
 ```
 
-小小的 `mBlocked` 是一个精致的优化细节:只有"线程真的睡了、且新消息成了链表头"才多花一次系统调用去唤醒。
+小小的 `mBlocked` 是一个精致的优化细节：只有"线程真的睡了、且新消息成了链表头"才多花一次系统调用去唤醒。
 
 ```cpp
 // android_os_MessageQueue.cpp(节选)
@@ -780,7 +779,7 @@ void Looper::wake() {
 }
 ```
 
-wake 函数非常简单:**向管道写端写入一个字符 "W"**,管道读端因有数据可读而从等待状态中醒来。
+wake 函数非常简单：**向管道写端写入一个字符 "W"**，管道读端因有数据可读而从等待状态中醒来。
 
 ### 1.3.3 nativePollOnce 与 epoll
 
@@ -801,32 +800,32 @@ inline int pollOnce(int timeoutMillis) {
 }
 ```
 
-四参数版 `pollOnce(int timeoutMillis, int* outFd, int* outEvents, void** outData)` 中:timeoutMillis 为 -1 表示无限等待直到有事件,为 0 表示立即返回;outFd/outEvents/outData 用于返回发生事件的文件描述符(file descriptor,文件句柄)、事件类型(可读/可写/错误/中断,由 epoll 事件转化而来)与用户上下文。返回值含义:
+四参数版 `pollOnce(int timeoutMillis, int* outFd, int* outEvents, void** outData)` 中：timeoutMillis 为 -1 表示无限等待直到有事件，为 0 表示立即返回；outFd/outEvents/outData 用于返回发生事件的文件描述符（file descriptor，文件句柄）、事件类型（可读/可写/错误/中断，由 epoll 事件转化而来）与用户上下文。返回值含义：
 
 | 返回值 | 含义 |
 |---|---|
-| `ALOOPER_POLL_WAKE` | 由 wake 函数触发,即管道写端的那次写事件 |
+| `ALOOPER_POLL_WAKE` | 由 wake 函数触发，即管道写端的那次写事件 |
 | `ALOOPER_POLL_TIMEOUT` | 等待超时 |
 | `ALOOPER_POLL_ERROR` | 等待过程中发生错误 |
 | `ALOOPER_POLL_CALLBACK` | 某个被监听的句柄被触发 |
 
 #### 1. epoll 基础知识
 
-epoll 是 Linux 平台上最高效的 I/O 复用机制,用法与 select/poll 类似,作用是在一个地方等待多个文件句柄的 I/O 事件:
+epoll 是 Linux 平台上最高效的 I/O 复用机制，用法与 select/poll 类似，作用是在一个地方等待多个文件句柄的 I/O 事件：
 
 ```c
 // epoll 工作流程示例(骨架)
-// ① epoll_create 创建 epoll 句柄;参数 10 是初始缓存大小,2.6.8 以后内核可动态扩展,已无实际意义
+// (1) epoll_create 创建 epoll 句柄;参数 10 是初始缓存大小,2.6.8 以后内核可动态扩展,已无实际意义
 int epollHandle = epoll_create(10);
 
-// ② epoll_ctl 把感兴趣的 fd 加入监听;事件有 EPOLLIN/EPOLLOUT/EPOLLERR/EPOLLHUP 四类
+// (2) epoll_ctl 把感兴趣的 fd 加入监听;事件有 EPOLLIN/EPOLLOUT/EPOLLERR/EPOLLHUP 四类
 struct epoll_event listenEvent;
 listenEvent.events = EPOLLIN;          // 只监听可读事件
 listenEvent.data.fd = listener;        // data 联合体携带上下文数据
 // EPOLL_CTL_ADD 加入,EPOLL_CTL_DEL 移除,EPOLL_CTL_MOD 修改监听事件
 epoll_ctl(epollHandle, EPOLL_CTL_ADD, listener, &listenEvent);
 
-// ③ epoll_wait 等待事件
+// (3) epoll_wait 等待事件
 struct epoll_event resultEvents[10];
 while (1) {
     int nfds = epoll_wait(epollHandle, resultEvents, 10, timeout);
@@ -835,9 +834,9 @@ while (1) {
 }
 ```
 
-epoll 为什么比 select 高效?调用方法上,每次调 select 都要把感兴趣的事件复制到内核,而 **epoll 只在 epoll_ctl 加入时复制一次**;数据结构上,epoll 内部用红黑树保存事件,查找快,而 select 用数组,一次能等待的句柄个数有限且查找慢。另外 epoll 的触发有水平触发与边缘触发(EPOLLET,Edge Trigger)两种条件,细节可 `man epoll`。
+epoll 为什么比 select 高效？调用方法上，每次调 select 都要把感兴趣的事件复制到内核，而 **epoll 只在 epoll_ctl 加入时复制一次**；数据结构上，epoll 内部用红黑树保存事件，查找快，而 select 用数组，一次能等待的句柄个数有限且查找慢。另外 epoll 的触发有水平触发与边缘触发(EPOLLET,Edge Trigger)两种条件，细节可 `man epoll`。
 
-> 原书留了一个思考题:为什么 Android 用 pipe 做线程间通讯?写端写入的数据读端并不感兴趣,只是为了唤醒——POSIX 不是也有线程同步函数吗?关键在于**唤醒的目标是 `epoll_wait`,只有 fd 事件能同时唤醒它并与超时机制统一在一个等待点上**,互斥锁/条件变量无法参与 I/O 多路复用。
+> 原书留了一个思考题：为什么 Android 用 pipe 做线程间通讯？写端写入的数据读端并不感兴趣，只是为了唤醒——POSIX 不是也有线程同步函数吗？关键在于**唤醒的目标是 `epoll_wait`，只有 fd 事件能同时唤醒它并与超时机制统一在一个等待点上**，互斥锁/条件变量无法参与 I/O 多路复用。
 
 #### 2. pollOnce 与 pollInner 分析
 
@@ -867,7 +866,7 @@ int Looper::pollOnce(int timeoutMillis, int* outFd, int* outEvents, void** outDa
 }
 ```
 
-真正的重头戏在 `pollInner`(去掉调试和统计代码):
+真正的重头戏在 `pollInner`（去掉调试和统计代码）：
 
 ```cpp
 // Looper.cpp :: Looper::pollInner(节选)
@@ -975,16 +974,16 @@ Done: ;
 }
 ```
 
-pollInner 的关键流程:
+pollInner 的关键流程：
 
-1. 先计算真正需要等待的时间(综合调用方超时与 Native Message 的到期时间)
-2. `epoll_wait` 等待;返回后有三种情况——错误/超时直接 goto Done;有事件则逐个处理
-3. 事件分类:**管道读端有事件是控制命令,直接读走清空;其他 fd 的事件根据 Request 构造 Response,压入 mResponses 数组**
-4. Done 处依次处理:先 Native Message(调 Native Handler 的 handleMessage),再处理带 callback 的 Response
+1. 先计算真正需要等待的时间（综合调用方超时与 Native Message 的到期时间）
+2. `epoll_wait` 等待；返回后有三种情况——错误/超时直接 goto Done；有事件则逐个处理
+3. 事件分类：**管道读端有事件是控制命令，直接读走清空；其他 fd 的事件根据 Request 构造 Response，压入 mResponses 数组**
+4. Done 处依次处理：先 Native Message（调 Native Handler 的 handleMessage），再处理带 callback 的 Response
 
-#### 3. 添加监控请求:addFd 与 Request/Response
+#### 3. 添加监控请求：addFd 与 Request/Response
 
-mRequests 的真实用户是 Native 代码,例如 NativeActivity:
+mRequests 的真实用户是 Native 代码，例如 NativeActivity:
 
 ```cpp
 // android_app_NativeActivity.cpp :: loadNativeCode_native(节选)
@@ -1047,11 +1046,11 @@ int Looper::addFd(int fd, int ident, int events,
 }
 ```
 
-事件发生后,`pushResponse(events, request)` 只是简单地把"所发生的事情 + 对应的 Request"打包成 Response 存进 mResponses,**等 Native Message 处理完之后再统一处理**——这表明在处理逻辑上 Native Message 的优先级高于监控 fd 的优先级。
+事件发生后，`pushResponse(events, request)` 只是简单地把"所发生的事情 + 对应的 Request"打包成 Response 存进 mResponses，**等 Native Message 处理完之后再统一处理**——这表明在处理逻辑上 Native Message 的优先级高于监控 fd 的优先级。
 
 #### 4. Native 的 sendMessage
 
-Android 2.2 中只有 Java 层能 sendMessage;从 4.0 开始 Native 层也支持了:
+Android 2.2 中只有 Java 层能 sendMessage；从 4.0 开始 Native 层也支持了：
 
 ```cpp
 // Looper.cpp(节选)
@@ -1085,7 +1084,7 @@ void Looper::sendMessageAtTime(nsecs_t uptime,
 }
 ```
 
-与 Java 层 enqueueMessage 的设计如出一辙:按时间插入 + 只在队头变化时唤醒。
+与 Java 层 enqueueMessage 的设计如出一辙：按时间插入 + 只在队头变化时唤醒。
 
 ### 1.3.4 MessageQueue 总结
 
@@ -1106,68 +1105,68 @@ graph TD
     end
 ```
 
-- Java 层提供 Looper 与 MessageQueue 类:Looper 提供循环处理消息的机制,MessageQueue 提供消息队列及插入、删除、提取消息的函数接口;Handler 是 Java 层常用的投递入口
+- Java 层提供 Looper 与 MessageQueue 类：Looper 提供循环处理消息的机制，MessageQueue 提供消息队列及插入、删除、提取消息的函数接口；Handler 是 Java 层常用的投递入口
 - MessageQueue 内部通过 `mPtr` 保存 Native 层的 NativeMessageQueue,`mMessages` 保存来自 Java 层的 Message
-- NativeMessageQueue 保存一个 Native 的 Looper,提供 pollOnce 与 addFd 等函数
-- Java 层有 Message 和 Handler 类;Native 层对应也有 Message 类和 MessageHandler 抽象类(编码时一般用其派生类 WeakMessageHandler)
+- NativeMessageQueue 保存一个 Native 的 Looper，提供 pollOnce 与 addFd 等函数
+- Java 层有 Message 和 Handler 类；Native 层对应也有 Message 类和 MessageHandler 抽象类（编码时一般用其派生类 WeakMessageHandler）
 
-> 注意:include/media/stagefright/foundation 目录下还定义了一个 ALooper 类,供 stagefright 使用——这种同名类的产生,估计是两个事先未做交流的 Group 的人写的。
+> 注意：include/media/stagefright/foundation 目录下还定义了一个 ALooper 类，供 stagefright 使用——这种同名类的产生，估计是两个事先未做交流的 Group 的人写的。
 
 #### 2. 处理优先级与一个经典疑惑
 
-MessageQueue 核心逻辑下移 Native 层后,处理范围极大拓展:
+MessageQueue 核心逻辑下移 Native 层后，处理范围极大拓展：
 
 | 优先级 | 处理对象 | 说明 |
 |---|---|---|
-| 1 | Native Message | mMessageEnvelopes 中到期的消息,由 Native MessageHandler 处理 |
-| 2 | Native Request(fd 事件) | mRequests 监控的句柄事件,由 addFd 注册的 callback 处理 |
-| 3 | Java Message | 回到 Java 层 next(),从 mMessages 取出交给 Handler |
+| 1 | Native Message | mMessageEnvelopes 中到期的消息，由 Native MessageHandler 处理 |
+| 2 | Native Request（fd 事件） | mRequests 监控的句柄事件，由 addFd 注册的 callback 处理 |
+| 3 | Java Message | 回到 Java 层 next()，从 mMessages 取出交给 Handler |
 
-原书记录了一个经典疑惑:**"CPU 并不忙,为什么 sendMessage 的消息很久后才执行?"** 对只了解 Java 层的开发者来说这个问题无法回答——因为 Native 层可能正在处理一个 Native Message 或一个耗时的 fd 回调,而 Java 的调用堆栈又打印不出 Native 层的活动。理解 MessageQueue 必须心系两界。
+原书记录了一个经典疑惑：**"CPU 并不忙，为什么 sendMessage 的消息很久后才执行？"** 对只了解 Java 层的开发者来说这个问题无法回答——因为 Native 层可能正在处理一个 Native Message 或一个耗时的 fd 回调，而 Java 的调用堆栈又打印不出 Native 层的活动。理解 MessageQueue 必须心系两界。
 
 #### 3. Looper 与 Handler 的关系补充
 
-三者职责:
+三者职责：
 
-- **Looper**:`prepare()` 用 `ThreadLocal` 把 Looper 与当前线程绑定,一个线程只有一个 MessageQueue;`loop()` 是死循环,不断调 `MessageQueue.next()` 取消息,没有消息时阻塞在 native 层的 epoll 上。主线程的 Looper 由 `Looper.prepareMainLooper()` 预先创建(ActivityThread.main 里)
-- **Handler**:发送与处理的统一入口,`sendMessage`/`post` 最终都调 `enqueueMessage`;处理时按消息的 target(即发送它的 Handler)回调
-- **MessageQueue**:按 when(uptimeMillis)排序的单链表,头节点最早到期
+- **Looper**:`prepare()` 用 `ThreadLocal` 把 Looper 与当前线程绑定，一个线程只有一个 MessageQueue;`loop()` 是死循环，不断调 `MessageQueue.next()` 取消息，没有消息时阻塞在 native 层的 epoll 上。主线程的 Looper 由 `Looper.prepareMainLooper()` 预先创建（ActivityThread.main 里）
+- **Handler**：发送与处理的统一入口，`sendMessage`/`post` 最终都调 `enqueueMessage`；处理时按消息的 target（即发送它的 Handler）回调
+- **MessageQueue**：按 when(uptimeMillis)排序的单链表，头节点最早到期
 
-主线程 Looper.loop() 是死循环却不清 CPU,因为**阻塞发生在内核的 epoll_wait 上,线程处于睡眠态**。`Handler.dispatchMessage` 的分发优先级固定:①`msg.callback`(post 的 Runnable)直接执行;②`mCallback`(Handler.Callback)返回 true 则截断;③才走 `handleMessage`。
+主线程 Looper.loop() 是死循环却不清 CPU，因为**阻塞发生在内核的 epoll_wait 上，线程处于睡眠态**。`Handler.dispatchMessage` 的分发优先级固定：(1)`msg.callback`（post 的 Runnable）直接执行；(2)`mCallback`(Handler.Callback)返回 true 则截断；(3)才走 `handleMessage`。
 
 #### 4. Message 的回收与复用
 
-Message 内部维护 `sPool`(MAX_POOL_SIZE = 50 的单链表空闲池):`obtain()` 优先从池头取,`recycle()` 清空字段后挂回池头(消息被 Looper 消费后由框架自动调用)。这就是"尽量用 `Message.obtain()` 而不是 `new Message()`"建议的由来。回收后字段全部清零,**recycle 之后继续持有/读取该 Message 是未定义行为**。
+Message 内部维护 `sPool`（MAX_POOL_SIZE = 50 的单链表空闲池）：`obtain()` 优先从池头取，`recycle()` 清空字段后挂回池头（消息被 Looper 消费后由框架自动调用）。这就是"尽量用 `Message.obtain()` 而不是 `new Message()`"建议的由来。回收后字段全部清零，**recycle 之后继续持有/读取该 Message 是未定义行为**。
 
-#### 5. 串起两界:主线程的消息从哪来
+#### 5. 串起两界：主线程的消息从哪来
 
-把 1.2 与 1.3 串起来看 ActivityThread:AMS 通过 ApplicationThread(IApplicationThread,App 进程暴露给 system_server 的 Binder 服务端)驱动四大组件生命周期,ApplicationThread 的每个方法都把参数打包成 message 发到主线程 mH(Handler),最终在主线程 Looper.loop() 里执行——**"AMS 远程调用 Binder + Handler 线程切换"是整个 Framework 的基础范式**:Binder 负责"跨进程把调用送达本进程的 binder 线程",MessageQueue 负责"把工作从 binder 线程转投到主线程"。
+把 1.2 与 1.3 串起来看 ActivityThread:AMS 通过 ApplicationThread（IApplicationThread,App 进程暴露给 system_server 的 Binder 服务端）驱动四大组件生命周期，ApplicationThread 的每个方法都把参数打包成 message 发到主线程 mH(Handler)，最终在主线程 Looper.loop() 里执行——**"AMS 远程调用 Binder + Handler 线程切换"是整个 Framework 的基础范式**：Binder 负责"跨进程把调用送达本进程的 binder 线程"，MessageQueue 负责"把工作从 binder 线程转投到主线程"。
 
-## 1.4 后续演进:4.0 机制 vs 现代 Android
+## 1.4 后续演进：4.0 机制 vs 现代 Android
 
-本章两个主角在 2012 年后的演化方向截然不同:MessageQueue 的**语义原封不动地活到今天**,Binder 则经历了几次结构性翻新。逐项对比:
+本章两个主角在 2012 年后的演化方向截然不同：MessageQueue 的**语义原封不动地活到今天**，Binder 则经历了几次结构性翻新。逐项对比：
 
-### Binder:从"系统内部私有 RPC"到"版本化公共契约"
+### Binder：从"系统内部私有 RPC"到"版本化公共契约"
 
-| 维度 | Android 4.0(原书) | 现代 Android(12~15) | 展开说明 |
+| 维度 | Android 4.0（原书） | 现代 Android(12~15) | 展开说明 |
 |---|---|---|---|
-| 服务命名 | servicemanager 字符串表,任何人可 addService | 按域名分区(manager、activity…),非特权进程无法注册 | servicemanager 在 Android 8~9 被 C++ 重写,注册方受 SELinux 与 binder.call 约束;Java 层 ServiceManager API 形态未变,但应用基本只能 getService 不能 addService |
-| 接口稳定性 | 内部 AIDL,随系统版本随意改,应用不得直接用 | Stable AIDL(aidl_interface),带版本号(@1/@2)可跨大版本演进 | Treble 的核心:vendor 与 system 分区独立升级,二者间 binder 调用必须版本化。Stable AIDL 的 Parcel 写入带类型/版本前缀,新增字段不破坏老客户端——直接回应 1.2.7 说的"顺序读写的脆弱性" |
-| NDK 支持 | 无,应用只能 Java Binder | NDK stable AIDL(binder_ndk)、Rust 后端 | 同一接口可由 C++/Rust/Java 三端实现 |
-| 线程池 | 15+1,静态 | 仍是 15+1 上限,但引入优先级继承、同步 transaction 实验支持 | Android 15 的 Binder Mailbox 允许内核排队同步请求,缓解 binder 线程耗尽死锁 |
-| Parcel | obtain/recycle 对象池 | 池已删除,obtain 退化为 new | recycle() 变为空操作,业务代码的 obtain/recycle 配对负担消失;内存靠 ART GC |
-| 死亡通知 | DeathRecipient | 语义不变,另有 binder.dump/shell 命令管道 | RemoteCallbackList 仍是标准用法,机制与 4.0 一致 |
+| 服务命名 | servicemanager 字符串表，任何人可 addService | 按域名分区(manager、activity…)，非特权进程无法注册 | servicemanager 在 Android 8~9 被 C++ 重写，注册方受 SELinux 与 binder.call 约束；Java 层 ServiceManager API 形态未变，但应用基本只能 getService 不能 addService |
+| 接口稳定性 | 内部 AIDL，随系统版本随意改，应用不得直接用 | Stable AIDL(aidl_interface)，带版本号(@1/@2)可跨大版本演进 | Treble 的核心：vendor 与 system 分区独立升级，二者间 binder 调用必须版本化。Stable AIDL 的 Parcel 写入带类型/版本前缀，新增字段不破坏老客户端——直接回应 1.2.7 说的"顺序读写的脆弱性" |
+| NDK 支持 | 无，应用只能 Java Binder | NDK stable AIDL(binder_ndk)、Rust 后端 | 同一接口可由 C++/Rust/Java 三端实现 |
+| 线程池 | 15+1，静态 | 仍是 15+1 上限，但引入优先级继承、同步 transaction 实验支持 | Android 15 的 Binder Mailbox 允许内核排队同步请求，缓解 binder 线程耗尽死锁 |
+| Parcel | obtain/recycle 对象池 | 池已删除，obtain 退化为 new | recycle() 变为空操作，业务代码的 obtain/recycle 配对负担消失；内存靠 ART GC |
+| 死亡通知 | DeathRecipient | 语义不变，另有 binder.dump/shell 命令管道 | RemoteCallbackList 仍是标准用法，机制与 4.0 一致 |
 
-### MessageQueue / Handler:API 换壳,内核不变
+### MessageQueue / Handler：API 换壳，内核不变
 
 | 维度 | Android 4.0 | 现代 Android | 展开说明 |
 |---|---|---|---|
-| 阻塞实现 | pipe + epoll | eventfd + epoll(5.0 起) | eventfd 比 pipe 省一个 FD、无缓冲区语义,nativeWake 写 8 字节即可唤醒 |
-| Handler 构造 | new Handler() 隐式绑当前线程 Looper | new Handler(Looper.getMainLooper()) 必须显式传;Handler.createAsync() | Android 11 废弃隐式构造(易绑错线程);createAsync 发出的消息天然异步,配合同步屏障使用更安全 |
-| 同步屏障 API | MessageQueue.postSyncBarrier 隐藏 | 仍 @hide,但 Handler.createAsync + ViewRootImpl 内部用法延续 | Choreographer 的 doFrame 抢占机制至今没变,面试高频 |
-| 消息池 | 50 条链表 | 相同(sPool 仍在) | ART 分配便宜后,obtain 的收益变小但保留 |
-| 观测手段 | Looper.setMessageLogging | Perfetto 的 Handler 跟踪、Looper trace 点 | setMessageLogging 每条消息两行字符串拼接,本身拖慢队列,已被系统 trace 取代 |
-| Native 层消息 | Native Message/fd 监控混在同一线程等待点 | 模型不变,输入系统仍靠 addFd 监控输入设备 | 1.3.3 的 pollInner 结构(计算超时→epoll_wait→Native Message→fd 回调)延续至今 |
-| 消息级别的异步化扩展 | 无 | MessageQueue 增加 idle、barrier 的可观测事件(IoBootTest 等内部钩子) | 上层趋势是 ViewModel 协程化,但**所有 UI 仍最终回到主线程 MessageQueue 执行**,Looper/Handler 模型未被替代 |
+| 阻塞实现 | pipe + epoll | eventfd + epoll（5.0 起） | eventfd 比 pipe 省一个 FD、无缓冲区语义，nativeWake 写 8 字节即可唤醒 |
+| Handler 构造 | new Handler() 隐式绑当前线程 Looper | new Handler(Looper.getMainLooper()) 必须显式传；Handler.createAsync() | Android 11 废弃隐式构造（易绑错线程）；createAsync 发出的消息天然异步，配合同步屏障使用更安全 |
+| 同步屏障 API | 无（4.0 尚未引入同步屏障，见 1.3.2 的版本注意） | postSyncBarrier 仍 @hide，但 Handler.createAsync + ViewRootImpl 内部用法延续 | Choreographer 的 doFrame 抢占机制至今没变，面试高频 |
+| 消息池 | 50 条链表 | 相同（sPool 仍在） | ART 分配便宜后，obtain 的收益变小但保留 |
+| 观测手段 | Looper.setMessageLogging | Perfetto 的 Handler 跟踪、Looper trace 点 | setMessageLogging 每条消息两行字符串拼接，本身拖慢队列，已被系统 trace 取代 |
+| Native 层消息 | Native Message/fd 监控混在同一线程等待点 | 模型不变，输入系统仍靠 addFd 监控输入设备 | 1.3.3 的 pollInner 结构（计算超时→epoll_wait→Native Message→fd 回调）延续至今 |
+| 消息级别的异步化扩展 | 无 | MessageQueue 增加 idle、barrier 的可观测事件（IoBootTest 等内部钩子） | 上层趋势是 ViewModel 协程化，但**所有 UI 仍最终回到主线程 MessageQueue 执行**，Looper/Handler 模型未被替代 |
 
-一句话总结:写应用时,第 1.2 节的 Binder 心智模型(Stub/Proxy、DeathRecipient、同进程优化)今天完全适用,但 API 层要按新签名写;第 1.3 节的 MessageQueue 原理(epoll 阻塞、两界消息、分发优先级)几乎是 Android 史上最稳定的部分,值得原样掌握。
+一句话总结：写应用时，第 1.2 节的 Binder 心智模型（Stub/Proxy、DeathRecipient、同进程优化）今天完全适用，但 API 层要按新签名写；第 1.3 节的 MessageQueue 原理（epoll 阻塞、两界消息、分发优先级）几乎是 Android 史上最稳定的部分，值得原样掌握。

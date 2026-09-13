@@ -12,7 +12,7 @@ Binder 是 Android 提供的 IPC（Inter-Process Communication，进程间通信
 
 基于 Binder 的 C/S 架构中，除 Client 与 Server 外还有一个全局的 ServiceManager，负责管理系统中的各种服务：
 
-![](./images/ch0078_img01.jpg)
+![](./images/ch0078_img01.jpg) ':width=600'
 
 注意一个 Server 进程可以注册多个 Service，后面分析的 MediaServer 就一次注册了四个服务。由图可得四条结论：
 
@@ -182,7 +182,7 @@ sp<IBinder> ProcessState::getStrongProxyForHandle(int32_t handle)
 
 BpBinder 有个孪生兄弟 BBinder，二者都是 Binder 通信的代表，都从 IBinder 派生：
 
-![](./images/ch0082_img01.jpg)
+![](./images/ch0082_img01.jpg) ':width=600'
 
 - **BpBinder 是客户端用来与 Server 交互的代理类**，p 即 Proxy 的意思；**BBinder 是与 Proxy 相对的一端**，代表服务端
 - BpBinder 与 BBinder 一一对应：绝不希望 BpBinderA 发出的请求由 BBinderB 处理
@@ -270,7 +270,7 @@ IServiceManager::asInterface(const android::sp<android::IBinder>& obj)
 
 #### 6.IServiceManager 家族：业务与通信的挂接
 
-![](./images/ch0082_img02.jpg)
+![](./images/ch0082_img02.jpg) ':width=600'
 
 要点：IServiceManager、BpServiceManager、BnServiceManager 都与业务逻辑相关；**BnServiceManager 同时从 IServiceManager 和 BBinder 派生**，可直接参与 Binder 通信；BpServiceManager 从 BpInterface 派生，这条分支乍看与 BpBinder 无关；BnServiceManager 是虚类，业务函数需子类实现——但源码里并没有它的子类（1.3 节揭晓原因）。
 
@@ -638,7 +638,7 @@ void IPCThreadState::joinThreadPool(bool isMain)
 
 以 MediaServer 为例的机制分析到此完整了，用一张图收束，再次强调 Binder 通信与业务之间的关系：
 
-![](./images/ch0085_img01.jpg)
+![](./images/ch0085_img01.jpg) ':width=600'
 
 1. **Binder 是通信机制**
 2. **业务可以基于 Binder 通信，也可以使用别的 IPC 方式**
@@ -906,7 +906,7 @@ sp<IMediaPlayerService> IMediaDeathNotifier::getMediaPlayerService()
 
 以 MediaPlayerService 为例梳理派生关系：
 
-![](./images/ch0092_img01.jpg)
+![](./images/ch0092_img01.jpg) ':width=600'
 
 与 IServiceManager 家族同构：MediaPlayerService 从 BnMediaPlayerService 派生实现业务函数，BpMediaPlayerService 从 BpInterface\<IMediaPlayerService\> 派生供客户端使用。
 
@@ -968,7 +968,7 @@ CHECK_INTERFACE 宏校验请求包头的 descriptor 与本接口是否匹配（�
 
 ServiceManager 处理完 listServices 把结果写回驱动，那么 MS 中**哪个线程会收到回复**？
 
-![](./images/ch0094_img01.jpg)
+![](./images/ch0094_img01.jpg) ':width=600'
 
 当然是调用 listServices 的那个线程。为什么这样设计？假如让线程 1 或线程 2 收到回复，它们还得去唤醒线程 3——线程的等待、唤醒、切换会浪费不少时间片，而且代码逻辑会极其复杂（可对比 socket：同一时刻多个线程操作同一个 socket 的读写，数据就乱了）。**Binder 驱动把发起请求的线程牢牢拴在这次事务上，收到回复才放它离开——发起线程与回复一一对应，极大简化了用户态代码的处理逻辑。**另外，executeCommand 中 BR_SPAWN_LOOPER 分支用于按驱动指示新建线程参与通信：驱动什么时候发这个命令，需要读驱动实现才能确认。
 

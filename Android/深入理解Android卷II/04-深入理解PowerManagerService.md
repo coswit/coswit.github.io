@@ -33,12 +33,12 @@ PMS 由 SystemServer 的 ServerThread 线程创建，关键调用点如下：
 
 ```java
 // SystemServer.java :: ServerThread 的 run 函数（节选）
-power = new PowerManagerService();                       // ① 创建 PMS 对象
-ServiceManager.addService(Context.POWER_SERVICE, power); // ② 注册到 ServiceManager
-power.init(context, lights, ActivityManagerService.self(), battery); // ③ 初始化
+power = new PowerManagerService();                       // (1) 创建 PMS 对象
+ServiceManager.addService(Context.POWER_SERVICE, power); // (2) 注册到 ServiceManager
+power.init(context, lights, ActivityManagerService.self(), battery); // (3) 初始化
 ......
-power.systemReady();                                     // ④ 系统就绪
-// ⑤ 收到 ACTION_BOOT_COMPLETED 广播后执行 bootCompleted（见 4.2.4）
+power.systemReady();                                     // (4) 系统就绪
+// (5) 收到 ACTION_BOOT_COMPLETED 广播后执行 bootCompleted（见 4.2.4）
 ```
 
 ### 4.2.1 PMS 构造函数分析
@@ -46,13 +46,13 @@ power.systemReady();                                     // ④ 系统就绪
 ```java
 // PowerManagerService.java :: 构造函数（骨架）
 PowerManagerService() {
-    MY_UID = Process.myUid();     // ① 记录 SystemServer 进程的 uid/pid，供后续判断使用
+    MY_UID = Process.myUid();     // (1) 记录 SystemServer 进程的 uid/pid，供后续判断使用
     MY_PID = Process.myPid();
-    // ② 设置 lastUserActivity 超时时间为一周——该值并无业务含义，
+    // (2) 设置 lastUserActivity 超时时间为一周——该值并无业务含义，
     //    只是取一个足够大的数，避免内核提前"过期"该时间戳
     Power.setLastUserActivityTimeout(7 * 24 * 3600 * 1000L);
-    mUserState = mPowerState = 0; // ③ 两个核心状态变量清零（含义见 4.3.4）
-    // ④ 加入 Watchdog 监控：PMS 若被锁死，Watchdog 会重启系统
+    mUserState = mPowerState = 0; // (3) 两个核心状态变量清零（含义见 4.3.4）
+    // (4) 加入 Watchdog 监控：PMS 若被锁死，Watchdog 会重启系统
     Watchdog.getInstance().addMonitor(this);
 }
 ```
@@ -67,19 +67,22 @@ init 的工作分三个阶段。
 
 ```java
 // PowerManagerService.java :: init（之一，节选）
-public void init(Context context, LightsService ls,
-        IActivityManager activityManagerService,
-        IBatteryService batteryService) {
-    // 四个 Light 对象来自 LightsService，分别对应背光/按键灯/键盘灯/提示灯
-    mLcdLight = ls.getLight(LightsService.LIGHT_ID_BACKLIGHT);
-    mButtonLight = ls.getLight(LightsService.LIGHT_ID_BUTTONS);
-    mKeyboardLight = ls.getLight(LightsService.LIGHT_ID_KEYBOARD);
-    mAttentionLight = ls.getLight(LightsService.LIGHT_ID_ATTENTION);
+void init(Context context, LightsService lights, IActivityManager activity,
+        BatteryService battery) {
+    // (1) 保存服务引用
+    mLightsService = lights;
     mContext = context;
-    mActivityService = activityManagerService;  // 和 AMS 交互（wakingUp/goingToSleep）
-    mBatteryService = batteryService;           // 获取电源状态（插拔、电量）
+    mActivityService = activity;                // 和 AMS 交互（wakingUp/goingToSleep）
     mBatteryStats = BatteryStatsService.getService(); // 耗电统计
-    nativeInit();                               // JNI 层初始化
+    mBatteryService = battery;                  // 获取电源状态（插拔、电量）
+    // (2) 从 LightsService 获取代表不同硬件 Light 的 Light 对象
+    //     （背光/按键灯/键盘灯/提示灯）
+    mLcdLight = lights.getLight(LightsService.LIGHT_ID_BACKLIGHT);
+    mButtonLight = lights.getLight(LightsService.LIGHT_ID_BUTTONS);
+    mKeyboardLight = lights.getLight(LightsService.LIGHT_ID_KEYBOARD);
+    mAttentionLight = lights.getLight(LightsService.LIGHT_ID_ATTENTION);
+    // (3) 调用 nativeInit 初始化 Native 层
+    nativeInit();
     synchronized (mLocks) {
         updateNativePowerStateLocked();         // 更新 Native 层保存的电源状态
     }
@@ -131,23 +134,30 @@ initInThread 做三方面工作：
 ```java
 // PowerManagerService.java :: initInThread（节选）
 private void initInThread() {
-    mH = new Handler();                       // 基于 mHandlerThread 的 Looper
-    // ① 注册三个广播
-    IntentFilter filter = new IntentFilter();
-    filter.addAction(Intent.ACTION_BATTERY_CHANGED);   // 电池变化
-    filter.addAction(Intent.ACTION_BOOT_COMPLETED);    // 开机完成
-    filter.addAction(Intent.ACTION_DOCK_EVENT);        // 插拔底座
-    mContext.registerReceiver(mReceiver, filter);
-    // ② 读取配置参数（config.xml 与 Settings 数据库，见下表）
-    // ③ 创建两个通知 Intent——注意都带 FLAG_RECEIVER_REGISTERED_ONLY，
-    //    即只发给动态注册的接收者（manifest 静态接收者收不到 SCREEN_ON/OFF）
+    mHandler = new Handler();                   // 基于 mHandlerThread 的 Looper
+    // (1) 创建 PMS 内部使用的 WakeLock（如发送亮灭屏广播时防止中途休眠的
+    //     mBroadcastWakeLock），类型为 UnsynchronizedWakeLock——
+    //     因为 PMS 的调用本身已处于 mLocks 锁保护下，内部无需再同步
+    mBroadcastWakeLock = new UnsynchronizedWakeLock(
+            PowerManager.PARTIAL_WAKE_LOCK, "sleep_broadcast", true);
+    // (2) 创建广播通知的 Intent——注意都带 FLAG_RECEIVER_REGISTERED_ONLY，
+    //     即只发给动态注册的接收者（manifest 静态接收者收不到 SCREEN_ON/OFF）
     mScreenOnIntent = new Intent(Intent.ACTION_SCREEN_ON);
     mScreenOnIntent.addFlags(Intent.FLAG_RECEIVER_REGISTERED_ONLY);
     mScreenOffIntent = new Intent(Intent.ACTION_SCREEN_OFF);
     mScreenOffIntent.addFlags(Intent.FLAG_RECEIVER_REGISTERED_ONLY);
-    // ④ 创建 PMS 内部使用的 WakeLock（如发送亮灭屏广播时防止中途休眠的
-    //    mBroadcastWakeLock），类型为 UnsynchronizedWakeLock——
-    //    因为 PMS 的调用本身已处于 mLocks 锁保护下，内部无需再同步
+    // (3) 注册三个广播接收器（各自独立的 Receiver）
+    IntentFilter filter = new IntentFilter();
+    filter.addAction(Intent.ACTION_BATTERY_CHANGED);   // 电池变化
+    mContext.registerReceiver(new BatteryReceiver(), filter);
+    filter = new IntentFilter();
+    filter.addAction(Intent.ACTION_BOOT_COMPLETED);    // 开机完成
+    mContext.registerReceiver(new BootCompletedReceiver(), filter);
+    filter = new IntentFilter();
+    filter.addAction(Intent.ACTION_DOCK_EVENT);        // 插拔底座
+    mContext.registerReceiver(new DockReceiver(), filter);
+    // (4) 读取配置参数（config.xml 与 Settings 数据库，见下表）；
+    //     Settings 数据库经 ContentQueryMap + SettingsObserver 监视变化
     ...
 }
 ```
@@ -175,11 +185,13 @@ init 末尾再次调用 nativeInit 与 updateNativePowerStateLocked（原书怀�
 ```java
 // PowerManagerService.java :: forceUserActivityLocked（骨架）
 private void forceUserActivityLocked() {
-    if (mBootCompleted) {
-        mUserActivityAllowed = true;    // 临时放开限制，为调用 userActivity 扫清障碍
-        userActivity(SystemClock.uptimeMillis(), false);
-        mUserActivityAllowed = false;   // 用完立刻恢复
+    if (isScreenTurningOffLocked()) {
+        mScreenBrightness.animating = false; // (1) 打断可能正在进行的关屏渐暗动画
     }
+    boolean savedActivityAllowed = mUserActivityAllowed;
+    mUserActivityAllowed = true;             // (2) 临时放开限制，为调用 userActivity 扫清障碍
+    userActivity(SystemClock.uptimeMillis(), false);
+    mUserActivityAllowed = savedActivityAllowed; // (3) 用完立刻恢复原值
 }
 ```
 
@@ -199,18 +211,25 @@ private void forceUserActivityLocked() {
 // PowerManagerService.java :: systemReady（骨架）
 public void systemReady() {
     synchronized (mLocks) {
-        // ① 创建 SensorManager，注意 Looper 用的是 mHandlerThread 的
+        // (1) 创建 SensorManager，注意 Looper 用的是 mHandlerThread 的
         mSensorManager = new SensorManager(mHandlerThread.getLooper());
         // 获取接近传感器（打电话时贴脸灭屏用）
         mProximitySensor = mSensorManager.getDefaultSensor(Sensor.TYPE_PROXIMITY);
         // 若启用软件自动亮度，再获取光传感器
         ...
-        // ② 点亮屏幕和键盘灯——开机流程走到这里，屏幕、按键灯全部打开
-        setPowerState(SCREEN_BRIGHT | SCREEN_BUTTON_BRIGHT);
+        // (2) 点亮屏幕和键盘灯——开机流程走到这里屏幕、按键灯全部打开。
+        //    原书分两支：启用软件自动亮度时只设 SCREEN_BRIGHT（亮度交给光传感器调节），
+        //    否则设 ALL_BRIGHT（屏幕、按键灯、键盘灯全开）
+        if (mUseSoftwareAutoBrightness) {
+            setPowerState(SCREEN_BRIGHT);
+        } else {
+            setPowerState(ALL_BRIGHT);
+        }
         mDoneBooting = true;
+        enableLightSensorLocked(mUseSoftwareAutoBrightness && mAutoBrightessEnabled);
         ...
-        // ③ 通知 BSS：屏幕已开、当前亮度是多少（耗电统计从开机第一秒就开始）
-        mBatteryStats.noteScreenBrightness(getScreenBrightnessMode()?...);
+        // (3) 通知 BSS：当前亮度是多少、屏幕已开（耗电统计从开机第一秒就开始）
+        mBatteryStats.noteScreenBrightness(getPreferredBrightness());
         mBatteryStats.noteScreenOn();
     }
 }
@@ -227,7 +246,8 @@ public void systemReady() {
 private void bootCompleted() {
     synchronized (mLocks) {
         mBootCompleted = true;
-        userActivity(SystemClock.uptimeMillis(), false); // 再触发一次 userActivity
+        // 再触发一次 userActivity：BUTTON_EVENT 且 force=true（强制生效），重新计算屏幕超时
+        userActivity(SystemClock.uptimeMillis(), false, BUTTON_EVENT, true);
         updateWakeLockLocked();   // 关键：处理 STAY_ON_WHILE_PLUGGED_IN
     }
 }
@@ -273,7 +293,7 @@ public WakeLock newWakeLock(int flags, String tag) {
 public class WakeLock {
     WakeLock(int flags, String tag) {
         mFlags = flags;
-        mTag = tag.toString();
+        mTag = tag;
         mToken = new Binder();   // 充当 Token：PMS 借此监视客户端生死
     }
     public void acquire() {
@@ -283,7 +303,9 @@ public class WakeLock {
     }
     private void acquireLocked() {
         if (!mRefCounted || mCount++ == 0) {   // 引用计数控制：计数归零才真正申请
+            mHandler.removeCallbacks(mReleaser);
             mService.acquireWakeLock(mFlags, mToken, mTag, mWorkSource);
+            mHeld = true;
         }
     }
 }
@@ -291,7 +313,7 @@ public class WakeLock {
 
 三个细节：
 
-- **mToken 是一个 Binder 对象**。客户端进程死掉时，PMS 会收到死亡讣告并代为释放 WakeLock——这是防止"锁泄漏导致永远休眠不了"的最后防线
+- **mToken 是一个 Binder 对象**。客户端进程死掉时，PMS 会收到 Binder 的 death notification（死亡通知）并代为释放 WakeLock——这是防止"锁泄漏导致永远休眠不了"的最后防线
 - **引用计数**：`setReferenceCounted(true)`（默认）时 acquire/release 需配对，计数归零才真正向 PMS 申请/释放；`setReferenceCounted(false)` 则一次 acquire 一把锁
 - **WorkSource**：描述"这项工作是为谁做的"，便于耗电统计时把电费记到正确应用的头上（当时主要用于 ContentService 的 SyncManager 同步场景）
 
@@ -311,16 +333,22 @@ WakeLock 的 flags 类型（4.0 全集）：
 #### 1. acquireWakeLockLocked 分析之一：登记与 flags 转换
 
 ```java
-// PowerManagerService.java :: acquireWakeLockLocked（之一，节选）
-public void acquireWakeLock(IBinder token, int flags, String tag, WorkSource ws) {
+// PowerManagerService.java :: acquireWakeLock（节选）
+public void acquireWakeLock(int flags, IBinder lock, String tag, WorkSource ws) {
     int uid = Binder.getCallingUid();
     int pid = Binder.getCallingPid();
-    if (uid == MY_UID) {
-        pid = 0;    // 来自 SystemServer 自身的锁，pid 记 0
+    if (uid != Process.myUid()) {
+        // 非 SystemServer 进程：检查 WAKE_LOCK 权限
+        mContext.enforceCallingOrSelfPermission(
+                android.Manifest.permission.WAKE_LOCK, null);
+    }
+    if (ws != null) {
+        // ws 不为空时，还要检查调用进程是否有 UPDATE_DEVICE_STATS 权限
+        enforceWakeSourcePermission(uid, pid);
     }
     ...
     synchronized (mLocks) {
-        acquireWakeLockLocked(flags, token, uid, pid, tag, ws);
+        acquireWakeLockLocked(flags, lock, uid, pid, tag, ws);
     }
 }
 ```
@@ -363,17 +391,17 @@ private final class WakeLock implements IBinder.DeathRecipient {
 // PROXIMITY 型单独走 mProximityWakeLockCount 引用计数与接近传感器逻辑，
 // 其余屏幕型锁：
 mUserState = mPowerState & LIGHTS_MASK;   // 保存用户状态中的灯光部分
-// ① gatherState：把所有活跃屏幕锁的 minState 做"或"运算
-// ② mWakeLockState = (mUserState | mWakeLockState) & mLocks.gatherState();
+// (1) gatherState：把所有活跃屏幕锁的 minState 做"或"运算
+// (2) mWakeLockState = (mUserState | mWakeLockState) & mLocks.gatherState();
 mWakeLockState = mLocks.gatherState();    // 重算 WakeLock 侧目标状态
-// ③ 汇总用户状态与锁状态，驱动电源状态
+// (3) 汇总用户状态与锁状态，驱动电源状态
 setPowerState(mWakeLockState | mUserState);
 ```
 
 **gatherState——所有活跃锁状态的"或"**：
 
 ```java
-// PowerManagerService.java :: 内部类 WakeLockList :: gatherState（节选）
+// PowerManagerService.java :: mLocks（WakeLock 列表）:: gatherState（节选）
 int gatherState() {
     int result = 0;
     final int N = size();
@@ -391,20 +419,31 @@ int gatherState() {
 
 ```java
 // PowerManagerService.java :: setPowerState（骨架）
-private void setPowerState(int newState) {
-    // ① 接近传感器激活时不允许亮屏（贴脸状态下强制去掉 BRIGHT 位）
+private void setPowerState(int newState, boolean noChangeLights, int reason) {
+    // (1) 接近传感器激活时不允许亮屏（贴脸状态下强制去掉 BRIGHT 位）
     if (mProximitySensorActive) newState = (newState & ~SCREEN_BRIGHT);
-    // ② 电量低时加上 BATTERY_LOW_BIT（低电时降低亮度）
-    if (mBatteryLevel < mBatteryLowThreshold) newState |= BATTERY_LOW_BIT;
-    // ③ 系统未启动完成则强制全亮——解释了开机时键盘、屏幕全亮一会儿的现象
-    if (!mSystemReady) newState |= ALL_BRIGHT;
-    // ④ 屏幕开关切换判定
+    // (2) 电量低时加上 BATTERY_LOW_BIT（低电时降低亮度），否则清掉该位
+    if (batteryIsLow()) newState |= BATTERY_LOW_BIT;
+    else newState &= ~BATTERY_LOW_BIT;
+    // (3) 未完成开机且未启用软件自动亮度则强制全亮——
+    //     解释了开机时键盘、屏幕、按键全部点亮一会儿的现象
+    if (!mBootCompleted && !mUseSoftwareAutoBrightness) newState |= ALL_BRIGHT;
+    // (4) 屏幕开关切换判定
     if (oldScreenOn != newScreenOn) {
         if (newScreenOn) {
-            // 开屏：真正点亮，并通知 BSS 记账；
-            // 若 mPreventScreenOn 为 true 则暂不点亮（防闪屏，见下）
-            setScreenStateLocked(true);
-            mBatteryStats.noteScreenOn();
+            // 若此前走过 goToSleep（mStillNeedSleepNotification 为 true），
+            // 先补发一次灭屏通知，再处理亮屏
+            if (mStillNeedSleepNotification) {
+                sendNotificationLocked(false, WindowManagerPolicy.OFF_BECAUSE_OF_USER);
+            }
+            // mPreventScreenOn 为 true 则暂不点亮（防闪屏，见下）
+            if (!mPreventScreenOn) {
+                setScreenStateLocked(true);      // 真正点亮
+                mBatteryStats.noteScreenBrightness(getPreferredBrightness());
+                mBatteryStats.noteScreenOn();    // 通知 BSS 记账
+            }
+            sendNotificationLocked(true, -1);
+            updateLightsLocked(newState, 0);     // 点亮按键灯/键盘灯
         } else {
             // 关屏：取消自动亮度任务、通知 BSS、更新 Native 状态
             ...
@@ -415,6 +454,8 @@ private void setPowerState(int newState) {
         // 屏幕开关状态没变，只是灯光状态变化：只更新灯光
         updateLightsLocked(newState, 0);
     }
+    mPowerState = (mPowerState & ~LIGHTS_MASK) | (newState & LIGHTS_MASK);
+    updateNativePowerStateLocked();
 }
 ```
 
@@ -427,14 +468,33 @@ private void setPowerState(int newState) {
 // mBroadcastQueue 是 3 个元素的 int 数组，存放待广播的屏幕状态（1=ON，0=OFF）
 private void sendNotificationLocked(boolean on, int why) {
     ...
+    int index = 0;
+    while (mBroadcastQueue[index] != -1) index++;   // 找第一个空槽位
+    mBroadcastQueue[index] = on ? 1 : 0;
+    mBroadcastWhy[index] = why;
     if (index == 2) {
-        // 0、1、2 三个槽位都已占满：由于 ON/OFF 是配对出现的，
-        // 前两个必然互相抵消，去掉它们只处理最后一次，节省一次无谓的亮灭屏切换
+        // 0、1、2 三个槽位都已占满：由于 ON/OFF 请求是配对出现的，
+        // 去掉前两次、只保留最后一次，节省一次无谓的亮灭屏切换
+        // （频繁按 Power 键的场景靠这个数组少切一次屏）
+        mBroadcastQueue[0] = on ? 1 : 0;
         mBroadcastQueue[1] = -1;
         mBroadcastQueue[2] = -1;
+        mBroadcastWakeLock.release();
+        index = 0;
     }
-    ...
-    mHandler.post(mNotificationTask);   // 抛给主工作线程执行
+    if (index == 1 && !on) {
+        // index 为 1 且发的是关屏请求：按代码注释的说法此时屏幕已处于
+        // OFF 状态，无须处理，直接丢弃。原书作者坦言没找到能证明
+        // "此时屏幕一定是 OFF"的证据，读者可自行分析求证
+        mBroadcastQueue[0] = -1;
+        mBroadcastQueue[1] = -1;
+        index = -1;
+        mBroadcastWakeLock.release();
+    }
+    if (index >= 0) {
+        mBroadcastWakeLock.acquire();     // 发广播期间不掉电
+        mHandler.post(mNotificationTask); // 抛给主工作线程执行
+    }
 }
 ```
 
@@ -469,13 +529,16 @@ private final Runnable mNotificationTask = new Runnable() {
 // PowerManagerService.java :: acquireWakeLockLocked（之三，节选）
 // PARTIAL 型锁：直接申请内核 WakeLock——即使 Java 世界全部入睡，
 // 内核 wakelock 也能阻止底层 suspend
-if (uid == MY_UID || pid == 0 || ...) {
-    // 系统进程的锁直接走内核
+else if ((flags & LOCK_MASK) == PowerManager.PARTIAL_WAKE_LOCK) {
+    if (newlock) {
+        mPartialCount++;
+    }
     Power.acquireWakeLock(Power.PARTIAL_WAKE_LOCK, PARTIAL_NAME);
 }
-...
 // 最后通知 BSS 记账（哪个 uid 的什么锁开始持有）
-mBatteryStats.noteStartWake(uid, pid, name, type, ...);
+if (newlock || diffSource) {
+    noteStartWakeLocked(wl, ws);
+}
 ```
 
 全链路时序：
@@ -519,24 +582,24 @@ PMS 操作屏幕和灯最终要落到这两位身上。
 #### Power 类：与内核交互的 JNI 桥
 
 ```java
-// Power.java 提供的接口（4.0 全集）
-public static native boolean setScreenState(boolean on);       // 开关屏幕背光
-public static native void setLastUserActivityTimeout(...);     // 设置活动超时
+// Power.java 提供的接口（4.0 全集，共 6 个）
+public static native int setScreenState(boolean on);          // 打开或关闭屏幕灯
+public static native int setLastUserActivityTimeout(long ms); // 设置活动超时
+public static native void reboot(String reason);              // 重启，内部调用 rebootNative
+public static native void shutdown();                         // 已作废，建议不要调用
 public static native void acquireWakeLock(int lockId, String id); // 申请内核锁
-public static native void releaseWakeLock(String id);          // 释放内核锁
-public static native void reboot(String reason);               // 重启
+public static native void releaseWakeLock(String id);         // 释放内核锁
 ```
 
 ```cpp
-// com_android_server_PowerManagerService.cpp（节选）
-static void android_server_PowerManagerService_acquireWakeLock(
-        JNIEnv* env, jobject clazz, jint lockId, jstring id) {
-    ...
-    acquire_wake_lock(lockId, str);   // 与内核 wakelock 机制交互
+// android_os_Power.cpp（节选）
+static void acquireWakeLock(JNIEnv* env, jobject clazz, jint lock, jstring idObj) {
+    const char* id = env->GetStringUTFChars(idObj, NULL);
+    acquire_wake_lock(lock, id);   // 与内核 wakelock 机制交互
+    env->ReleaseStringUTFChars(idObj, id);
 }
-static jint android_server_PowerManagerService_setScreenState(
-        JNIEnv* env, jobject clazz, jint on) {
-    return set_screen_state(on);      // 写 /sys/power/state 或经 framebuffer 关背光
+static int setScreenState(JNIEnv* env, jobject clazz, jboolean on) {
+    return set_screen_state(on);   // 打开或关闭屏幕灯
 }
 ```
 
@@ -614,30 +677,31 @@ public void userActivity(long time, boolean noChangeLights) {
 内部实现的关键判定（骨架，顺序执行）：
 
 ```java
-// PowerManagerService.java :: userActivityInternal（骨架）
-// ① mPokey 与输入事件处理策略有关：若配置忽略触摸事件，直接返回
+// PowerManagerService.java :: userActivity（内部重载，骨架）
+// (1) mPokey 与输入事件处理策略有关：若配置忽略触摸事件，直接返回
 if (((mPokey & POKE_LOCK_IGNORE_TOUCH_EVENTS) != 0) && (eventType == TOUCH_EVENT)) {
     return;
 }
-// ② 屏幕正处于渐暗关闭过程中（isScreenTurningOffLocked）：不处理，避免打断关屏
-// ③ 接近传感器逻辑：贴脸状态下若已无接近锁，解除 mProximitySensorActive
-// ④ 只有 mUserActivityAllowed 且未贴脸（或 force）才真正处理
+// (2) 屏幕正处于渐暗关闭过程中（isScreenTurningOffLocked）：不处理，避免打断关屏
+// (3) 接近传感器逻辑：贴脸状态下若已无接近锁，解除 mProximitySensorActive
+// (4) 只有 mUserActivityAllowed 且未贴脸（或 force）才真正处理
 if (mUserActivityAllowed && !mProximitySensorActive || force) {
-    // ⑤ 更新 mUserState：按键事件且未启用软件自动亮度 → 按键灯也点亮；
+    // (5) 更新 mUserState：按键事件且未启用软件自动亮度 → 按键灯也点亮；
     //    否则只保证屏幕亮
     if (eventType == BUTTON_EVENT && !mUseSoftwareAutoBrightness) {
         mUserState = mKeyboardVisible ? ALL_BRIGHT : SCREEN_BUTTON_BRIGHT;
     } else {
         mUserState |= SCREEN_BRIGHT;
     }
-    // ⑥ 通知 BSS 记账（哪个 uid 触发了一次用户活动）
+    // (6) 通知 BSS 记账（哪个 uid 触发了一次用户活动）
     mBatteryStats.noteUserActivity(uid, eventType);
-    // ⑦ 重新激活屏幕锁并重算状态、驱动电源
-    reactivateScreenLocksLocked();
-    setPowerState(mUserState | mWakeLockState);
-    // ⑧ 重新开始屏幕计时（BRIGHT 状态倒计时从头算）
+    // (7) 重新激活屏幕锁并重算 WakeLock 侧状态、驱动电源
+    mWakeLockState = mLocks.reactivateScreenLocksLocked();
+    setPowerState(mUserState | mWakeLockState, noChangeLights,
+            WindowManagerPolicy.OFF_BECAUSE_OF_USER);
+    // (8) 重新开始屏幕计时（BRIGHT 状态倒计时从头算）
     setTimeoutLocked(time, timeoutOverride, SCREEN_BRIGHT);
-    // ⑨ 通知窗口策略（PhoneWindowManager）
+    // (9) 通知窗口策略（PhoneWindowManager）
     mPolicy.userActivity();
 }
 ```
@@ -655,7 +719,10 @@ private void setTimeoutLocked(final long time, final long timeoutOverride, int n
     } else {
         switch (nextState) {             // 按下一状态查超时表
             case SCREEN_BRIGHT: when = time + mKeylightDelay; break; // 先灭按键灯
-            case SCREEN_DIM:    when = time + mDimDelay;    break;   // 再变暗
+            case SCREEN_DIM:
+                if (mDimDelay >= 0) {     // 若不允许变暗（mDimDelay<0），
+                    when = time + mDimDelay; break;   // 直接落入 SCREEN_OFF 分支
+                }
             case SCREEN_OFF:    when = time + mScreenOffDelay; break; // 最后关屏
             ...
         }
@@ -671,8 +738,8 @@ private final class TimeoutTask implements Runnable {
     int nextState;   // 本次要切换到的状态
     public void run() {
         synchronized (mLocks) {
-            if (mStillNeedSleepNotification) return;  // 已在灭屏流程，别捣乱
-            mUserState = nextState;                   // 切换用户状态
+            if (nextState == -1) return;     // 无有效任务，直接退出
+            mUserState = nextState;          // 切换用户状态
             setPowerState(nextState | mWakeLockState);
             // 链式安排下一跳
             if (nextState == SCREEN_BRIGHT && mDimDelay >= 0) {
@@ -698,7 +765,7 @@ graph LR
     D -->|新userActivity或wakeUp| B
 ```
 
-注意 SCREEN_OFF 只关屏幕；真正休眠（suspend）还需要内核侧无 wakelock。mScreenOffThread 的渐暗动画发生在 DIM→OFF 之间，userActivity 的第②步判定（isScreenTurningOffLocked 直接返回）就是为了不打断这个动画造成亮度跳变。
+注意 SCREEN_OFF 只关屏幕；真正休眠（suspend）还需要内核侧无 wakelock。mScreenOffThread 的渐暗动画发生在 DIM→OFF 之间，userActivity 的第(2)步判定（isScreenTurningOffLocked 直接返回）就是为了不打断这个动画造成亮度跳变。
 
 ### 4.4.3 Power 按键处理分析
 
@@ -724,35 +791,35 @@ void NativeInputManager::handleInterceptActions(... uint32_t wmActions ...) {
 
 按键策略细节（哪个键在什么状态下触发什么 wmActions）在 PhoneWindowManager 与卷Ⅲ的输入系统中展开，本章只关注 PMS 侧的落地。
 
-**goToSleep → goToSleepLocked**：
+**goToSleep → goToSleepWithReason → goToSleepLocked**（goToSleep 是 `goToSleepWithReason(time, OFF_BECAUSE_OF_USER)` 的便捷入口，后者检查调用进程的 `DEVICE_POWER` 权限后再进入 goToSleepLocked）：
 
 ```java
 // PowerManagerService.java :: goToSleepLocked（节选）
 private void goToSleepLocked(long time, int reason) {
-    boolean proxLock = false;
-    if (mProximityWakeLockCount == 0 || reason != OFF_BECAUSE_OF_PROX_SENSOR) {
-        // ① 遍历所有屏幕型 WakeLock，全部置为未激活——
-        //    Power 键的优先级高于一切屏幕锁（PARTIAL 锁不受影响）
+    if (mLastEventTime <= time) {   // 只处理时间上更新的休眠请求
+        mLastEventTime = time;
+        mWakeLockState = SCREEN_OFF;
+        // (1) 遍历所有屏幕型 WakeLock，除接近传感器灭屏场景外全部置为未激活——
+        //     Power 键的优先级高于一切屏幕锁（PARTIAL 锁不受影响）
+        boolean proxLock = false;
         final int N = mLocks.size();
         for (int i = 0; i < N; i++) {
             WakeLock wl = mLocks.get(i);
-            if (isScreenLock(wl.flags) && wl.activated) {
-                if ((wl.flags & LOCK_MASK)
-                        == PowerManager.PROXIMITY_SCREEN_OFF_WAKE_LOCK
-                        && reason == OFF_BECAUSE_OF_PROX_SENSOR) {
+            if (isScreenLock(wl.flags)) {
+                if ((wl.flags & LOCK_MASK) == PowerManager.PROXIMITY_SCREEN_OFF_WAKE_LOCK
+                        && reason == WindowManagerPolicy.OFF_BECAUSE_OF_PROX_SENSOR) {
                     proxLock = true;   // 接近传感器触发的灭屏：接近锁保留
                 } else {
                     wl.activated = false;
                 }
             }
         }
-        if (proxLock) mWakeLockState = PROXIMITY_SCREEN_OFF;
-        else mWakeLockState = SCREEN_OFF;
+        if (!proxLock) mProxIgnoredBecauseScreenTurnedOff = true;
         mStillNeedSleepNotification = true;
         mUserState = SCREEN_OFF;
-        // ② 关屏（内部走 mScreenOffThread 渐暗 + setScreenState(false)）
+        // (2) 关屏（内部走 mScreenOffThread 渐暗 + setScreenState(false)）
         setPowerState(SCREEN_OFF, false, reason);
-        // ③ 撤销 mTimeoutTask——人都睡了还倒什么计时
+        // (3) 撤销 mTimeoutTask——人都睡了还倒什么计时
         cancelTimerLocked();
     }
 }
@@ -793,9 +860,15 @@ public BatteryService(Context context, LightsService lights) {
             com.android.internal.R.integer.config_criticalBatteryWarningLevel); // 4
     mLowBatteryWarningLevel = ...  // 15：低电报警
     mLowBatteryCloseWarningLevel = ...  // 20：电量回升到此值脱离低电状态
+    mBatteryStats = BatteryStatsService.getService(); // BatteryService 也要与 BSS 交互
     mLed = new Led(context, lights);   // 提示灯控制（充电红/绿、低电闪红）
     // 监听电源子系统的 uevent：插拔充电器、电量变化都会触发
-    mUEventObserver.startObserving("SUBSYSTEM=power_supply");
+    mPowerSupplyObserver.startObserving("SUBSYSTEM=power_supply");
+    // 若存在 invalid_charger switch 设备（不匹配的充电器），再启动一个监听
+    if (new File("/sys/devices/virtual/switch/invalid_charger/state").exists()) {
+        mInvalidChargerObserver.startObserving(
+                "DEVPATH=/devices/virtual/switch/invalid_charger");
+    }
     update();   // 主动读一次，不等事件
 }
 ```
@@ -829,21 +902,21 @@ static void android_server_BatteryService_update(JNIEnv* env, jobject obj) {
 ```java
 // BatteryService.java :: processValues（骨架）
 private void processValues() {
-    // ① 判定供电类型：AC / USB / 电池
+    // (1) 判定供电类型：AC / USB / 电池
     if (mAcOnline) mPlugType = BatteryManager.BATTERY_PLUGGED_AC;
     else if (mUsbOnline) mPlugType = BatteryManager.BATTERY_PLUGGED_USB;
     else mPlugType = BATTERY_PLUGGED_NONE;
-    // ② 通知 BSS（耗电统计的插拔口径切换，见 4.5.2）
+    // (2) 通知 BSS（耗电统计的插拔口径切换，见 4.5.2）
     mBatteryStats.setBatteryState(mBatteryStatus, mBatteryHealth,
             mPlugType, mBatteryLevel, mBatteryTemperature, mBatteryVoltage);
-    // ③ 安全检查：没电或过热直接弹关机流程
+    // (3) 安全检查：没电或过热直接弹关机流程
     shutdownIfNoPower();
     shutdownIfOverTemp();
-    // ④ 与上次信息比较，有变化则发送广播：
+    // (4) 与上次信息比较，有变化则发送广播：
     //    ACTION_POWER_CONNECTED/DISCONNECTED、ACTION_BATTERY_CHANGED（sticky）
     //    电量低于 15 → ACTION_BATTERY_LOW；低电后回升到 20 → ACTION_BATTERY_OKAY
     ...
-    // ⑤ 更新充电指示灯
+    // (5) 更新充电指示灯
     mLed.updateLightsLocked();
 }
 ```
@@ -875,6 +948,11 @@ graph LR
 
 客户端（如 Settings 的 PowerUsageSummary）经 `getStatistics` 取数：BSImpl 把自身写入 Parcel（`mStats.writeToParcel(out, 0)` + `out.marshall()`）经 Binder 传回，需 `BATTERY_STATS` 权限。
 
+BSImpl 构造函数中有两个值得记录的细节：
+
+- **JournaledFile 双备份**：统计数据落在 `batterystats.bin`，但 BSImpl 用 `JournaledFile` 同时维护原始文件与 `.tmp` 临时文件两份数据，读写时双备份，防止统计过程中文件信息丢失或出错。AMS 创建 BSS 后随即 `readLocked` 读回旧数据、`writeAsyncLocked` 异步写一次，并经 `setCallback(this)` 注册回调
+- **uptime 与 realtime 两种时间口径**：二者都从系统启动开始计时（since the system was booted），区别在于 **uptime 不包含系统休眠时间，realtime 包含**。BSImpl 的 `initTimes`、`mTrackBatteryUptimeStart` 等成员都成对出现，就是为了在两种口径下分别记账
+
 #### 2. 四种计量工具与 Unpluggable
 
 BSImpl 的统计工具分两大类四件套：
@@ -887,17 +965,22 @@ BSImpl 的统计工具分两大类四件套：
 
 ```java
 // BatteryStatsImpl.java :: StopwatchTimer（节选）
-public void startRunningLocked(BatteryStatsImpl stats) {
-    if (mNesting++ == 0) {        // 引用计数归零起步才真正计时（支持嵌套持有）
-        mLastTimeRunning = stats.mUnpluggedBatteryRealtime;
+void startRunningLocked(BatteryStatsImpl stats) {
+    if (mNesting++ == 0) {        // 嵌套调用控制：最外层启动才真正计时
+        // 取当前电池供电口径下的总时长作为计时起点
+        mUpdateTime = stats.getBatteryRealtimeLocked(
+                SystemClock.elapsedRealtime() * 1000);
         mCount++;                 // 启动次数 +1
-        ...
+        mAcquireTime = mTotalTime;
     }
 }
-public void stopRunningLocked(BatteryStatsImpl stats) {
-    if (--mNesting == 0) {        // 计数归零，结算本周期
-        mTotalTime += ...;        // 累加到总时长
-        ...
+void stopRunningLocked(BatteryStatsImpl stats) {
+    if (mNesting == 0) return;
+    if (--mNesting == 0) {        // 最外层停止，结算本周期
+        final long realtime = SystemClock.elapsedRealtime() * 1000;
+        final long batteryRealtime = stats.getBatteryRealtimeLocked(realtime);
+        mTotalTime = computeRunTimeLocked(batteryRealtime); // 累加到总时长
+        if (mTotalTime == mAcquireTime) mCount--; // 周期太短则不计数
     }
 }
 ```
@@ -992,9 +1075,12 @@ PMS 在关键节点调用 BSS 的 noteXXX，统计是被动的"打点式"：
 public void noteScreenOnLocked() {
     ...
     mHistoryCur.states |= HistoryItem.STATE_SCREEN_ON_FLAG;  // 历史记录打标
-    if (mScreenOnTimer.startRunningLocked(this)) { ... }     // 屏幕秒表启动
+    addHistoryRecordLocked(SystemClock.elapsedRealtime());
+    mScreenOnTimer.startRunningLocked(this);                  // 屏幕秒表启动
     // 当前亮度对应的那一级亮度秒表也启动（共 5 级）
-    ...
+    if (mScreenBrightnessBin >= 0) {
+        mScreenBrightnessTimer[mScreenBrightnessBin].startRunningLocked(this);
+    }
     // 屏幕开启也关联一个 dummy 内核 WakeLock 的记账口径
     noteStartWakeLocked(-1, -1, "dummy", WAKE_TYPE_PARTIAL);
 }
@@ -1017,7 +1103,7 @@ BSS publish 时会加载 PowerProfile：
 mStats.setNumSpeedSteps(new PowerProfile(mContext).getNumSpeedSteps());
 ```
 
-PowerProfile 解析 `power_profile.xml`，该文件保存**各种操作的耗电参数，以 mAh（毫安时）为单位**（屏幕每级亮度耗多少、CPU 每个频段耗多少、Wi-Fi 收发耗多少），由各厂商按硬件平台在编译时提供。耗电排名（设置里的"电量使用情况"）就是"统计出的时长 × PowerProfile 的单价"算出来的。
+PowerProfile 解析 `power_profile.xml`，该文件保存**各种操作的耗电参数，以 mAh（毫安时）为单位**（屏幕每级亮度耗多少、CPU 每个频段耗多少、Wi-Fi 收发耗多少），由各厂商按硬件平台在编译时复制到输出目录（AOSP 中的示例与硬件平台无关）。`getNumSpeedSteps` 返回 CPU 支持的频率级数，示例文件中只定义了一个值 400MHz。耗电排名（设置里的"电量使用情况"）就是"统计出的时长 × PowerProfile 的单价"算出来的。
 
 ### 4.5.3 BatteryService 及 BatteryStatsService 总结
 

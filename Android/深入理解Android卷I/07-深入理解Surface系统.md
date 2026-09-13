@@ -11,7 +11,7 @@ Surface 系统比 Audio 系统更庞大，原书用两条主线统摄全章（�
 1. **应用与 Surface 的关系**：不论用 Skia 绘二维图像还是用 OpenGL 绘三维图像，应用最终都要和 Surface 打交道——Surface 就是 UI 的画布，应用在它上面作画。
 2. **Surface 与 SurfaceFlinger 的关系**：Surface 向 SurfaceFlinger 提供数据，SurfaceFlinger 混合数据——与 AudioTrack 向 AudioFlinger 提供音频数据、AudioFlinger 混音的关系同构。
 
-![](./images/ch0123_img01.jpg)
+![](./images/ch0123_img01.jpg) ':width=600'
 
 左图为第一条主线（应用 → Surface），右图为第二条主线（Surface → SurfaceFlinger）。为书写方便，下文将 SurfaceFlinger 简写为 SF（SurfaceFlinger），WindowManagerService 简写为 WMS（WindowManagerService，窗口管理服务），ActivityManagerService 简写为 AMS（ActivityManagerService）。三者的进程分布值得先记住：应用进程持有 ViewRoot 与 Surface 的客户端对象；WMS 与 SF 都驻留在 system_server 进程中（原书时代 SF 尚未独立成进程）。
 
@@ -160,7 +160,7 @@ private static WindowManagerImpl mWindowManager = new WindowManagerImpl();
 
 LocalWindowManager 是 Window 定义的内部类，它实现了 WindowManager 接口并把工作委托给 WindowManagerImpl（Proxy 模式）。两句话总结：**Activity 的 mWindow 真实类型是 PhoneWindow，mWindowManager 真实类型是 LocalWindowManager，其背后是 WindowManagerImpl 单例**。
 
-![](./images/ch0125_img02.jpg)
+![](./images/ch0125_img02.jpg) ':width=600'
 
 onCreate 中与 UI 相关的头等大事是 setContentView，它一路转到 PhoneWindow：
 
@@ -200,7 +200,7 @@ private void installDecor() {
 
 generateLayout 根据 Window 的 features 选择标题栏布局资源，inflate 后加入 DecorView，再从中取出 id 为 content 的 ViewGroup 作为 mContentParent——**应用 setContentView 传入的 View 只是 DecorView 的子 View，标题栏等装饰由 DecorView 统一处理**（Composite 模式的 ViewGroup 容器加 Decorator 模式的装饰）。
 
-![](./images/ch0125_img03.jpg)
+![](./images/ch0125_img03.jpg) ':width=600'
 
 View 树建好后就轮到 handleLaunchActivity 的关键点②。handleResumeActivity 在完成 onResume 后，把 DecorView 加入 WindowManager：
 
@@ -388,7 +388,7 @@ void dispatchTrackball(in MotionEvent event, long eventTime, boolean callWhenDon
 
 按键、触屏等事件由 WMS 找到屏幕顶端的 IWindow 对象（Bp 端），调用其 dispatchKey；Bn 端在 ViewRoot 中，再根据 View 的位置信息找到真正处理事件的 View。
 
-![](./images/ch0125_img05.jpg)
+![](./images/ch0125_img05.jpg) ':width=600'
 
 ### 1.2.2 performTraversals 与 UI 绘制
 
@@ -541,7 +541,7 @@ Surface createSurfaceLocked() {
 
 WMS 端用带 SurfaceSession 参数的构造函数创建 Surface，再通过 copyFrom 把信息「拷」给客户端的 outSurface。这个传递过程比看上去曲折得多，图示如下：
 
-![](./images/ch0130_img01.jpg)
+![](./images/ch0130_img01.jpg) ':width=600'
 
 要彻底看清传递机制，得借助 aidl 工具把 IWindowSession.aidl 编译成 Java（`aidl -I<include 目录> IWindowSession.aidl test.java`），看生成的 Binder 两端代码。先看客户端（Bp 端）：
 
@@ -628,7 +628,7 @@ public boolean onTransact(int code, android.os.Parcel data,
 
 真相大白：**服务端自己 new 一个 Surface 交给 relayoutWindow 填充（copyFrom 就发生在它身上），返回时调用 writeToParcel 把 Surface 信息序列化进应答包；客户端再通过 readFromParcel 反序列化，填充 ViewRoot 传进来的 mSurface**。整个传递过程如下图：
 
-![](./images/ch0130_img02.jpg)
+![](./images/ch0130_img02.jpg) ':width=600'
 
 ### 1.3.2 JNI 层的传递实现
 
@@ -763,7 +763,7 @@ static void Surface_readFromParcel(JNIEnv* env, jobject clazz, jobject argParcel
 
 整个过程共出现三个关键的 Native 对象：**SurfaceComposerClient、SurfaceControl、Native 层的 Surface（与 Java 层 Surface 对应）**。最终转移到 ViewRoot 的 mSurface 中的，是最后这个 Native Surface。精简流程五句话：创建 SurfaceComposerClient；调用它的 createSurface 得到 SurfaceControl；调用 SurfaceControl 的 writeToParcel 把信息写进 Parcel 包；根据 Parcel 包构造一个 Native Surface；把这个 Surface 保存到 Java 层的 mSurface 中。
 
-![](./images/ch0133_img01.jpg)
+![](./images/ch0133_img01.jpg) ':width=600'
 
 ### 1.3.3 Surface 与画图
 
@@ -847,7 +847,7 @@ static void Surface_unlockCanvasAndPost(JNIEnv* env, jobject clazz,
 
 第一件事，屏幕上的画面如何组织。屏幕位于一个三维坐标系中，Z 轴由屏幕内指向屏幕外；每个矩形块是一个**显示层（Layer）**，拥有颜色、透明度、位置、宽高等属性以及对应的显示内容。SF 的工作就是把这些按 Z 轴排好序的显示层做图像混合，混合结果即屏幕画面——Z 轴排序符合「前面的物体遮挡后面的物体」的日常经验。注意代码中另有一个名为 Layer 的具体类，为区分广义概念，这里把广义的 Layer 称为显示层。
 
-![](./images/ch0135_img01.jpg)
+![](./images/ch0135_img01.jpg) ':width=600'
 
 Surface 系统定义了三种属性、共四种显示层：
 
@@ -902,7 +902,7 @@ done:
 }
 ```
 
-![](./images/ch0135_img03.jpg)
+![](./images/ch0135_img03.jpg) ':width=600'
 
 第三件事，生产/消费的步调。音频流没有边界，图像数据则一帧一帧有边界，所以图形系统使用 PageFlipping（画面交换）技术：**分配能容纳两帧数据的缓冲，前一帧叫 FrontBuffer，后一帧叫 BackBuffer；消费者使用 FrontBuffer 的旧数据，生产者用新数据填充 BackBuffer，互不干扰；需要更新显示时二者角色互换，如此循环**。说白了，PageFlipping 就是一个只有两个成员的帧缓冲队列，后面分析数据传输时会见到 dequeue 与 queue 操作。
 
@@ -1009,7 +1009,7 @@ class SharedBufferStack {
 
 根据 PageFlipping 的知识，只有两个 FB 时控制很简单：要么 SF 读 1 号、客户端写 0 号，要么反过来。另外，各显示层并不直接操作 SharedClient，而是经由 SharedBufferServer（SF 端，控制读取）与 SharedBufferClient（客户端，控制写入）两个结构。
 
-![](./images/ch0136_img01.jpg)
+![](./images/ch0136_img01.jpg) ':width=600'
 
 最后看 _init：
 
@@ -1033,7 +1033,7 @@ void SurfaceComposerClient::_init(
 
 _init 让 SurfaceComposerClient 拿到三个关键成员：**mSignalServer（BpSurfaceFlinger，客户端刷新 BackBuffer 后由它通知 SF 做 PageFlipping 和输出）、mControl（跨进程共享的 SharedClient）、mClient（BClient 的客户端对应物）**。类关系全景如下：
 
-![](./images/ch0136_img02.jpg)
+![](./images/ch0136_img02.jpg) ':width=600'
 
 SurfaceFlinger 从 Thread 派生（有独立工作线程）；BClient 是 SF 的 Proxy；SharedClient 构建于共享内存中，SurfaceComposerClient 与 Client 都持有它。
 
@@ -1212,7 +1212,7 @@ LayerBaseClient::LayerBaseClient(SurfaceFlinger* flinger, DisplayID display,
 
 SF 端的 Layer 通过 SharedBufferServer 绑定 SharedClient 中属于自己的那个 SharedBufferStack；客户端的 Native Surface 则通过 SharedBufferClient 控制同一个栈——SF 是消费者、应用是生产者，一读一写各持一个控制结构。
 
-![](./images/ch0137_img01.jpg)
+![](./images/ch0137_img01.jpg) ':width=600'
 
 Layer 被 sp 化后 onFirstRef 会把它登记进 Client：
 
@@ -1298,7 +1298,7 @@ SurfaceControl::SurfaceControl(
 
 SurfaceControl 是一个 wrapper 类，封装了一批便捷函数，转发给 mClient 或 ISurface。至此 Layer 家族的全貌可以给出了：
 
-![](./images/ch0137_img02.jpg)
+![](./images/ch0137_img02.jpg) ':width=600'
 
 - LayerBaseClient 从 LayerBase 派生，另有四个派生类：Layer、LayerBuffer、LayerDim、LayerBlur
 - LayerBaseClient 定义了内部类 Surface（从 ISurface 派生，支持 Binder 通信）
@@ -1308,7 +1308,7 @@ SurfaceControl 是一个 wrapper 类，封装了一批便捷函数，转发给 m
 
 SurfaceControl 创建后的连接关系：mClient 指向 SurfaceComposerClient；mSurface 的 Binder 响应端是 SurfaceLayer；SurfaceLayer 的 mOwner 指向外部类 Layer，Layer 的 mSurface 又指向 SurfaceLayer（getSurface 的返回值）。
 
-![](./images/ch0137_img03.jpg)
+![](./images/ch0137_img03.jpg) ':width=600'
 
 ### 1.4.4 writeToParcel 与 Native Surface 的创建
 
@@ -1391,7 +1391,7 @@ Surface::Surface(const Parcel& parcel)
 
 Native Surface 创建完毕后的全景：**SharedBuffer 家族依托共享内存中的 SharedClient 组成生产/消费协调的中枢，SF 端代表是 SharedBufferServer，Activity 端代表是 SharedBufferClient；Native Surface 与 SF 中的 SurfaceLayer 建立 Binder 联系；两端各有两个 GraphicBuffer，但四个 GraphicBuffer 操纵同一段共享内存**。
 
-![](./images/ch0138_img01.jpg)
+![](./images/ch0138_img01.jpg) ':width=600'
 
 SharedBuffer 家族的成员包括 SharedBufferBase（基类）、SharedBufferServer、SharedBufferClient，以及一批 XXXCondition、XXXUpdate 内部类——后者是 C++ 的 Function Object（函数对象），用来在锁保护下更新或等待读写位置。基类构造函数把每个成员绑定到属于自己的那个栈元素：
 
@@ -1411,7 +1411,7 @@ SharedBufferBase::SharedBufferBase(SharedClient* sharedClient,
 }
 ```
 
-![](./images/ch0138_img02.jpg)
+![](./images/ch0138_img02.jpg) ':width=600'
 
 至此 Activity 端的 Java Surface 终于挂上了 Native Surface，绘图资源全部就绪：两个 GraphicBuffer（FrontBuffer 与 BackBuffer）、SharedBufferServer/SharedBufferClient 控制结构、连接 SurfaceLayer 的 ISurface、连接 BClient 的 SurfaceComposerClient。
 
@@ -1703,7 +1703,7 @@ status_t SharedBufferBase::updateCondition(T update) {
 }
 ```
 
-![](./images/ch0139_img01.jpg)
+![](./images/ch0139_img01.jpg) ':width=600'
 
 ### 1.4.6 GraphicBuffer 与 ashmem
 
@@ -1723,7 +1723,7 @@ template <typename NATIVE_TYPE, typename TYPE, typename REF>
 class EGLNativeBase : public NATIVE_TYPE, public REF
 ```
 
-![](./images/ch0140_img01.jpg)
+![](./images/ch0140_img01.jpg) ':width=600'
 
 从 LightRefBase 派生使它支持轻量级引用计数；从 Flattenable 派生使它支持序列化（flatten/unflatten），信息因此可以存进 Parcel 并被 Binder 传输。父类 android_native_buffer_t 是 C 的 struct（C++ 中 struct 与 class 同类），其关键成员是 handle：
 
@@ -1859,7 +1859,7 @@ status_t GraphicBufferAllocator::alloc(uint32_t w, uint32_t h, PixelFormat forma
 }
 ```
 
-![](./images/ch0140_img02.jpg)
+![](./images/ch0140_img02.jpg) ':width=600'
 
 软件分配路径直接用 ashmem（anonymous shared memory，匿名共享内存）：
 
@@ -2448,7 +2448,7 @@ void DisplayHardware::flip(const Region& dirty) const
 }
 ```
 
-![](./images/ch0145_img01.jpg)
+![](./images/ch0145_img01.jpg) ':width=600'
 
 ### 1.5.3 Transaction 处理
 
@@ -2765,7 +2765,7 @@ void SurfaceFlinger::commitTransaction()
 
 Surface 系统的 CB 就是指 SharedBuffer 家族，是生产者/消费者步调控制的中枢。为书写方便，下文简称 SharedBufferClient 为 SBC、SharedBufferServer 为 SBS、SharedBufferStack 为 SBT。
 
-![](./images/ch0147_img01.jpg)
+![](./images/ch0147_img01.jpg) ':width=600'
 
 SBC 与 SBS 建立在同一个 SBT 上，先看 SBT 的控制参数（比 1.4.2 的列表多了一个 tail）：
 
@@ -2835,7 +2835,7 @@ int32_t SharedBufferClient::computeTail() const
 }
 ```
 
-![](./images/ch0148_img01.jpg)
+![](./images/ch0148_img01.jpg) ':width=600'
 
 SBC 端流程从 dequeue 开始：
 
@@ -2867,7 +2867,7 @@ bool SharedBufferClient::DequeueCondition::operator()() {
 }
 ```
 
-![](./images/ch0148_img02.jpg)
+![](./images/ch0148_img02.jpg) ':width=600'
 
 dequeue 的返回值 dequeued 指向 0 号缓冲（图中虚线）。由于 tail 是 SBC 的本地变量，dequeue 不能保证 0 号缓冲真正空闲——SBS 可能正在用它，所以还要 lock（见 1.4.5 的 LockCondition）。**dequeue 只是根据本地 tail 计算本次应使用的缓冲编号（在 0、1 间循环），lock 确保这个编号的缓冲没有被 SF 当作 FrontBuffer 使用**。
 
@@ -2890,7 +2890,7 @@ ssize_t SharedBufferClient::QueueUpdate::operator()() {
 }
 ```
 
-![](./images/ch0148_img03.jpg)
+![](./images/ch0148_img03.jpg) ':width=600'
 
 0 号缓冲移到了 queued 区域。投递完成后应用才调用 signal 触发 SF 消费，所以此前格局不变。SBS 端的第一个函数是 retireAndLock：
 
@@ -2935,7 +2935,7 @@ ssize_t SharedBufferServer::RetireUpdate::operator()() {
 }
 ```
 
-![](./images/ch0148_img04.jpg)
+![](./images/ch0148_img04.jpg) ':width=600'
 
 注意 available 区域中 1 号缓冲右边的 0 号缓冲用虚线表示——它实际并不在 available 区域，但 available 计数已是 2。这不会出错，因为 SBC 的 lock 会确保该缓冲没有被 SBS 使用。SBS 的最后一个函数 unlock 只把 inUse 置回 -1：
 
@@ -2991,7 +2991,7 @@ sp<LayerBaseClient> SurfaceFlinger::createPushBuffersSurfaceLocked(
 }
 ```
 
-![](./images/ch0150_img01.jpg)
+![](./images/ch0150_img01.jpg) ':width=600'
 
 LayerBuffer 定义了内部类 Source 作为数据提供者，其下有 BufferSource 与 OverlaySource 两个派生类；LayerBuffer 的 mSurface 真实类型是 SurfaceLayerBuffer。使用方从 CameraService 开始：它先向 Camera HAL 取预览堆，再注册给 ISurface：
 
@@ -3037,7 +3037,7 @@ void CameraHardwareStub::initHeapLocked()
 }
 ```
 
-![](./images/ch0150_img02.jpg)
+![](./images/ch0150_img02.jpg) ':width=600'
 
 registerBuffers 经 SurfaceLayerBuffer（纯代理）转到外部类 LayerBuffer，创建 BufferSource：
 
@@ -3234,7 +3234,7 @@ sp<LayerBuffer::Buffer> LayerBuffer::BufferSource::getBuffer() const
 
 从缓冲的角度看这套流程有一个结构性的隐患：**数据生产者（Camera HAL 的 preview 线程）在含四个成员的缓冲队列 mBuffers 上循环写，数据消费者（SF 工作线程）却只持有一个 mBuffer；setBuffer 换引用时虽有锁，但 SF 使用 mBuffer 指向的内存期间没有同步控制**。
 
-![](./images/ch0150_img05.jpg)
+![](./images/ch0150_img05.jpg) ':width=600'
 
 当使用者还在使用 mBuffers[0] 时，生产者可能又更新了 mBuffers[0]，两帧数据混杂输出，屏幕上会出现不连续的画面。原书作者在真机上的实测（给数据使用端加延时）验证了这一点。要修复得在读写具体缓存时加同步控制（例如使用前 lock、用完 unlock），或改造 LayerBuffer 本身——原书把这个问题作为练习留给读者。
 

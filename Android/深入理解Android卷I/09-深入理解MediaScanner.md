@@ -618,7 +618,7 @@ processDirectory 函数本身不难——从 mNativeContext 取回 Native 对象
 
 图 10-1（原书编号）展示了 MediaScanner 涉及的相关类及关系，Java 与 Native 层的对象都画在图中：
 
-![图 10-1 MS 相关类示意图](./images/ch0182_img01.jpg) ':width=600'
+![图 10-1 MS 相关类示意图](./images/ch0182_img01.jpg)
 
 从图中可知：
 
@@ -836,7 +836,7 @@ public void handleStringTag(String name, String value) {
 
 总结媒体扫描的工作流程，它并不复杂，就是有些绕，如图 10-2（原书编号）所示：
 
-![图 10-2 MediaScanner 扫描流程图](./images/ch0184_img01.jpg) ':width=600'
+![图 10-2 MediaScanner 扫描流程图](./images/ch0184_img01.jpg)
 
 MediaScanner.java 的源码里有一段详细的注释，对整个流程做了文字总结，原书认为这段总结非常简单就不翻译了，摘编如下（这是理解本章的最好索引）：
 

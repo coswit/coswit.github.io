@@ -14,7 +14,7 @@ Audio 系统主要包括三方面内容，对应三个核心角色：
 
 原书在本章末尾给出的整体结构图（图 7-18）把 Audio 系统分为三层，可作为全篇的阅读地图：
 
-![](./images/ch0121_img01.jpg) ':width=600'
+![](./images/ch0121_img01.jpg)
 
 - **应用层**：Java 的 AudioTrack/AudioRecord 与 AudioService/AudioManager
 - **Audio 本地框架层**：Native 的 AudioTrack、AudioSystem 等类（framework 层），与应用同进程
@@ -228,7 +228,7 @@ static int android_media_AudioTrack_native_setup(JNIEnv *env, jobject thiz,
 
 共享内存是 AT 与 AF 之间数据传递的手段。先回顾原理：每个进程拥有 4GB 虚拟地址空间，程序中的指针指向虚拟地址，经 OS 内存管理机制转换为物理地址——这就是内存映射。如图 7-1 所示，**如果同一块物理内存页同时映射到进程 A 和进程 B，A 写入的数据在 B 中即可见，这就实现了内存的进程间共享**：
 
-![](./images/ch0105_img01.jpg) ':width=600'
+![](./images/ch0105_img01.jpg)
 
 Linux 平台创建共享内存的一般做法是：进程 A 创建并打开一个文件得到 fd，用 mmap 与特定参数把 fd 映射为共享内存；进程 B 打开同一文件、同样 mmap，两个进程便共享了这块内存（该文件也可以是设备文件，mmap 的具体工作由 fd 对应的驱动完成）。Android 的 AT 与 AF 跨进程大数据量传输正是用这种方式，非常高效。
 
@@ -441,7 +441,7 @@ status_t AudioTrack::createTrack(int streamType, uint32_t sampleRate,
 
 createTrack 中冒出了新面孔 IAudioTrack——**IAudioTrack 是联系 AT 和 AF 的关键纽带**，如图 7-3：
 
-![](./images/ch0106_img01.jpg) ':width=600'
+![](./images/ch0106_img01.jpg)
 
 AT 端拿到 IAudioTrack 后的 start、stop 请求都经它发给 AF；write 写的数据则进入它所关联的共享内存。共享内存的头部是一个 audio_track_cblk_t（简称 CB）对象，其后才是数据缓冲。
 
@@ -491,7 +491,7 @@ struct audio_track_cblk_t
 
 上一节留下的问题在此有了答案：MemoryHeapBase 和 MemoryBase 都不提供同步对象，**CB 对象的主要目的就是协调和管理 AT（生产者）与 AF（消费者）数据生产和消费的步伐**——它带着支持跨进程的 Mutex/Condition 驻留在共享内存头部。图 7-4 表示 CB 与共享内存的关系：
 
-![](./images/ch0106_img02.jpg) ':width=600'
+![](./images/ch0106_img02.jpg)
 
 关于 `flowControlFlag`：对音频输出，它对应 **underrun 状态——生产者提供数据的速度跟不上消费者（音频输出设备）使用数据的速度**。输出设备采用环形缓冲管理，生产者没及时给新数据时设备会循环使用旧数据，听到一段重复的声音（俗称 machinegun 现象）；一般处理是暂停输出、等数据备好再恢复。对音频输入它对应 overrun，只是生产者与消费者角色互换。
 
@@ -720,7 +720,7 @@ AudioTrack::~AudioTrack()
 
 至此 AT 的分析告一段落。图 7-5 总结了它与 AF 的交互流程，这是攻克 AF 的重要武器：
 
-![](./images/ch0107_img01.jpg) ':width=600'
+![](./images/ch0107_img01.jpg)
 
 1. AT 调用 createTrack，得到一个 IAudioTrack 对象
 2. AT 调用 IAudioTrack 的 start，表示准备写数据
@@ -814,7 +814,7 @@ public:
 
 可得三个结论：AudioHardwareInterface 管理 AudioStreamOut（输出设备）与 AudioStreamIn（输入设备）的创建；经它可设置音频系统参数；输出/输入对象均支持 setParameters（路由切换靠它）。类关系如图 7-6：
 
-![](./images/ch0109_img01.jpg) ':width=600'
+![](./images/ch0109_img01.jpg)
 
 从这个角度说，是 AudioHardwareInterface 管理着系统中所有的音频设备——HAL 层的引入大大简化了应用层工作，否则无论用 libasound 还是 ioctl 控制音频设备都会非常麻烦。
 
@@ -971,7 +971,7 @@ createTrack 返回的 TrackHandle 以 Track 为参数构造，是 Track 的 Bind
 
 createTrack 里出现了 AudioFlinger、Client、PlaybackThread、Track、TrackHandle 一串对象。图 7-7 给出 AF 中的全部类：
 
-![](./images/ch0110_img01.jpg) ':width=600'
+![](./images/ch0110_img01.jpg)
 
 **Client 对象**是 AF 对客户端的封装，凡使用 AudioTrack/AudioRecord 的进程都是 AF 的 Client，以进程 pid 为标识。一个 Client 进程可以创建多个 AudioTrack，它们属于同一个 Client：
 
@@ -993,7 +993,7 @@ private:
 
 **工作线程家族**如图 7-8：
 
-![](./images/ch0110_img02.jpg) ':width=600'
+![](./images/ch0110_img02.jpg)
 
 | 线程 | 职责 |
 |---|---|
@@ -1005,11 +1005,11 @@ private:
 
 PlaybackThread 维护两个 Track 数组：mActiveTracks 是当前活跃的 Track，mTracks 是该线程创建的所有 Track；DuplicatingThread 另有 mOutputTracks 表示多路输出的目的端。用例对应的回放线程是一个 MixerThread。图 7-9 以 MixerThread 为代表展示音频数据的流动轨迹——**接收 AT 的数据、混音、把结果写入 AudioStreamOut 完成输出**：
 
-![](./images/ch0110_img03.jpg) ':width=600'
+![](./images/ch0110_img03.jpg)
 
 **Track 家族**如图 7-10。TrackHandle 与 RecordTrack 侧的 RecordHandle 基于 Binder 通信，作为 Proxy 接收请求并派发给对应的 Track/RecordTrack。Track 不直接继承 Binder 框架的原因也在图中：Track 本身的继承关系与承担的工作已经很复杂（TrackBase 定义于 ThreadBase、Track 定义于 PlaybackThread、RecordTrack 定义于 RecordThread、OutputTrack 定义于 DuplicatingThread），再掺合 Binder 只会乱上添乱。
 
-![](./images/ch0110_img04.jpg) ':width=600'
+![](./images/ch0110_img04.jpg)
 
 ### 1.4.4 MixerThread 的来历
 
@@ -1825,7 +1825,7 @@ enum audio_mode {
 
 为什么 Audio 要强调电话状态？必须联系智能手机的硬件架构（图 7-13）：
 
-![](./images/ch0114_img02.jpg) ':width=600'
+![](./images/ch0114_img02.jpg)
 
 系统有一个音频 DSP（Digital Signal Processor，数字信号处理器），声音输入输出都经过它，处理后的数字信号经 D/A 转换输出到扬声器、听筒、耳机等设备。系统有两个核心处理器：运行操作系统的**应用处理器（Application Processor）**和负责手机通信的**基带处理器（Baseband Processor，BP）**。AP 与 BP 都能向音频 DSP 发送数据且通路互不干扰——若二者不协调，就会出现通话声和音乐声混杂。所以打电话时，AP 上的 Phone 程序会主动设置 Audio 系统的 mode，Audio 系统据此做处理（如把 music 音量调小）。另外图中**蓝牙没有直连音频 DSP，音频数据需要单独发给蓝牙设备**（实际指蓝牙的 A2DP（Advanced Audio Distribution Profile）设备，A2DP 面向高质量立体声，必须由 AF 向它发送数据；SCO 面向通话语音）——一份数据要发往两处，正是 DuplicatingThread 出现的现实要求。
 
@@ -1833,7 +1833,7 @@ enum audio_mode {
 
 APS 与 HAL 类的关系如图 7-12：AudioPolicyService 持有一个 AudioPolicyInterface 对象（AMB），AMB 反过来持有 APS 实现的 AudioPolicyClientInterface 对象——**AMB 通过 clientInterface 调用 APS，APS 再转调 AF，这条通道是策略落地的路**：
 
-![](./images/ch0114_img01.jpg) ':width=600'
+![](./images/ch0114_img01.jpg)
 
 AMB 的构造函数把这些串了起来（摘编）：
 
@@ -1881,7 +1881,7 @@ AudioPolicyManagerBase::AudioPolicyManagerBase(
 
 这里有一个重要的设计抉择：**AudioFlinger 到底创建多少个 MixerThread？** 一种方案是一个 MixerThread 对应一个 Track；另一种是**用一个 MixerThread 支持 32 路 Track，多路数据经 AudioMixer 在软件层混音**。系统采用第二种——一个线程一个 Track 难以管理且浪费资源，软件混音极大地简化了 AMB 的工作量。图 7-14 展示 AMB 与 AF 及 MixerThread 的关系：AMB 除了 mHardwareOutput 还有一个 mA2dpOutput（对应专往蓝牙 A2DP 设备发送数据的 MixerThread，蓝牙连接上后才有意义）；除蓝牙外系统中一般只有这一个 MixerThread，所以 AMB 通过 mHardwareOutput 就能控制整个系统的声音输出：
 
-![](./images/ch0114_img03.jpg) ':width=600'
+![](./images/ch0114_img03.jpg)
 
 ### 1.5.2 重回 AudioTrack：getOutput 输出选择与 startOutput
 
@@ -1955,7 +1955,7 @@ audio_io_handle_t AudioPolicyManagerBase::getOutput(
 
 **output 的本质是 AF 中某个工作线程的索引号**，由 AP 返回是因为 Audio 系统需要：根据流类型找到路由策略 → 根据策略找到合适的输出设备 → 根据设备选择 AF 中合适的工作线程（蓝牙 MixerThread、DSP MixerThread 或 DuplicatingThread）→ AT 在该线程中创建 Track，数据由该线程处理。图 7-15 总结了三巨头的交互，从目的反推最清楚：AT 的目的是把数据发给对应设备（蓝牙、DSP）；代表输出设备的 HAL 对象由 MixerThread 持有，所以要找到对应线程；AP 维护流类型与输出设备的关系；AT 按流类型向 AudioSystem 查询对应线程号：
 
-![](./images/ch0115_img01.jpg) ':width=600'
+![](./images/ch0115_img01.jpg)
 
 再看重回 start：AF 的 Track::start 中调用 AudioSystem::startOutput，最终由 AMB 处理：
 
@@ -2530,9 +2530,9 @@ AudioFlinger::PlaybackThread::OutputTrack::OutputTrack(
 
 openDuplicateOutput 的结果如图 7-16：蓝牙 MT 的 Track 数组中有一个 OutputTrack0，DT 的 mOutputTracks 也指向它；灰色部分是数据传递用的缓冲。当 AT 的流类型对应 SONIFACATION 策略时，AP 返回 DT 的线程索引号，AT 在 DT 中创建普通 Track——图 7-17 是有 AT 的 DT 全景：
 
-![](./images/ch0118_img01.jpg) ':width=600'
+![](./images/ch0118_img01.jpg)
 
-![](./images/ch0118_img02.jpg) ':width=600'
+![](./images/ch0118_img02.jpg)
 
 **DT 的线程函数**。DT 从 MT 派生，天然具有混音能力，threadLoop 的 prepare/process 部分与 MT 一致，差别在输出——把混音结果写给每个 OutputTrack：
 

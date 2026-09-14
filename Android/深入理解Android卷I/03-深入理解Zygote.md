@@ -67,7 +67,7 @@ int main(int argc, const char* const argv[])
 
 AppRuntime 的声明和实现都在 App_main.cpp 中，从 AndroidRuntime 派生，重载了 onStarted、onZygoteInit、onExit 三个函数——其中 onZygoteInit 在 1.4.2 节再次出现。两个类的关系见图 4-1。
 
-![图 4-1 AppRuntime 和 AndroidRuntime 的关系](./images/ch0044_img01.jpg) ':width=600'
+![图 4-1 AppRuntime 和 AndroidRuntime 的关系](./images/ch0044_img01.jpg)
 
 ### 1.2.2 AndroidRuntime::start：进入 Java 世界的三部曲
 
@@ -588,7 +588,7 @@ public void run() {
 
 **Java 世界的核心 Service 都在 ServerThread 中启动**，这就是 system_server 重要性的直接来源。从诞生到启动完成的调用流程见图 4-2；注意 init1 最终让主线程加入 Binder 通信（joinThreadPool），此后 system_server 的主线程就常驻 Binder 循环了。
 
-![图 4-2 SystemServer 的调用流程](./images/ch0050_img01.jpg) ':width=600'
+![图 4-2 SystemServer 的调用流程](./images/ch0050_img01.jpg)
 
 ## 1.5 zygote 的分裂：fork 出应用进程
 
@@ -724,7 +724,7 @@ public static final void zygoteInit(String[] argv)
 
 后续路径与 system_server 完全同构：invokeStaticMain 抛出 MethodAndArgsCaller，在 ZygoteInit.main 的 catch 中截获，caller.run 调用 `android.app.ActivityThread` 的 main——一个应用进程就此诞生。zygote 侧在 handleParentProc 中把子进程 pid 写回 socket 交给 AMS，扫尾后回到 runSelectLoopMode 继续等待下一次请求。整个孵化过程见图 4-3。
 
-![图 4-3 zygote 响应请求的过程](./images/ch0054_img01.jpg) ':width=600'
+![图 4-3 zygote 响应请求的过程](./images/ch0054_img01.jpg)
 
 一个可直接验证的结论：**Android 系统中运行的所有 APK 程序，父进程都是 zygote**——用 adb shell 登录后执行 ps 命令，查看进程及其父进程号即可确认。
 

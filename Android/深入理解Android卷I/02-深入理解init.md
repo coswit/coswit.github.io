@@ -450,7 +450,7 @@ static void parse_line_service(struct parse_state *state, int nargs,
 
 zygote 的 section 解析完后，内存中的结果如图 3-1 所示：
 
-![](./images/ch0037_img01.jpg) ':width=600'
+![](./images/ch0037_img01.jpg)
 
 对照原书对图的说明：service_list 链表把解析后的所有 service 链成双向链表（前向节点用 prev 表示，后向节点用 next 表示）；socketinfo 也是一个双向链表，zygote 只有一个 socket，图中的虚框 socket 是链表示意；onrestart 通过 commands 指向 commands 链表，zygote 有三个 commands。至此「万事俱备，只欠东风」，接下来看 init 如何控制 service。
 
@@ -628,7 +628,7 @@ wait_for_one_process 只把 service 标记为 SVC_RESTARTING，真正的重启�
 
 本节转向第二条支线：属性服务。Android 系统有很多属性（HTC G7 真机上用 getprop 能列出一长串，如图 3-2 所示），它们统一由 init 托管。
 
-![](./images/ch0039_img01.jpg) ':width=600'
+![](./images/ch0039_img01.jpg)
 
 init.c 中与属性服务直接相关的代码只有两行：
 

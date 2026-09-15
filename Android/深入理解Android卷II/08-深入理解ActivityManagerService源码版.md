@@ -1,8 +1,8 @@
 ## 8.1 概述
 
-原书第 5 章分析了 Android 4.0（2011 年）时代的 ActivityManagerService（AMS）。此后十几年 AMS 是整个 framework 里被改动最多的服务：Activity 职责拆出去了、杀进程换了引擎、广播队列整个重写、Crash 与 ANR（Application Not Responding，应用无响应）治理独立成军。本章以 Android 16 源码为准重新走一遍第 5 章的那几条线。
+原书第 6 章分析了 Android 4.0（2011 年）时代的 ActivityManagerService（AMS）。此后十几年 AMS 是整个 framework 里被改动最多的服务：Activity 职责拆出去了、杀进程换了引擎、广播队列整个重写、Crash 与 ANR（Application Not Responding，应用无响应）治理独立成军。本章以 Android 16 源码为准重新走一遍原书第 6 章的那几条线。
 
-> 版本注意：源码为 AOSP main 分支，提交时间 2025-03，对应 Android 16 / API 36 开发阶段（下文统称"Android 16 源码"）。Android 10 起 Activity/Task 职责迁至 ATMS，进程与组件调度的骨架不变，第 5 章的分析框架仍适用；个别新机制尚在开关灰度中，行文会标注。
+> 版本注意：源码为 AOSP main 分支，提交时间 2025-03，对应 Android 16 / API 36 开发阶段（下文统称"Android 16 源码"）。Android 10 起 Activity/Task 职责迁至 ATMS，进程与组件调度的骨架不变，原书第 6 章的分析框架仍适用；个别新机制尚在开关灰度中，行文会标注。
 >
 > 摘编声明：文中代码均为摘编版——保留主干与关键分支，省略日志、trace 与样板代码；类名与方法名与 AOSP 一致，可对照源码阅读，代码块首行标注来源类与方法。
 
@@ -62,7 +62,7 @@ AMS 本尊也不再是那个什么都揽的 Monolith——`am/` 目录如今有 
 | `ProcessStateController` + `OomAdjuster`（及 `OomAdjusterModernImpl`） | oom_adj 计算与应用（原 updateOomAdjLocked 系列） |
 | `CachedAppOptimizer` | cached 进程冻结 freezer（4.0 无） |
 | `BroadcastController` + `BroadcastQueue`/`BroadcastQueueModernImpl` | 广播派发（原 mParallelBroadcasts/mOrderedBroadcasts） |
-| `ActiveServices` | Service 大管家（4.0 已有，职责未变） |
+| `ActiveServices` | Service 的统一管理类（4.0 已有，职责未变） |
 | `ContentProviderHelper` | ContentProvider（原 AMS 内联代码） |
 | `AppErrors` + `AnrHelper` + `AppExitInfoTracker` | Crash/ANR 处理与死因记录（原 crashApplication 内联代码） |
 | `UserController` | 多用户（4.0 几乎没有） |
@@ -73,18 +73,18 @@ AMS 本尊也不再是那个什么都揽的 Monolith——`am/` 目录如今有 
 
 ### 8.1.3 ProcessRecord 家族与锁策略
 
-ProcessRecord（ProcessRecord，进程档案）大幅瘦身，状态被拆到伴生对象：
+ProcessRecord（进程档案）大幅瘦身，状态被拆到伴生对象：
 
 - `ProcessStateRecord`：进程状态、oom_adj、procstate（4.0 时代散落在 ProcessRecord 的几十个字段）
 - `ProcessProfileRecord`：CPU/内存画像
 - `ProcessCachedOptimizerRecord`：冻结调度状态（如 `earliestFreezableTime`）
-- `WindowProcessController`：**wm 侧的影子对象**——ATMS/WMS 不直接持有 am 包的 ProcessRecord，而是通过这个桥接类回访。第 5 章"ActivityRecord 与 Activity 对象分居两界"在 Android 16 源码里升级成了"am 与 wm 两个包之间也划界而治"
+- `WindowProcessController`：**wm 侧的影子对象**——ATMS/WMS 不直接持有 am 包的 ProcessRecord，而是通过这个桥接类回访。原书第 6 章"ActivityRecord 与 Activity 对象分居两界"在 Android 16 源码里升级成了"am 与 wm 两个包之间也划界而治"
 
 锁策略同样体系化了：`ActivityManagerGlobalLock` 是一个标记接口，AMS 实例本身（`synchronized(this)`）是全局锁，**ActivityManagerProcLock**（`mProcLock`）是嵌套的进程级细粒度锁，持有全局锁时才能拿进程锁。源码中大量 `LOSP`（Lock On Service Provider）/`LSP`（Lock On Service Provider-进程锁）后缀的方法名就是在声明自己的锁约定。ATMS/WMS 侧则是另一把 `WindowManagerGlobalLock`。**两把全局锁的获取顺序有严格约束**（AMS 锁 → wm 锁），反过来的路径必须先 post 消息脱手，8.3 节的 `startProcessAsync` 就是活例子。
 
 ### 8.1.4 本章路线图
 
-全章按五条线索推进，与第 5 章的"五条线"一一对应；先看总览，再逐节深入：
+全章按五条线索推进，与原书第 6 章的"五条线"一一对应；先看总览，再逐节深入：
 
 | 节 | 链路/主题 | 核心类 | 入口调用链 |
 |---|---|---|---|
@@ -100,12 +100,12 @@ ProcessRecord（ProcessRecord，进程档案）大幅瘦身，状态被拆到伴
 4.0 时代那段著名的"AThread 双线程互等"已经没有了。现代 AMS 由 **SystemServiceManager** 统一孵化，且 **ATMS 先于 AMS 启动**：
 
 ```java
-// SystemServer#startBootstrapServices(节选)
+// SystemServer#startBootstrapServices（节选）
 // Activity manager runs the show.
 ActivityTaskManagerService atm = mSystemServiceManager.startService(
         ActivityTaskManagerService.Lifecycle.class).getService();  // ① 先启动 ATMS
 mActivityManagerService = ActivityManagerService.Lifecycle.startService(
-        mSystemServiceManager, atm);                               // ② 再启动 AMS,注入 ATMS
+        mSystemServiceManager, atm);                               // ② 再启动 AMS，注入 ATMS
 mActivityManagerService.setSystemServiceManager(mSystemServiceManager);
 mActivityManagerService.setInstaller(installer);
 mWindowManagerGlobalLock = atm.getGlobalLock();                    // ③ SystemServer 也拿到 wm 全局锁句柄
@@ -136,7 +136,7 @@ public static final class Lifecycle extends SystemService {
     }
 
     @Override
-    public void onBootPhase(int phase) {   // 按启动阶段回调:电池统计就绪、广播观察者启动、看门狗挂载等
+    public void onBootPhase(int phase) {   // 按启动阶段回调：电池统计就绪、广播观察者启动、看门狗挂载等
         ......
     }
 }
@@ -145,19 +145,19 @@ public static final class Lifecycle extends SystemService {
 ### 8.2.1 AMS 构造函数：协作者初始化
 
 ```java
-// ActivityManagerService#<init>(节选,2458 行起)
+// ActivityManagerService#<init>（节选，2458 行起）
 mHandlerThread = new ServiceThread(TAG, THREAD_PRIORITY_FOREGROUND, false /*allowIo*/);
 mHandlerThread.start();
-mHandler = new MainHandler(mHandlerThread.getLooper());     // 不再占用 fork 线程,消息线程独立成 ServiceThread
+mHandler = new MainHandler(mHandlerThread.getLooper());     // 不再占用 fork 线程，消息线程独立成 ServiceThread
 mProcStartHandlerThread = new ServiceThread(TAG + ":procStart", ...);  // 进程孵化还有专属线程
 
 mProcessList = mInjector.getProcessList(this);              // 进程孵化与登记
 mAppProfiler = new AppProfiler(this, ..., new LowMemDetector(this));
 mProcessStateController = new ProcessStateController.Builder(this, mProcessList, activeUids)
-        .useModernOomAdjuster(mConstants.ENABLE_NEW_OOMADJ) // OomAdjuster 新旧两版,开关切换
+        .useModernOomAdjuster(mConstants.ENABLE_NEW_OOMADJ) // OomAdjuster 新旧两版，开关切换
         .build();
 mBroadcastController = new BroadcastController(mContext, this, mBroadcastQueue);
-mServices = new ActiveServices(this);                       // Service 大管家
+mServices = new ActiveServices(this);                       // Service 的统一管理类
 mCpHelper = new ContentProviderHelper(this, true);
 mAppErrors = new AppErrors(mUiContext, this, mPackageWatchdog);
 mBatteryStatsService = BatteryStatsService.create(...);
@@ -173,12 +173,12 @@ mActivityTaskManager.initialize(mIntentFirewall, mPendingIntentController, ...);
 - **系统运行环境的建立挪了窝**：4.0 在 AMS 的 `main()` 里调 `ActivityThread.systemMain()`；现代 SystemServer 在 `run()` 一开始就经 `createSystemContext()` 调 `ActivityThread.systemMain()` 搭好 system 进程的运行环境，轮到 AMS 构造时 `mSystemThread = ActivityThread.currentActivityThread()` 直接取现成的
 - 构造尾声依旧把自己交给看门狗：`Watchdog.getInstance().addMonitor(this)`，并抢先做一次 `updateOomAdjLocked(OOM_ADJ_REASON_SYSTEM_INIT)`
 
-### 8.2.2 start（） 与 setSystemProcess
+### 8.2.2 start() 与 setSystemProcess
 
 `onStart` → `start()` 负责把各统计服务 publish 到 ServiceManager 并向 LocalServices 注册进程内接口。`setSystemProcess()` 仍在 startOtherServices 阶段被调，骨架未变、细节全换：
 
 ```java
-// ActivityManagerService#setSystemProcess(节选)
+// ActivityManagerService#setSystemProcess（节选）
 ServiceManager.addService(Context.ACTIVITY_SERVICE, this, /* allowIsolated= */ true, ...);
 ServiceManager.addService(ProcessStats.SERVICE_NAME, mProcessStats);
 ServiceManager.addService("meminfo", new MemBinder(this));
@@ -193,7 +193,7 @@ ApplicationInfo info = mContext.getPackageManager().getApplicationInfo(
 mSystemThread.installSystemApplicationInfo(info, getClass().getClassLoader());
 
 synchronized (this) {
-    // 为 system_server 自己建 ProcessRecord,纳入进程管理——4.0 的设计沿用至今
+    // 为 system_server 自己建 ProcessRecord，纳入进程管理——4.0 的设计沿用至今
     ProcessRecord app = mProcessList.newProcessRecordLocked(info, info.processName, ...,
             new HostingRecord(HostingRecord.HOSTING_TYPE_SYSTEM));
     app.setPersistent(true);
@@ -212,14 +212,14 @@ synchronized (this) {
 ### 8.2.3 systemReady：四段式收尾
 
 ```java
-// ActivityManagerService#systemReady(节选,8961 行起)
-// 第一段:各控制器就绪
+// ActivityManagerService#systemReady（节选，8961 行起）
+// 第一段：各控制器就绪
 mActivityTaskManager.onSystemReady();
 mUserController.onSystemReady();
 mProcessList.onSystemReady();
 mSystemReady = true;
 
-// 第二段:清场——杀掉先于 AMS 就绪、不被允许的进程(系统升级期间的残留)
+// 第二段：清场——杀掉先于 AMS 就绪、不被允许的进程（系统升级期间的残留）
 ArrayList<ProcessRecord> procsToKill = null;
 synchronized (mPidsSelfLocked) { ...... }
 synchronized (this) {
@@ -232,17 +232,17 @@ synchronized (this) {
     }
     mProcessesReady = true;
 }
-retrieveSettings();                                        // 读配置(条目远多于 4.0 的 4 个)
+retrieveSettings();                                        // 读配置（条目远多于 4.0 的 4 个）
 
-if (goingCallback != null) goingCallback.run();            // 第三段:回调 SystemServer(启动 SystemUI 等)
+if (goingCallback != null) goingCallback.run();            // 第三段：回调 SystemServer（启动 SystemUI 等）
 
-// 第四段:persistent 应用 + Home
+// 第四段：persistent 应用 + Home
 synchronized (this) {
     startPersistentApps(PackageManager.MATCH_DIRECT_BOOT_AWARE);  // 只先起 directBootAware 的
     mBooting = true;
     mAtmInternal.startHomeOnAllDisplays(currentUserId, "systemReady");  // Home 交给 ATMS
     mAtmInternal.resumeTopActivities(false /* scheduleIdle */);
-    // 设置 Binder 代理数量水位(防单个应用打死 system_server)
+    // 设置 Binder 代理数量水位（防单个应用打死 system_server）
     BinderInternal.nSetBinderProxyCountWatermarks(BINDER_PROXY_HIGH_WATERMARK, ...);
 }
 ```
@@ -251,12 +251,12 @@ synchronized (this) {
 
 ## 8.3 Activity 启动全链路：ActivityStarter 与 ClientTransaction
 
-第 5 章的 startActivity 分析在 Android 10 后要看 ATMS。骨架仍是"解析 → 找 Task → resume → 起进程 → 投递事务"，但每一步的实现都换了人。
+原书第 6 章的 startActivity 分析在 Android 10 后要看 ATMS。骨架仍是"解析 → 找 Task → resume → 起进程 → 投递事务"，但每一步的实现都换了人。
 
 ### 8.3.1 入口：IActivityTaskManager.startActivity
 
 ```java
-// Instrumentation#execStartActivity(节选)
+// Instrumentation#execStartActivity（节选）
 int result = ActivityTaskManager.getService().startActivity(
         whoThread, who.getBasePackageName(), who.getAttributionTag(),
         intent, intent.resolveTypeIfNeeded(who.getContentResolver()),
@@ -267,7 +267,7 @@ int result = ActivityTaskManager.getService().startActivity(
 `ActivityTaskManager.getService()` 返回 `IActivityTaskManager` 的 AIDL 代理，目标是 `activity_task` 服务（ATMS）。ATMS 的 `startActivity` 只做 uid/pid 提取与 user 校验，随即转入 `ActivityStarter`：
 
 ```java
-// ActivityTaskManagerService#startActivityAsUser(节选,1309 行)
+// ActivityTaskManagerService#startActivityAsUser（节选，1309 行）
 return getActivityStartController().obtainStarter(intent, "startActivityAsUser")
         .setCaller(caller)
         .setCallingPackage(callingPackage)
@@ -280,10 +280,10 @@ return getActivityStartController().obtainStarter(intent, "startActivityAsUser")
 
 ### 8.3.2 ActivityStarter：executeRequest 与 startActivityInner
 
-`execute()` 先解析 Intent（与 PKMS 交互查 ActivityInfo）、做权限与**后台启动限制**（Background Activity Launch， BAL；Android 10 引入，由 `BackgroundActivityStartController` 依据 allowlist 与启动裁决决定放行与否），然后进入核心：
+`execute()` 先解析 Intent（与 PKMS 交互查 ActivityInfo）、做权限与**后台启动限制**（Background Activity Launch，BAL；Android 10 引入，由 `BackgroundActivityStartController` 依据 allowlist 与启动裁决决定放行与否），然后进入核心：
 
 ```java
-// ActivityStarter#execute(节选,1690 行附近)
+// ActivityStarter#execute（节选，1690 行附近）
 try {
     Trace.traceBegin(Trace.TRACE_TAG_WINDOW_MANAGER, "startActivityInner");
     result = startActivityInner(r, sourceRecord, voiceSession, voiceInteractor,
@@ -305,12 +305,12 @@ try {
 resume 链发现目标进程没起来时：
 
 ```java
-// ActivityTaskManagerService#startProcessAsync(节选,5279 行起)
+// ActivityTaskManagerService#startProcessAsync（节选，5279 行起）
 void startProcessAsync(ActivityRecord activity, boolean knownToBeDead, boolean isTop,
         String hostingType) {
     ......
     // Post message to start process to avoid possible deadlock of calling into AMS with the
-    // ATMS lock held. —— 持 wm 锁时直接调 AMS(要拿 am 锁)可能死锁,必须先把手里的锁放下
+    // ATMS lock held. —— 持 wm 锁时直接调 AMS（要拿 am 锁）可能死锁，必须先把手里的锁放下
     final Message m = PooledLambda.obtainMessage(ActivityManagerInternal::startProcess,
             mAmInternal, activity.processName, activity.info.applicationInfo, knownToBeDead,
             isTop, hostingType, activity.intent.getComponent());
@@ -321,10 +321,10 @@ void startProcessAsync(ActivityRecord activity, boolean knownToBeDead, boolean i
 这是 8.1.3 锁纪律的典型例子：wm 锁 → am 锁的逆向路径一律 post 消息。真正孵化在 `ProcessList.startProcessLocked`：
 
 ```java
-// ProcessList#startProcessLocked(节选,2096 行起)
+// ProcessList#startProcessLocked（节选，2096 行起）
 final String entryPoint = "android.app.ActivityThread";   // 入口类十几年未变
-// 经 ZygoteProcess 与 zygote 通信 fork 子进程;新进程以 pid/startSeq 登记后,
-// 同样挂 PROC_START_TIMEOUT(10 秒)超时消息
+// 经 ZygoteProcess 与 zygote 通信 fork 子进程；新进程以 pid/startSeq 登记后，
+// 同样挂 PROC_START_TIMEOUT（10 秒）超时消息
 ```
 
 10 秒超时（`PROC_START_TIMEOUT = 10 * 1000 * Build.HW_TIMEOUT_MULTIPLIER`）与 4.0 一致，但 Android 16 源码把后续的 bindApplication 超时拆成了 **soft/hard 两级消息**（`BIND_APPLICATION_TIMEOUT_SOFT_MSG/HARD_MSG`）：软超时先催（trace + 日志），硬超时才杀——给慢设备与大规模应用留了缓冲。
@@ -334,7 +334,7 @@ final String entryPoint = "android.app.ActivityThread";   // 入口类十几年�
 4.0 时代 `realStartActivityLocked` 里那句 `app.thread.scheduleLaunchActivity(...)` 没了，取而代之的是**事务化投递**：
 
 ```java
-// ActivityTaskSupervisor#realStartActivityLocked(节选,941 行起)
+// ActivityTaskSupervisor#realStartActivityLocked（节选，941 行起）
 // Create activity launch transaction.
 final LaunchActivityItem launchActivityItem = new LaunchActivityItem(r.token,
         r.intent, System.identityHashCode(r), r.info,
@@ -371,7 +371,7 @@ mService.getLifecycleManager().scheduleTransactionItems(
 ```java
 // ClientTransactionHandler#scheduleTransaction
 void scheduleTransaction(ClientTransaction transaction) {
-    transaction.preExecute(this);                // 执行前钩子(如刷新pending状态)
+    transaction.preExecute(this);                // 执行前钩子（如刷新pending状态）
     sendMessage(ActivityThread.H.EXECUTE_TRANSACTION, transaction);  // 照旧扔回主线程 Handler
 }
 ```
@@ -379,7 +379,7 @@ void scheduleTransaction(ClientTransaction transaction) {
 主线程 `mH` 收到 `EXECUTE_TRANSACTION` 后交给 `TransactionExecutor`。本源码树的执行器是又一代重写（相对 Android 9~14 的"先 callbacks 后 lifecycleState"两段式）：**逐项执行、边走边补路径**：
 
 ```java
-// TransactionExecutor#executeTransactionItems(节选)
+// TransactionExecutor#executeTransactionItems（节选）
 for (int i = 0; i < size; i++) {
     final ClientTransactionItem item = items.get(i);
     if (item.isActivityLifecycleItem()) {
@@ -389,7 +389,7 @@ for (int i = 0; i < size; i++) {
     }
 }
 
-// executeNonLifecycleItem 内部(节选):
+// executeNonLifecycleItem 内部（节选）：
 final int postExecutionState = item.getPostExecutionState();
 if (item.shouldHaveDefinedPreExecutionState()) {
     final int closestPreExecutionState = mHelper.getClosestPreExecutionState(r,
@@ -398,20 +398,20 @@ if (item.shouldHaveDefinedPreExecutionState()) {
         cycleToPath(r, closestPreExecutionState, transaction);  // 把 Activity 沿生命周期"转"到前置状态
     }
 }
-item.execute(mTransactionHandler, mPendingActions);             // 真正干活,如 LaunchActivityItem.execute
+item.execute(mTransactionHandler, mPendingActions);             // 真正干活，如 LaunchActivityItem.execute
 item.postExecute(mTransactionHandler, mPendingActions);
 ```
 
 `LaunchActivityItem.execute` → `client.handleLaunchActivity` → `performLaunchActivity`（反射创建 Activity、attach、onCreate）；`ResumeActivityItem.execute` → `handleResumeActivity`（onResume）。`cycleToPath` 负责"从当前状态走到目标状态之间的每个生命周期回调都要补齐"——比如事务要求到达 RESUMED 而当前是 CREATED，就先走 `StartActivityItem`。**4.0 时代由 AMS 逐个 schedule 的生命周期序列，现在变成客户端自己按事务声明推导**，这是生命周期驱动方式最大的语义变化。
 
-收尾动作也没变：主线程空闲时 `Idler.queueIdle` → `am.activityIdle(...)`，AMS 侧 `activityIdleInternal` 完成 stop 旧 Activity、发 BOOT_COMPLETED 等扫尾——第 5 章的这条"空闲回调"链路完整保留。
+收尾动作也没变：主线程空闲时 `Idler.queueIdle` → `am.activityIdle(...)`，AMS 侧 `activityIdleInternal` 完成 stop 旧 Activity、发 BOOT_COMPLETED 等扫尾——原书第 6 章的这条"空闲回调"链路完整保留。
 
 ### 8.3.6 attachApplication：新进程的登记与授权
 
 新进程的 `ActivityThread.main` → `attach(false)` → `ams.attachApplication(thread, startSeq)`，AMS 侧分三步（与 4.0 的三阶段同构）：
 
 ```java
-// ActivityManagerService#attachApplication / attachApplicationLocked(节选)
+// ActivityManagerService#attachApplication / attachApplicationLocked（节选）
 public final void attachApplication(IApplicationThread thread, long startSeq) {
     synchronized (this) {
         int callingPid = Binder.getCallingPid();
@@ -419,11 +419,11 @@ public final void attachApplication(IApplicationThread thread, long startSeq) {
         attachApplicationLocked(thread, callingPid, callingUid, startSeq);
     }
 }
-// 之一:按 pid + startSeq 匹配 ProcessRecord(防"旧进程复活顶包"),撤销启动超时消息
-// 之二:bindApplication——赋予进程使命:
-thread.bindApplication(processName, appInfo, ..., providerList,   // 注意:Provider 列表仍是第一个安排的
+// 之一：按 pid + startSeq 匹配 ProcessRecord（防"旧进程复活顶包"），撤销启动超时消息
+// 之二：bindApplication——赋予进程使命：
+thread.bindApplication(processName, appInfo, ..., providerList,   // 注意：Provider 列表仍是第一个安排的
         instrumentationName, profilerInfo, ..., preBindInfo.configuration, ...);
-// 之三:启动等待中的组件(委托给各协作者):
+// 之三：启动等待中的组件（委托给各协作者）：
 didSomething = mAtmInternal.attachApplication(app.getWindowProcessController());  // Activity
 didSomething |= mServices.attachApplicationLocked(app);                            // Service
 ... // 广播、backup 等
@@ -453,11 +453,11 @@ sequenceDiagram
     New->>Sys: ⑦ activityIdle-Idler空闲回调
 ```
 
-与 4.0 对比：**Binder 穿越次数没变（三次量级），但每次携带的信息密度变大了**——生命周期调度从"N 次散装 Binder"压缩为"打包事务"；驱动方从 AMS 一家变成 AMS/ATMS 两家；客户端从"收到什么执行什么"变成"按事务声明自己推导路径"。**第 5 章的两条核心认知原样成立**：生命周期回调由系统远程驱动、在客户端主线程 Handler 中执行；ActivityRecord（token）与 Activity 对象分居两界，token 再与 WMS 的窗口层关联。
+与 4.0 对比：**Binder 穿越次数没变（三次量级），但每次携带的信息密度变大了**——生命周期调度从"N 次散装 Binder"压缩为"打包事务"；驱动方从 AMS 一家变成 AMS/ATMS 两家；客户端从"收到什么执行什么"变成"按事务声明自己推导路径"。**原书第 6 章的两条核心认知原样成立**：生命周期回调由系统远程驱动、在客户端主线程 Handler 中执行；ActivityRecord（token）与 Activity 对象分居两界，token 再与 WMS 的窗口层关联。
 
 ## 8.4 广播重构：BroadcastQueueModernImpl 与每进程队列
 
-第 5 章的"并行/串行两条队列 + 全局串行"模型在 Android 14 前后被彻底重写。本源码树里 AMS 只持有一个 `mBroadcastQueue`，实现类是 `BroadcastQueueModernImpl`（约 2500 行），设计思想记录在源码自带的 `BroadcastQueue.md` 里——**以进程为中心重组队列**。
+原书第 6 章的"并行/串行两条队列 + 全局串行"模型在 Android 14 前后被彻底重写。本源码树里 AMS 只持有一个 `mBroadcastQueue`，实现类是 `BroadcastQueueModernImpl`（约 2500 行），设计思想记录在源码自带的 `BroadcastQueue.md` 里——**以进程为中心重组队列**。
 
 ### 8.4.1 旧模型的问题
 
@@ -492,7 +492,7 @@ graph LR
 调度器按 runnable at 排序，选等得最久的先提升为 running。**并发放开关控制**：
 
 ```java
-// BroadcastConstants.java(节选)
+// BroadcastConstants.java（节选）
 public int MAX_RUNNING_PROCESS_QUEUES =
         ActivityManager.isLowRamDeviceStatic() ? 2 : 4;      // 常规设备最多 4 个进程同时收广播
 ```
@@ -506,24 +506,24 @@ public int MAX_RUNNING_PROCESS_QUEUES =
 fg/bg 两条物理队列没了，**前后台语义收敛为逐广播的标志位与超时参数**：
 
 ```java
-// BroadcastQueueModernImpl#processNextBroadcast(节选)
+// BroadcastQueueModernImpl#processNextBroadcast（节选）
 final int softTimeoutMillis = (int) (r.isForeground() ? mFgConstants.TIMEOUT
         : mBgConstants.TIMEOUT);       // fg 10s / bg 60s 的传统数值保留为两组 BroadcastConstants
 startDeliveryTimeoutLocked(queue, softTimeoutMillis);
 ```
 
-ANR 治理引入 **soft/hard 两级超时**：CPU 争用严重时软超时最多放宽一倍再观察，硬超时才真正判死——慢设备上"广播 ANR 但进程其实还活着"的误杀显著减少。静态接收者仍可能触发进程冷启动（挂在该进程队列上等 attach），**"任何广播对静态接收者都是 ordered 的"这条第 5 章结论在新模型里依然成立**，只是实现从全局串行队列换成了每进程队列里的依赖阻塞。
+ANR 治理引入 **soft/hard 两级超时**：CPU 争用严重时软超时最多放宽一倍再观察，硬超时才真正判死——慢设备上"广播 ANR 但进程其实还活着"的误杀显著减少。静态接收者仍可能触发进程冷启动（挂在该进程队列上等 attach），**"任何广播对静态接收者都是 ordered 的"这条原书第 6 章的结论在新模型里依然成立**，只是实现从全局串行队列换成了每进程队列里的依赖阻塞。
 
 外围收紧仍在继续：Android 8 起大量隐式广播不再投递给 manifest receiver；Android 13 起动态注册非系统广播必须声明 `RECEIVER_EXPORTED`/`RECEIVER_NOT_EXPORTED`；sticky 广播则早已进入废弃流程。
 
 ## 8.5 Service 与前台服务：ActiveServices 的准入与限制
 
-`ActiveServices` 从 4.0 一路走来还是那个 Service 大管家，`ServiceRecord`/`ConnectionRecord`/`BindRecord` 的三级模型、`scheduleCreateService` → 主线程 `handleCreateService`（反射创建、onCreate）的投递路径都没变。变的是**权限与准入**：
+`ActiveServices` 从 4.0 一路走来职责未变，仍是 Service 的统一管理类，`ServiceRecord`/`ConnectionRecord`/`BindRecord` 的三级模型、`scheduleCreateService` → 主线程 `handleCreateService`（反射创建、onCreate）的投递路径都没变。变的是**权限与准入**：
 
 **后台 Service 禁令（Android 8）**。后台进程 `startService` 直接抛 `IllegalStateException`，合法路径只剩 `startForegroundService`——它要求 Service 在限时内调用 `startForeground` 挂出常驻通知：
 
 ```java
-// ActivityManagerConstants.java(节选)
+// ActivityManagerConstants.java（节选）
 private static final int DEFAULT_SERVICE_START_FOREGROUND_TIMEOUT_MS = 30 * 1000;  // 起前台限时
 private static final long DEFAULT_SERVICE_TIMEOUT = 20 * 1000 * Build.HW_TIMEOUT_MULTIPLIER;        // 前台 Service 生命周期超时
 private static final long DEFAULT_SERVICE_BACKGROUND_TIMEOUT = DEFAULT_SERVICE_TIMEOUT * 10;        // 后台 Service 200s
@@ -532,9 +532,9 @@ private static final long DEFAULT_SERVICE_BACKGROUND_TIMEOUT = DEFAULT_SERVICE_T
 超时未 `startForeground` → `serviceForegroundTimeoutANR`（ANR 而非直接杀，给系统留观察窗口）。两条超时链路都在 ActiveServices 里，以定时器驱动：
 
 ```java
-// ActiveServices.java(节选)
-// ① Service 生命周期超时:超时会遍历该进程"正在执行中"的 Service,
-//    找出 executingStart 早于 deadline 的那个,转入 ANR 流程(AnrHelper)
+// ActiveServices.java（节选）
+// ① Service 生命周期超时：超时会遍历该进程"正在执行中"的 Service,
+//    找出 executingStart 早于 deadline 的那个，转入 ANR 流程(AnrHelper)
 void serviceTimeout(ProcessRecord proc) {                     // 源码 7517 行
     ......
     final long maxTime = now
@@ -548,7 +548,7 @@ void serviceTimeout(ProcessRecord proc) {                     // 源码 7517 行
     ......                                                     // 调试中或无执行中 Service 则撤销定时器
 }
 
-// ② startForegroundService 限时:必须在限时内调 startForeground,否则 ANR
+// ② startForegroundService 限时：必须在限时内调 startForeground，否则 ANR
 void scheduleServiceForegroundTransitionTimeoutLocked(ServiceRecord r) {
     r.fgWaiting = true;
     mServiceFGAnrTimer.start(r, mAm.mConstants.mServiceStartForegroundTimeoutMs);  // 默认 30s
@@ -568,21 +568,21 @@ void scheduleServiceForegroundTransitionTimeoutLocked(ServiceRecord r) {
 现代 `ProcessList` 的 adj 阶梯（与 Linux 内核 `oom_score_adj` 同坐标系）：
 
 ```java
-// ProcessList.java(节选)
-public static final int NATIVE_ADJ = -1000;            // 原生守护进程(不含 zygote)
+// ProcessList.java（节选）
+public static final int NATIVE_ADJ = -1000;            // 原生守护进程（不含 zygote）
 public static final int SYSTEM_ADJ = -900;             // system_server
 public static final int PERSISTENT_PROC_ADJ = -800;    // persistent 应用
 public static final int PERSISTENT_SERVICE_ADJ = -700;
 public static final int FOREGROUND_APP_ADJ = 0;        // 前台应用
 public static final int PERCEPTIBLE_RECENT_FOREGROUND_APP_ADJ = 50;
-public static final int VISIBLE_APP_ADJ = 100;         // 可见但不在前台(按窗口层级还能细分)
-public static final int PERCEPTIBLE_APP_ADJ = 200;     // 用户可感知(后台放音乐等)
+public static final int VISIBLE_APP_ADJ = 100;         // 可见但不在前台（按窗口层级还能细分）
+public static final int PERCEPTIBLE_APP_ADJ = 200;     // 用户可感知（后台放音乐等）
 public static final int BACKUP_APP_ADJ = 300;
 public static final int HEAVY_WEIGHT_APP_ADJ = 400;
 public static final int SERVICE_ADJ = 500;             // 有 service 的进程
 public static final int HOME_APP_ADJ = 600;            // Launcher
-public static final int PREVIOUS_APP_ADJ = 700;        // 上一个应用(快速切回)
-public static final int SERVICE_B_ADJ = 800;           // B List service(长期无人绑定的旧服务)
+public static final int PREVIOUS_APP_ADJ = 700;        // 上一个应用（快速切回）
+public static final int SERVICE_B_ADJ = 800;           // B List service（长期无人绑定的旧服务）
 public static final int CACHED_APP_MIN_ADJ = 900;      // cached 进程区间 900~999
 public static final int CACHED_APP_MAX_ADJ = 999;
 ```
@@ -605,18 +605,18 @@ public static final int CACHED_APP_MAX_ADJ = 999;
 2. **Oom adj score**（同步给 lmkd）
 3. **Scheduler Group / 进程能力**（大小核调度、while-in-use 能力位）
 
-计算骨架仍是"取最强组件状态打底，再沿**进程依赖图**传播"：前台应用绑定的后台 Service 要保命（客户端把自己的 adj "传染"给服务端）、ContentProvider 客户端把 Provider 进程往上拽——第 5 章 computeOomAdjLocked 的这些规则完整存活，并且绑端 service/provider 的传播规则在 `OomAdjuster.md` 里有两张条件真值表，细致到每个 BIND_* flag 的组合。
+计算骨架仍是"取最强组件状态打底，再沿**进程依赖图**传播"：前台应用绑定的后台 Service 要保命（客户端把自己的 adj "传染"给服务端）、ContentProvider 客户端把 Provider 进程往上拽——原书第 6 章 computeOomAdjLocked 的这些规则完整存活，并且绑端 service/provider 的传播规则在 `OomAdjuster.md` 里有两张条件真值表，细致到每个 BIND_* flag 的组合。
 
-老实现的痛点是**依赖环**：A 绑 B、B 绑 A 时，递归计算要用全局序列号 `mAdjSeq` 检测环、回退重试（上限 10 次），复杂度 O（（1+重试次数）×进程数×连接数），且结果依赖输入顺序、可能算错。本源码树里已有换血后的 **OomAdjusterModernImpl**：
+老实现的痛点是**依赖环**：A 绑 B、B 绑 A 时，递归计算要用全局序列号 `mAdjSeq` 检测环、回退重试（上限 10 次），复杂度 O((1+重试次数)×进程数×连接数)，且结果依赖输入顺序、可能算错。本源码树里已有换血后的 **OomAdjusterModernImpl**：
 
 ```text
-# OomAdjuster.md 伪代码(原文意译)
-对进程表里每个进程:只按自身组件状态计算初始状态(不含客户端),按状态放入对应桶
-从最高桶到最低桶逐桶遍历:桶内每个进程检查它绑定的服务/Provider,
-若因绑定关系可以提升,则把被绑定进程搬到更高的桶
+# OomAdjuster.md 伪代码（原文意译）
+对进程表里每个进程：只按自身组件状态计算初始状态（不含客户端），按状态放入对应桶
+从最高桶到最低桶逐桶遍历：桶内每个进程检查它绑定的服务/Provider，
+若因绑定关系可以提升，则把被绑定进程搬到更高的桶
 ```
 
-桶（bucket）+ 广度优先传播，复杂度降为 O（进程数×连接数），且"应用不可能把它连的服务/Provider 提到自己之上"的不变量天然成立。**新旧实现并存，由 `ActivityManagerConstants.ENABLE_NEW_OOMADJ`（DeviceConfig 键 `enable_new_oom_adj`，默认值来自 aconfig 标志 `oomadjuster_correctness_rewrite`）切换**——读源码时要在 `ProcessStateController.Builder().useModernOomAdjuster(...)` 处分叉，两套都在维护。
+桶（bucket）+ 广度优先传播，复杂度降为 O(进程数×连接数)，且"应用不可能把它连的服务/Provider 提到自己之上"的不变量天然成立。**新旧实现并存，由 `ActivityManagerConstants.ENABLE_NEW_OOMADJ`（DeviceConfig 键 `enable_new_oom_adj`，默认值来自 aconfig 标志 `oomadjuster_correctness_rewrite`）切换**——读源码时要在 `ProcessStateController.Builder().useModernOomAdjuster(...)` 处分叉，两套都在维护。
 
 ### 8.6.4 CachedAppOptimizer：cached 进程冻结
 
@@ -624,10 +624,10 @@ cached 进程（adj ≥ `FREEZER_CUTOFF_ADJ = 900`）的待遇从"等着被杀"�
 
 - **cgroup freezer**：通过 cgroup v2 的 freezer 把进程整个冻住——不占 CPU、不耗电，但内存还在、恢复零成本；相比 LMK 杀进程后冷启动的秒级开销，解冻是毫秒级
 - 冻结按 **uid 粒度**统一裁决（`areAllProcessesFrozen`：同 uid 下所有进程都该冻才冻），冻/解冻是异步的（`freezeAppAsyncLSP`），带 `earliestFreezableTime` 延迟窗防抖
-- **冻结的代价与兜底**：进程被冻期间如果有别的进程给它发 Binder 调用，调用会挂起。system_server 侧专门有 `frozenBinderTransactionDetected(pid, code, flags, err)`（SystemServer.java：1010）感知这一情况，必要时解冻；被冻进程有广播要收时，广播队列的 runnable at 也要提前解冻再派发
+- **冻结的代价与兜底**：进程被冻期间如果有别的进程给它发 Binder 调用，调用会挂起。system_server 侧专门有 `frozenBinderTransactionDetected(pid, code, flags, err)`（SystemServer.java:1010）感知这一情况，必要时解冻；被冻进程有广播要收时，广播队列的 runnable at 也要提前解冻再派发
 - 配套的 `CacheOomRanker` 按使用频率等信号给 cached 进程排桶位，决定谁先冻、谁先被 lmkd 盯上
 
-**"应用退出 ≠ 进程退出"的第 5 章结论在 Android 16 源码里又进了一步**：退出的应用先是 Empty/cached 进程留在 LRU 里（`mLruProcesses` 还在 ProcessList），然后大概率被冻而不是被杀——用户感知到的"后台被杀"其实多数只是"被冻结后内存真的不够才杀"。
+**"应用退出 ≠ 进程退出"这条原书第 6 章的结论在 Android 16 源码里又进了一步**：退出的应用先是 Empty/cached 进程留在 LRU 里（`mLruProcesses` 还在 ProcessList），然后大概率被冻而不是被杀——用户感知到的"后台被杀"其实多数只是"被冻结后内存真的不够才杀"。
 
 ## 8.7 Crash 与 ANR 治理
 
@@ -636,9 +636,9 @@ cached 进程（adj ≥ `FREEZER_CUTOFF_ADJ = 900`）的待遇从"等着被杀"�
 客户端入口仍是 `RuntimeInit.commonInit()`，只是 4.0 的 `UncaughtHandler` 更名并拆成两个 handler：
 
 ```java
-// RuntimeInit#commonInit(节选)
+// RuntimeInit#commonInit（节选）
 LoggingHandler loggingHandler = new LoggingHandler();
-RuntimeHooks.setUncaughtExceptionPreHandler(loggingHandler);   // pre handler:先记日志,应用换不掉
+RuntimeHooks.setUncaughtExceptionPreHandler(loggingHandler);   // pre handler：先记日志，应用换不掉
 Thread.setDefaultUncaughtExceptionHandler(new KillApplicationHandler(loggingHandler));
 ```
 
@@ -658,18 +658,18 @@ AMS 里的 `crashApplication` 逻辑整体搬入 `AppErrors`：
 4.0 时代 ANR 在超时消息里同步处理（dump 堆栈、弹窗），大机型上 dump 本身就能把 system_server 拖住数秒。现代实现拆出 `AnrHelper`，把"记账"与"重活"分离：
 
 ```java
-// AnrHelper#appNotResponding(节选)
+// AnrHelper#appNotResponding（节选）
 synchronized (mAnrRecords) {
-    ...... // 去重:同 pid 正在处理/在队/预dump中,直接跳过
+    ...... // 去重：同 pid 正在处理/在队/预dump中，直接跳过
     // We dump the main process as soon as we can on a different thread,
     // this is done as the main process's dump can go stale in a few hundred
     // milliseconds and the average full ANR dump takes a few seconds.
-    // —— 主进程的堆栈几百毫秒就会过时,全量 dump 要几秒:先抢一份"新鲜"的
+    // —— 主进程的堆栈几百毫秒就会过时，全量 dump 要几秒：先抢一份"新鲜"的
     Future<File> firstPidDumpPromise = mEarlyDumpExecutor.submit(() -> {
         File tracesFile = StackTracesDumpHelper.dumpStackTracesTempFile(incomingPid, ...);
         return tracesFile;
     });
-    mAnrRecords.add(new AnrRecord(anrProcess, ...));   // 入队,由 AnrHelper 线程慢慢处理
+    mAnrRecords.add(new AnrRecord(anrProcess, ...));   // 入队，由 AnrHelper 线程慢慢处理
 }
 ```
 
@@ -681,7 +681,7 @@ synchronized (mAnrRecords) {
 
 ## 8.8 总结：4.0 → 16 的变与不变
 
-| 维度 | Android 4.0（第 5 章） | Android 16（本章源码） |
+| 维度 | Android 4.0（原书第 6 章） | Android 16（本章源码） |
 |---|---|---|
 | 服务形态 | Monolithic AMS，Activity 栈也在里面 | AMS + ATMS 分治；am/ 目录 130+ 协作者；AIDL 接口；LocalServices 进程内协作 |
 | Binder 接口 | 手写 ActivityManagerNative/AMP | IActivityManager/IActivityTaskManager 由 AIDL 生成 |
@@ -701,4 +701,4 @@ synchronized (mAnrRecords) {
 2. **adj 与组件状态联动**——"前台放音乐杀不死、空进程最先死"的规则从 4.0 的 computeOomAdjLocked 一路传到 OomAdjusterModernImpl，所有保活技巧对抗的仍是同一张表
 3. **Binder + Handler 三段式**——系统侧远程驱动、ApplicationThread 回投、客户端主线程 MessageQueue 执行；散装 schedule 变成了打包事务，但"回调发生在主线程"这件事十五年没变
 
-**两条主线变化**：**进程怎么死**（内核驱动水位杀 → lmkd+PSI+freezer 的分级刑罚）与**后台能干什么**（从自由驻留到处处设卡）。读懂第 5 章的骨架再来看本章，演进脉络就是这两句话。
+**两条主线变化**：**进程怎么死**（内核驱动水位杀 → lmkd+PSI+freezer 的分级处置）与**后台能干什么**（从自由驻留到处处设卡）。读懂原书第 6 章的骨架再来看本章，演进脉络就是这两句话。

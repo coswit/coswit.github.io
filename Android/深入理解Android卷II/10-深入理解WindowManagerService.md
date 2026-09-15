@@ -93,7 +93,7 @@ flowchart LR
 `WindowState` 挂载点的上层是 `WindowContainer` 家族——窗口树上的每个节点都是它（或它的子类），节点间靠 `addChild` 维持有序：
 
 ```java
-// WindowContainer#addChild(节选)
+// WindowContainer#addChild（节选）
 protected void addChild(E child, Comparator<E> comparator) {
     ......
     int positionToAdd = -1;
@@ -120,7 +120,7 @@ protected void addChild(E child, Comparator<E> comparator) {
 第二个关键点是锁。WMS 的成员锁并不独立存在：
 
 ```java
-// WindowManagerService 构造(节选)
+// WindowManagerService 构造（节选）
 mGlobalLock = atm.getGlobalLock();
 ```
 
@@ -131,7 +131,7 @@ mGlobalLock = atm.getGlobalLock();
 SystemServer 在启动服务的第一梯队里创建 WMS——它必须赶在应用进程起来之前就绪：
 
 ```java
-// SystemServer#startOtherServices(节选)
+// SystemServer#startOtherServices（节选）
 t.traceBegin("StartWindowManagerService");
 // WMS needs sensor service ready
 mSystemServiceManager.startBootPhase(t, SystemService.PHASE_WAIT_FOR_SENSOR_SERVICE);
@@ -156,7 +156,7 @@ t.traceEnd();
 `main` 的工作只有一个——把构造切到 DisplayThread：
 
 ```java
-// WindowManagerService#main(节选)
+// WindowManagerService#main（节选）
 final WindowManagerService[] wms = new WindowManagerService[1];
 DisplayThread.getHandler().runWithScissors(() ->
         wms[0] = new WindowManagerService(context, im, showBootMsgs, policy, atm,
@@ -170,7 +170,7 @@ return wms[0];
 构造函数两百多行，摘几件值得记住的事：
 
 ```java
-// WindowManagerService 构造(节选)
+// WindowManagerService 构造（节选）
 mGlobalLock = atm.getGlobalLock();                       // 与 ATMS 共用一把全局锁
 mInputManager = inputManager;                            // 输入系统，建输入通道时用
 mAnimator = new WindowAnimator(this);                    // 动画驱动
@@ -188,7 +188,7 @@ LocalServices.addService(WindowManagerInternal.class, new LocalService());
 `onInitReady` 在 `AMS.setWindowManager` 之后调用，把策略初始化切到 UiThread：
 
 ```java
-// WindowManagerService#onInitReady(节选)
+// WindowManagerService#onInitReady（节选）
 public void onInitReady() {
     initPolicy();                          // UiThread 上执行 mPolicy.init
     // Add ourself to the Watchdog monitors.
@@ -251,7 +251,7 @@ sequenceDiagram
 `WindowManagerImpl.addView` 直接转手给进程单例 `WindowManagerGlobal`：
 
 ```java
-// WindowManagerGlobal#addView(节选)
+// WindowManagerGlobal#addView（节选）
 final WindowManager.LayoutParams wparams = (WindowManager.LayoutParams) params;
 if (parentWindow != null) {
     // 子窗口：让父窗口补齐 token 等参数
@@ -307,7 +307,7 @@ synchronized (mLock) {
 `setView` 有个次序上反直觉的设计：**先把首次遍历排进 Choreographer，再向 WMS 登记窗口**：
 
 ```java
-// ViewRootImpl#setView(节选)
+// ViewRootImpl#setView（节选）
 mAdded = true;
 int res;
 // Schedule the first layout -before- adding to the window
@@ -331,7 +331,7 @@ res = mWindowSession.addToDisplayAsUser(mWindow, mWindowAttributes,
 服务端返回后，客户端按错误码翻译异常：
 
 ```java
-// ViewRootImpl#setView(节选)
+// ViewRootImpl#setView（节选）
 if (res < WindowManagerGlobal.ADD_OKAY) {
     switch (res) {
         case WindowManagerGlobal.ADD_BAD_APP_TOKEN:
@@ -367,7 +367,7 @@ if (res < WindowManagerGlobal.ADD_OKAY) {
 `Session.addToDisplayAsUser` 只是转手，所有逻辑在 `WMS.addWindow`。第一关是权限，委托给 `WindowManagerPolicy` 的实现类 PhoneWindowManager：
 
 ```java
-// WindowManagerService#addWindow(节选)
+// WindowManagerService#addWindow（节选）
 int[] appOp = new int[1];
 int res = mPolicy.checkAddPermission(attrs.type, isRoundedCornerOverlay,
         attrs.packageName, appOp, displayId);
@@ -377,7 +377,7 @@ if (res != ADD_OKAY) {
 ```
 
 ```java
-// PhoneWindowManager#checkAddPermission(节选)
+// PhoneWindowManager#checkAddPermission（节选）
 // 类型必须落在三段合法区间内
 if (!((type >= FIRST_APPLICATION_WINDOW && type <= LAST_APPLICATION_WINDOW)
         || (type >= FIRST_SUB_WINDOW && type <= LAST_SUB_WINDOW)
@@ -429,7 +429,7 @@ outAppOp[0] = OP_SYSTEM_ALERT_WINDOW;
 回到 `addWindow`，权限之后是 display 与查重：
 
 ```java
-// WindowManagerService#addWindow(节选)
+// WindowManagerService#addWindow（节选）
 if (session.isClientDead()) {
     return WindowManagerGlobal.ADD_APP_EXITING;
 }
@@ -464,7 +464,7 @@ if (mWindowMap.containsKey(client.asBinder())) {
 token 是 addWindow 里最绕的一段：子窗口直接复用父窗口的 token；其余窗口按类型与 token 的既有身份做匹配，不匹配就拒绝，没有就新建。摘主干：
 
 ```java
-// WindowManagerService#addWindow(节选)
+// WindowManagerService#addWindow（节选）
 WindowToken token = displayContent.getWindowToken(
         hasParent ? parentWindow.mAttrs.token : attrs.token);
 final int rootType = hasParent ? parentWindow.mAttrs.type : type;
@@ -526,7 +526,7 @@ if (token == null) {
 校验全部通过后，进入不再允许出错的阶段——原代码在此处有一句注释 `// From now on, no exceptions or errors allowed!`。先建 `WindowState`：
 
 ```java
-// WindowManagerService#addWindow(节选)
+// WindowManagerService#addWindow（节选）
 final WindowState win = new WindowState(this, session, client, token, parentWindow,
         appOp[0], attrs, viewVisibility, session.mUid, userId,
         session.mCanAddInternalSystemWindow);
@@ -549,7 +549,7 @@ if (openInputChannels) {
 `WindowState` 构造里最值得看的是分层参数的确定，这里先记住 `mBaseLayer`/`mSubLayer` 两个值，10.6 节展开：
 
 ```java
-// WindowState 构造(节选)
+// WindowState 构造（节选）
 if (mAttrs.type >= FIRST_SUB_WINDOW && mAttrs.type <= LAST_SUB_WINDOW) {
     // 子窗口：基层取父窗口的层，再按子窗口类型定相对层
     mBaseLayer = mPolicy.getWindowLayerLw(parentWindow)
@@ -567,7 +567,7 @@ if (mAttrs.type >= FIRST_SUB_WINDOW && mAttrs.type <= LAST_SUB_WINDOW) {
 输入通道的建立直通 InputManagerService：
 
 ```java
-// WindowState#openInputChannel(节选)
+// WindowState#openInputChannel（节选）
 String name = getName();
 mInputChannel = mWmService.mInputManager.createInputChannel(name);
 mInputChannelToken = mInputChannel.getToken();
@@ -590,7 +590,7 @@ mInputChannel.copyTo(outInputChannel);
 ViewRootImpl 收到 `requestLayout` 后经 `scheduleTraversals` 向 Choreographer 注册 `CALLBACK_TRAVERSAL`，垂直同步到来时执行 `performTraversals`。这一遍按固定顺序做四步：
 
 ```java
-// ViewRootImpl#performTraversals(结构摘编)
+// ViewRootImpl#performTraversals（结构摘编）
 performMeasure(childWidthMeasureSpec, childHeightMeasureSpec);   // 1. 测量
 if (mFirst || windowShouldResize || viewVisibilityChanged || params != null
         || mForceNextWindowRelayout) {
@@ -607,7 +607,7 @@ performDraw();                                                   // 4. 绘制
 客户端 `relayoutWindow` 有个值得注意的优化分支：只要位置与尺寸不是同时变化，就走 `relayoutAsync`——不等服务端结果：
 
 ```java
-// ViewRootImpl#relayoutWindow(节选)
+// ViewRootImpl#relayoutWindow（节选）
 final boolean positionChanged = ...;
 final boolean sizeChanged = ...;
 // 位置与尺寸没有同时变化时只把 attrs 异步推给 WMS，不阻塞遍历等返回
@@ -630,7 +630,7 @@ if (relayoutAsync) {
 `WMS.relayoutWindow` 四百多行，主干分四段。第一段，seq 去重与参数变更处理：
 
 ```java
-// WindowManagerService#relayoutWindow(节选)
+// WindowManagerService#relayoutWindow（节选）
 final WindowState win = windowForClientLocked(session, client, false);
 if (win == null) {
     return 0;
@@ -663,7 +663,7 @@ if (attrs != null) {
 第二段，处理"变得不可见"与 Surface 创建。窗口首次可见时必须在这里拿到 SurfaceControl：
 
 ```java
-// WindowManagerService#relayoutWindow(节选)
+// WindowManagerService#relayoutWindow（节选）
 final boolean shouldRelayout = viewVisibility == View.VISIBLE &&
         (win.mActivityRecord == null || win.mAttrs.type == TYPE_APPLICATION_STARTING
                 || win.mActivityRecord.isClientVisible());
@@ -684,7 +684,7 @@ mWindowPlacerLocked.performSurfacePlacement(true /* force */);
 第三段，焦点、IME、壁纸等连带重算：
 
 ```java
-// WindowManagerService#relayoutWindow(节选)
+// WindowManagerService#relayoutWindow（节选）
 if (shouldRelayout) {
     result = win.relayoutVisibleWindow(result);   // 处理可见性切换，首次可见打 RELAYOUT_RES_FIRST_TIME
     if (win.mAttrs.type == TYPE_INPUT_METHOD && displayContent.mInputMethodWindow == null) {
@@ -705,7 +705,7 @@ if (imMayMove) {
 第四段，回填出参并返回标志位：
 
 ```java
-// WindowManagerService#relayoutWindow(节选)
+// WindowManagerService#relayoutWindow（节选）
 if (outFrames != null && outMergedConfiguration != null) {
     win.fillClientWindowFramesAndConfiguration(outFrames, outMergedConfiguration,
             outActivityWindowInfo, false /* useLatestConfig */, shouldRelayout);
@@ -730,7 +730,7 @@ if (outInsetsState != null) {
 Android 12 前，relayout 交回的 Surface 内部带着 BufferQueue，客户端往里画、SurfaceFlinger 来取；Android 12 起默认启用的 BLAST 机制把流程反转为：**WMS 只交 SurfaceControl，客户端自行把绘制内容打包成事务直提 SurfaceFlinger**。窗口首帧的交接在 ViewRootImpl 里：
 
 ```java
-// ViewRootImpl(节选)
+// ViewRootImpl（节选）
 mBlastBufferQueue = new BLASTBufferQueue(mTag, mSurfaceControl,
         mSurfaceSize.x, mSurfaceSize.y, mWindowAttributes.format);
 Surface blastSurface;
@@ -793,7 +793,7 @@ sequenceDiagram
 `getWindowLayerFromTypeLw` 是一张静态映射表，节选关键行：
 
 ```java
-// WindowManagerPolicy#getWindowLayerFromTypeLw(节选)
+// WindowManagerPolicy#getWindowLayerFromTypeLw（节选）
 if (type >= FIRST_APPLICATION_WINDOW && type <= LAST_APPLICATION_WINDOW) {
     return APPLICATION_LAYER;               // 应用窗口统一 2 层，内部先后交给树序
 }
@@ -823,7 +823,7 @@ switch (type) {
 基础层值决定的只是窗口之间的相对高低，Android 12 起 WMS 在此之上重构了显示区的组织：每个 `DisplayContent` 内由 `DisplayAreaPolicy` 按窗口类型区间划出若干 `DisplayArea` 分区，WindowToken 按类型"对号入座"。默认策略 `DefaultProvider` 对可信 display 构建的 feature 顺序：
 
 ```java
-// DisplayAreaPolicy#DefaultProvider(节选)
+// DisplayAreaPolicy#DefaultProvider（节选）
 rootHierarchy.addFeature(new Feature.Builder(wmService.mPolicy, "WindowedMagnification",
         FEATURE_WINDOWED_MAGNIFICATION)
         .upTo(TYPE_ACCESSIBILITY_MAGNIFICATION_OVERLAY)
@@ -882,7 +882,7 @@ flowchart TD
 树序到 SurfaceControl layer 的换算由 `assignChildLayers` 完成，入口在 `DisplayContent.assignWindowLayers`：
 
 ```java
-// DisplayContent#assignWindowLayers(节选)
+// DisplayContent#assignWindowLayers（节选）
 void assignWindowLayers(boolean setLayoutNeeded) {
     assignChildLayers(getSyncTransaction());
     if (setLayoutNeeded) {
@@ -895,7 +895,7 @@ void assignWindowLayers(boolean setLayoutNeeded) {
 ```
 
 ```java
-// WindowContainer#assignChildLayers(节选)
+// WindowContainer#assignChildLayers（节选）
 void assignChildLayers(Transaction t) {
     int layer = 0;
     // 两遍扫描：第一遍处理普通孩子，第二遍处理需要 Z 提升的（如传送中的 IME），
@@ -917,7 +917,7 @@ void assignChildLayers(Transaction t) {
 ```
 
 ```java
-// WindowContainer#assignLayer(节选)
+// WindowContainer#assignLayer（节选）
 void assignLayer(Transaction t, int layer) {
     // Transition 动画进行期间不做层级重排，避免与转场动画争抢 Z 序
     if (!mTransitionController.canAssignLayers(this)) return;
@@ -940,7 +940,7 @@ void assignLayer(Transaction t, int layer) {
 `WindowManager.removeView` → `WindowManagerGlobal.removeView` → `removeViewLocked`：
 
 ```java
-// WindowManagerGlobal#removeViewLocked(节选)
+// WindowManagerGlobal#removeViewLocked（节选）
 private void removeViewLocked(int index, boolean immediate) {
     ViewRootImpl root = mRoots.get(index);
     View view = root.getView();
@@ -959,7 +959,7 @@ private void removeViewLocked(int index, boolean immediate) {
 ```
 
 ```java
-// ViewRootImpl#die(节选)
+// ViewRootImpl#die（节选）
 boolean die(boolean immediate) {
     if (immediate && !mIsInTraversal) {
         doDie();
@@ -1002,7 +1002,7 @@ void doDie() {
 `removeView` 默认走延迟路径：`MSG_DIE` 投回窗口线程排队，等当前遍历做完再死，期间 View 进入 `mDyingViews` 待删除列表（再次 addView 时会看到 10.4.1 就地 `doDie` 的处理）；`removeViewImmediate` 则当场执行——但若正处于遍历中，`mIsInTraversal` 会把它降级回延迟路径，防止边遍历边拆树。
 
 ```java
-// ViewRootImpl#dispatchDetachedFromWindow(节选)
+// ViewRootImpl#dispatchDetachedFromWindow（节选）
 mView.assignParent(null);
 mView = null;
 destroySurface();
@@ -1021,7 +1021,7 @@ if (mInputEventReceiver != null) {
 ### 10.7.2 服务端：摘除与清理
 
 ```java
-// WindowManagerService#removeClientToken(节选)
+// WindowManagerService#removeClientToken（节选）
 void removeClientToken(Session session, IBinder client) {
     synchronized (mGlobalLock) {
         WindowState win = windowForClientLocked(session, client, false);
@@ -1037,7 +1037,7 @@ void removeClientToken(Session session, IBinder client) {
 `removeIfPossible` 名字里的 "IfPossible" 指退出动画：窗口有 Surface 且正在动画时先走 exiting 动画、置 `mRemoveOnExit`，动画结束后再真正移除；否则立即进入 `removeImmediately`：
 
 ```java
-// WindowState#removeImmediately(节选)
+// WindowState#removeImmediately（节选）
 void removeImmediately() {
     if (mRemoved) {
         return;
@@ -1061,7 +1061,7 @@ void removeImmediately() {
 ```
 
 ```java
-// WindowManagerService#postWindowRemoveCleanupLocked(节选)
+// WindowManagerService#postWindowRemoveCleanupLocked（节选）
 final IBinder client = win.mClient.asBinder();
 mWindowMap.remove(client);           // 双界索引解除
 win.resetAppOpsState();              // 归还悬浮窗等 AppOps 状态

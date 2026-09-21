@@ -46,12 +46,12 @@ int main(int argc, char *argv[])
     // 解析启动参数：-i 接口名 -c 配置文件 -dd 调试等级等
     for (;;) { ... }
 
-    global = wpa_supplicant_init(&params);                 // ① 全局初始化（eloop 等）
+    global = wpa_supplicant_init(&params);                 // (1) 全局初始化（eloop 等）
     for (i = 0; i < iface_count; i++) {
-        if (wpa_supplicant_add_iface(global, ifaces[i]) == NULL)  // ② 添加 wlan0/p2p0
+        if (wpa_supplicant_add_iface(global, ifaces[i]) == NULL)  // (2) 添加 wlan0/p2p0
             return -1;
     }
-    wpa_supplicant_run(global);                            // ③ 进入事件循环（不返回）
+    wpa_supplicant_run(global);                            // (3) 进入事件循环（不返回）
 }
 ```
 
@@ -80,9 +80,9 @@ WPAS 是单线程事件驱动模型，所有工作都发生在 eloop 循环里�
 void eloop_run(void)
 {
     while (!eloop.terminate) {
-        res = select(max_sock + 1, &rfds, &wfds, NULL, _tv);  // ① 阻塞等待任一事件源就绪
-        eloop_process_timeouts();                             // ② 到期定时器回调（如扫描调度）
-        // ③ 遍历读表，回调就绪 socket 的处理函数
+        res = select(max_sock + 1, &rfds, &wfds, NULL, _tv);  // (1) 阻塞等待任一事件源就绪
+        eloop_process_timeouts();                             // (2) 到期定时器回调（如扫描调度）
+        // (3) 遍历读表，回调就绪 socket 的处理函数
         //    （ctrl 命令、驱动事件 nl80211、EAPOL 帧等都从这里进来）
         for (i = 0; i < table_count && res > 0; i++) {
             if (FD_ISSET(table[i].sock, &rfds)) {
@@ -280,6 +280,157 @@ sequenceDiagram
 - PTK 安装通过驱动的 set_key 接口写入内核/固件，之后数据帧加解密完全在硬件层完成；
 - 握手完成后 `wpa_msg()` 广播 `CTRL-EVENT-CONNECTED`，Framework 收到才开始 DHCP（4.x 在 WifiStateMachine 内做，现代由 IpClient 完成）并最终显示「已连接」。
 
+### EAPOL-Key 帧的代码级走读
+
+上表是协议视角，下面对照代码看这条链路如何落地。先看 EVENT_ASSOC 的处理（`wpa_supplicant_event_assoc`，events.c）：
+
+```c
+// events.c：wpa_supplicant_event_assoc（节选）
+static void wpa_supplicant_event_assoc(struct wpa_supplicant *wpa_s,
+                       union wpa_event_data *data)
+{
+    // 更新关联过程中的 RSN/WPA IE 信息（wpa_supplicant_event_associnfo，细节略）
+    if (data && wpa_supplicant_event_associnfo(wpa_s, data) < 0)   return;
+    wpa_supplicant_set_state(wpa_s, WPA_ASSOCIATED);   // 设置 wpa_state 为 ASSOCIATED
+    if (wpa_drv_get_bssid(wpa_s, bssid) >= 0 && os_memcmp(bssid, wpa_s->bssid, ETH_ALEN) != 0) {
+        os_memcpy(wpa_s->bssid, bssid, ETH_ALEN);      // 保存 BSSID
+        ......
+    }
+    wpa_sm_notify_assoc(wpa_s->wpa, bssid);   // 初始化 wpa_sm 中与 EAPOL-Key 交换相关的变量
+    if (!ft_completed) {   // 设置 EAPOL 模块的外部变量
+        eapol_sm_notify_portEnabled(wpa_s->eapol, FALSE);
+        eapol_sm_notify_portValid(wpa_s->eapol, FALSE);
+    }
+    // PSK 认证时先清 eapSuccess，再置 portEnabled 为 TRUE——触发 EAPOL 状态机联动
+    if (wpa_key_mgmt_wpa_psk(wpa_s->key_mgmt) || ft_completed)
+        eapol_sm_notify_eap_success(wpa_s->eapol, FALSE);
+    eapol_sm_notify_portEnabled(wpa_s->eapol, TRUE);
+    wpa_supplicant_req_auth_timeout(wpa_s, 10, 0);   // 注册认证超时任务
+    wpa_supplicant_cancel_scan(wpa_s);
+    ......
+}
+```
+
+`eapol_sm_notify_portEnabled(TRUE)` 内部置 `portEnabled` 后调 `eapol_sm_step`（1.9 节的状态机联动）——SUPP_PAE 因此进入 CONNECTING 状态。**PSK 模式下 STA 不发 EAPOL-Start**（那是 802.1X 流程），AP 检测到新关联的 STA 后主动发出 M1。EAPOL 帧统一从 l2_packet 的接收函数进来：
+
+```c
+// wpa_supplicant.c：wpa_supplicant_rx_eapol（节选）——WPAS 收 EAP/EAPOL 帧的唯一入口
+void wpa_supplicant_rx_eapol(void *ctx, const u8 *src_addr,
+                             const u8 *buf, size_t len)
+{
+    if (wpa_s->key_mgmt == WPA_KEY_MGMT_NONE)  return;
+    wpa_s->eapol_received++;      // 计数，并注册认证超时任务（PSK 为 10 秒）
+    ......
+    // 非 PSK 认证（如 802.1X）：EAPOL/EAP 帧交给 eapol_sm 处理；
+    // 注意四次握手/组播密钥的 EAPOL-Key 帧不在 eapol_sm_rx_eapol 中处理
+    if (!wpa_key_mgmt_wpa_psk(wpa_s->key_mgmt) &&
+        eapol_sm_rx_eapol(wpa_s->eapol, src_addr, buf, len) > 0)  return;
+    wpa_drv_poll(wpa_s);
+    if (!(wpa_s->drv_flags & WPA_DRIVER_FLAGS_4WAY_HANDSHAKE))
+        wpa_sm_rx_eapol(wpa_s->wpa, src_addr, buf, len);   // 关键函数：EAPOL-Key 帧处理
+}
+```
+
+`wpa_sm_rx_eapol`（wpa.c）是四次握手的分发中枢——先做一串校验再按 Key Information 位分发：
+
+```c
+// wpa.c：wpa_sm_rx_eapol（节选）
+int wpa_sm_rx_eapol(struct wpa_sm *sm, const u8 *src_addr,
+                   const u8 *buf, size_t len)
+{
+    struct ieee802_1x_hdr *hdr;   // EAPOL 帧头
+    struct wpa_eapol_key *key;    // EAPOL-Key 帧数据
+    key_info = WPA_GET_BE16(key->key_info);      // 取 Key Information 字段
+    // 只处理 EAPOL-Key 帧，且 key 类型为 WPA / RSN
+    ......
+    // 通知 EAP 模块 lowerLayerSuccess（M1 到达即认证层成功，见 1.8 节 altAccept 变量）
+    eapol_sm_notify_lower_layer_success(sm->eapol, 0);
+    // 检查 Replay Counter：比已收到的值小则丢弃（防重放）
+    if (!peerkey && sm->rx_replay_counter_set && os_memcmp(key->replay_counter,
+               sm->rx_replay_counter, WPA_REPLAY_COUNTER_LEN) <= 0)  goto out;
+    // STA 收到的帧必须设 ACK 或 SMK 位；且不能设 Request 位（那是 STA 发帧才用的）
+    if (!(key_info & (WPA_KEY_INFO_ACK | WPA_KEY_INFO_SMK_MESSAGE)) )  goto out;
+    if (key_info & WPA_KEY_INFO_REQUEST)   goto out;
+    // MIC 位为 1 时校验 MIC：用 KCK 计算并与帧中比较，通过才说明 PTK 正确
+    if ((key_info & WPA_KEY_INFO_MIC) && !peerkey &&
+        wpa_supplicant_verify_eapol_key_mic(sm, key, ver, tmp, data_len))  goto out;
+    // Encrypted Key Data 位为 1 时用 KEK 解密 Key Data
+    if (sm->proto == WPA_PROTO_RSN &&  (key_info & WPA_KEY_INFO_ENCR_KEY_DATA)) {
+        if (wpa_supplicant_decrypt_key_data(sm, key, ver))  goto out;
+    }
+    if (key_info & WPA_KEY_INFO_KEY_TYPE) {      // Pairwise Key（四次握手）
+        if (key_info & WPA_KEY_INFO_MIC)
+            wpa_supplicant_process_3_of_4(sm, key, ver);   // 带 MIC 的只有 M3
+        else
+            wpa_supplicant_process_1_of_4(sm, src_addr, key, ver);   // 处理 M1
+    } else {                                     // Group Key Handshake
+        if (key_info & WPA_KEY_INFO_MIC)
+            wpa_supplicant_process_1_of_2(sm, src_addr, key, extra_len, ver);
+    }
+    ......
+}
+```
+
+M1 与 M3 的处理（M2 / M4 的发送函数在其中被调用）：
+
+```c
+// wpa.c：wpa_supplicant_process_1_of_4（节选）
+static void wpa_supplicant_process_1_of_4(struct wpa_sm *sm,
+                      const unsigned char *src_addr,
+                      const struct wpa_eapol_key *key, u16 ver)
+{
+    wpa_sm_set_state(sm, WPA_4WAY_HANDSHAKE);       // 进入握手状态
+    // 解析 M1 Key Data 中的 RSN 信息（本例 M1 无 RSN IE）
+    ......
+    // 按 RSN IE 中的 pmkid 查 PMKSA 缓存；未命中则按配置取 PMK（本例即 PSK）
+    res = wpa_supplicant_get_pmk(sm, src_addr, ie.pmkid);
+    // 生成 STA 侧 Nonce（SNonce）
+    if (sm->renew_snonce) {
+        if (random_get_bytes(sm->snonce, WPA_NONCE_LEN)) goto failed;
+        sm->renew_snonce = 0;
+    }
+    // 派生 PTK 存入 tptk（临时 PTK——此刻还不能确认双方 PMK 一致；
+    // 等 M3 的 MIC 校验通过后，tptk 才会被复制为正式的 ptk）
+    ptk = &sm->tptk;
+    wpa_derive_ptk(sm, src_addr, key, ptk);
+    sm->tptk_set = 1;
+    // 构造并发送 M2（携带 SNonce 与用 KCK 算的 MIC）
+    if (wpa_supplicant_send_2_of_4(sm, sm->bssid, key, ver, sm->snonce,
+                  sm->assoc_wpa_ie, sm->assoc_wpa_ie_len, ptk))  goto failed;
+    os_memcpy(sm->anonce, key->key_nonce, WPA_NONCE_LEN);   // 保存 AP 的 Nonce
+    ......
+}
+
+// wpa.c：wpa_supplicant_process_3_of_4（节选）
+static void wpa_supplicant_process_3_of_4(struct wpa_sm *sm,
+                      const struct wpa_eapol_key *key, u16 ver)
+{
+    // 解析 M3 Key Data（已由 wpa_sm_rx_eapol 解密），校验 RSN IE 与 Nonce
+    if (wpa_supplicant_parse_ies(pos, len, &ie) < 0) goto failed;
+    if (wpa_supplicant_validate_ie(sm, sm->bssid, &ie) < 0) goto failed;
+    if (os_memcmp(sm->anonce, key->key_nonce, WPA_NONCE_LEN) != 0)  goto failed;
+    // 构造并发送 M4（确认帧）
+    if (wpa_supplicant_send_4_of_4(sm, sm->bssid, key, ver, key_info,
+                      NULL, 0, &sm->ptk)) goto failed;
+    // INSTALL 位为 1 时安装 PTK：调驱动 set_key 写入内核/固件，
+    // 此后所有单播数据由硬件加密；若配置了 wpa_ptk_rekey 还会注册 PTK 定期重协商任务
+    if (key_info & WPA_KEY_INFO_INSTALL)
+        if (wpa_supplicant_install_ptk(sm, key))   goto failed;
+    // SECURE 位（M3 必设）：通知 EAPOL 模块 portValid 为 TRUE
+    if (key_info & WPA_KEY_INFO_SECURE) {
+        eapol_sm_notify_portValid(sm->eapol, TRUE);
+    }
+    wpa_sm_set_state(sm, WPA_GROUP_HANDSHAKE);
+    // M3 的 Key Data 中带 GTK 时直接安装组播密钥——无须再走 Group Key Handshake
+    if (ie.gtk && wpa_supplicant_pairwise_gtk(sm, key,
+                           ie.gtk, ie.gtk_len, key_info) < 0) goto failed;
+    ......
+    // 最终进入 COMPLETED，广播 CTRL-EVENT-CONNECTED
+}
+```
+
+两个值得注意的细节：其一，PTK 分两步「转正」——M1 时先算进 `tptk`（临时变量），M3 的 MIC 校验（`wpa_supplicant_verify_eapol_key_mic`）通过才复制为正式 `ptk`，这正是「MIC 互相证明持有 PMK」的实现方式；其二，AP 若在 M3 的 Key Data 中直接携带 GTK，四次握手完成后即装好组播密钥，省去单独的 Group Key Handshake（不同 AP 行为不一，实测两种都有）。
+
 ## 1.8 EAP 模块：RFC 4137 与 eap_sm
 
 EAP 模块实现的是 RFC 4137 定义的 **EAP SUPPSM**（EAP Supplicant 状态机）。RFC 4137 将相关模块分三层：
@@ -300,7 +451,11 @@ SUPPSM 与 EM 层的交互变量中，最重要的是 **methodState** 与 **deci
 
 ### SUPPSM 的状态与实现
 
-RFC 4137 定义了 13 个状态（DISABLED、INITIALIZE、IDLE、RECEIVED、GET_METHOD、METHOD、GENERATE_RESPONSE、SEND_RESPONSE、DISCARD、IDENTITY、NOTIFICATION、RETRANSMIT、SUCCESS/FAILURE 等），状态切换由上述变量驱动。WPAS 的实现较为严格地遵循 RFC 4137：
+RFC 4137 定义了 13 个状态（DISABLED、INITIALIZE、IDLE、RECEIVED、GET_METHOD、METHOD、GENERATE_RESPONSE、SEND_RESPONSE、DISCARD、IDENTITY、NOTIFICATION、RETRANSMIT、SUCCESS/FAILURE 等），状态切换由上述变量驱动，完整的状态切换图见原书图 4-21：
+
+<img src="./images/suppsm_states.jpg" style="zoom:100%;" />
+
+WPAS 的实现较为严格地遵循 RFC 4137：
 
 - `struct eap_sm` 是 SUPPSM 的代表，成员变量命名几乎照搬 RFC；通过 `m` 成员指向 `eap_method` 单向链表，每个节点代表一种已注册的 EAP Method（其 `process` 函数合并了 RFC 中 m.check、m.process、m.buildResp 的功能）；`eapol_cb`（一组回调函数）指向 LL 层（EAPOL 模块）的代表。
 
@@ -363,11 +518,13 @@ EAPOL 模块的实现参考 IEEE 802.1X-2004（WPAS 基于该版本）。802.1X 
 | The Key Receiver SM | 处理 EAPOL-Key 帧（rxKey 为 TRUE 时进入 KEY_RECEIVE 并调 processKey） | SM_STATE/SM_STEP 实现 |
 | The Supplicant Key Transmit SM | —— | 非必选，WPAS 未实现 |
 
-这些状态机通过**全局变量**联动：一个状态机修改变量后可能引发其他状态机状态变化（例如 Port Timers SM 递减 authWhile 到 0 会触发 Backend SM 重发）。
+这些状态机通过**全局变量**联动：一个状态机修改变量后可能引发其他状态机状态变化（例如 Port Timers SM 递减 authWhile 到 0 会触发 Backend SM 重发）。其中最复杂的 PAE SM 状态切换见原书图 4-28：
+
+<img src="./images/paesm_states.jpg" style="zoom:100%;" />
 
 ### 数据结构与初始化
 
-`struct eapol_sm` 存储 PACP 相关内容（三个状态机各自的状态枚举、变量），通过 `eap` 成员指向 EAP 模块的 `eap_sm`；与 WPAS 其他模块的交互接口是 `eapol_ctx` 结构（回调函数集合：发送 EAPOL 帧、认证完成通知、端口状态设置等）：
+`struct eapol_sm` 存储 PACP 相关内容（三个状态机各自的状态枚举、变量），通过 `eap` 成员指向 EAP 模块的 `eap_sm`；与 WPAS 其他模块的交互接口是 `eapol_ctx` 结构（回调函数集合：发送 EAPOL 帧、认证完成通知、端口状态设置等）。三个结构的关系见原书图 4-30：
 
 ```c
 // wpas_glue.c：wpa_supplicant_init_eapol（节选）

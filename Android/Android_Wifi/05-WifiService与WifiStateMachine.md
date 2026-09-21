@@ -238,6 +238,10 @@ setInitialState(mInitialState);
 start();
 ```
 
+完整的 30 个状态及层级关系见原书图 5-4（箭头所指为父状态——本节及后续流程分析都要反复对照此图）：
+
+<img src="./images/wsm_states.jpg" style="zoom:100%;" />
+
 加上 SupplicantStateTracker 的 8 个状态和 P2pStateMachine 的 15 个状态，Java 层 Wi-Fi 相关状态机竟有 63 个状态——这是 WifiService 代码难读的主要原因。初始状态 InitialState 的 enter 函数：
 
 ```java
@@ -276,6 +280,95 @@ stateDiagram-v2
 4. **SupplicantStartingState** 处理 WifiMonitor 发来的 SUP_CONNECTION_EVENT：初始化 WPS 相关信息、设置 WifiState、通知 SupplicantStateTracker、初始化 WifiConfigStore 等，转入 DriverStartedState（其父状态 SupplicantStartedState 的 enter 也会执行）；
 5. **SupplicantStartedState / DriverStartedState** 的 enter 分别完成扫描间隔设置，以及 CountryCode、FrequencyBand、蓝牙共存模式等配置（部分经形如 DRIVER-XXX 的命令下发给 WPAS），最后转入 **DisconnectedState**——Wi-Fi 就绪，等待扫描与连接。
 
+### 各状态的代码走读
+
+上述推进过程中的关键代码如下。DriverLoadingState 的 enter 与 processMessage：
+
+```java
+// WifiStateMachine.java：DriverLoadingState（节选）
+class DriverLoadingState extends State {
+    public void enter() {
+        final Message message = new Message();
+        message.copyFrom(getCurrentMessage());   // 复制当前的 CMD_LOAD_DRIVER 消息
+        new Thread(new Runnable() {              // 单独起线程加载 wlan 驱动，不阻塞状态机线程
+              public void run() {
+                  mWakeLock.acquire();
+                  setWifiState(WIFI_STATE_ENABLING);   // 发 WIFI_STATE_CHANGED_ACTION 广播
+                  if (mWifiNative.loadDriver()) sendMessage(CMD_LOAD_DRIVER_SUCCESS);
+                  else ......                  // 失败发 CMD_LOAD_DRIVER_FAILURE
+                  mWakeLock.release();
+              }
+        }).start();
+    }
+    public boolean processMessage(Message message) {
+        switch (message.what) {
+            case CMD_LOAD_DRIVER_SUCCESS:
+                transitionTo(mDriverLoadedState);
+                break;
+            case CMD_START_SUPPLICANT:   // DriverLoadingState 不处理此消息
+                deferMessage(message);   // 推迟到下一个状态再去处理
+                break;
+            ......
+        }
+        return HANDLED;
+    }
+}
+```
+
+loadDriver 经 JNI 到 wifi.c 的 `wifi_load_driver`：有模块路径宏时用 `insmod` 加载驱动 .ko 文件，随后设置 `wlan.driver.status` 属性为 ok（或经 `ctl.start` 启动固件加载程序），循环查询该属性直至成功 / 失败 / 超时；未定义模块路径宏（驱动内建）则直接置 ok。DriverLoadedState 对 CMD_START_SUPPLICANT 的处理：
+
+```java
+// WifiStateMachine.java：DriverLoadedState（节选）
+case CMD_START_SUPPLICANT:
+    try {   // 加载 wlan 固件：经 netd 的 SoftAp 命令做 firmware reload
+        mNwService.wifiFirmwareReload(mInterfaceName, "STA");
+    }......
+    try {   // 接口 down 再配 IPv6 隐私扩展：经 netd 的 InterfaceCmd 命令
+        mNwService.setInterfaceDown(mInterfaceName);
+        mNwService.setInterfaceIpv6PrivacyExtensions(mInterfaceName, true);
+    }......
+    // 启动 wpa_supplicant 进程（1.4 节 startSupplicant）
+    if (mWifiNative.startSupplicant(mP2pSupported)) {
+        mWifiMonitor.startMonitoring();        // 启动 WifiMonitor 的 Monitor 线程
+        transitionTo(mSupplicantStartingState);
+    }
+    break;
+```
+
+SUP_CONNECTION_EVENT 到达后状态机转入 DriverStartedState，其父状态 SupplicantStartedState 的 enter 完成大量初始化（DriverStartedState 的 enter 主要处理 P2P 相关，略）：
+
+```java
+// WifiStateMachine.java：SupplicantStartedState（节选）
+public void enter() {
+    mIsRunning = true;
+    // 蓝牙与 wlan 都在 2.4GHz，告知驱动蓝牙是否启用，wlan 芯片据此做共存调整
+    mWifiNative.setBluetoothCoexistenceScanMode(mBluetoothConnectionActive);
+    // 设置国家码与频段：内部经 WifiNative 发 "DRIVER XXX" 命令给 WPAS——
+    // 这是 Android 特有的定制命令族，由厂商库实现
+    // （如博通的 hardware/broadcom/wlan/bcmdhd/.../driver_cmd_nl80211.c）
+    setCountryCode();  setFrequencyBand();
+    setNetworkDetailedState(DetailedState.DISCONNECTED);
+    mWifiNative.stopFilteringMulticastV6Packets();   // 组播过滤
+    ......
+    if (mIsScanMode) {   // SCAN_ONLY_MODE（ap_scan=2）：只扫描不连接
+        mWifiNative.setScanResultHandling(SCAN_ONLY_MODE);
+        mWifiNative.disconnect();
+        transitionTo(mScanModeState);
+    } else {             // CONNECT_MODE（ap_scan=1）：WPAS 完成扫描选择关联等大部分工作
+        mWifiNative.setScanResultHandling(CONNECT_MODE);
+        mWifiNative.reconnect();   // 发 "RECONNECT" 命令给 WPAS
+        mWifiNative.status();      // 发 "STATUS" 命令
+        transitionTo(mDisconnectedState);   // 最终就绪状态
+    }
+    ......
+    mWifiNative.setSuspendOptimizations(mSuspendOptNeedsDisabled == 0
+                    && mUserWantsSuspendOpt.get());   // "DRIVER SETSUSPENDMODE"
+    if (mP2pSupported) mWifiP2pChannel.sendMessage(WifiStateMachine.CMD_ENABLE_P2P);
+}
+```
+
+至此 Wi-Fi 使能完成，WifiStateMachine 停在 DisconnectedState 等待上层指令。
+
 ## 1.6 Settings 侧工作流程
 
 Settings 中 Wi-Fi 设置页面相关的类：**WifiSettings**（网络列表页）、**WifiEnabler**（右上角开关）、**WifiDialog** 与 **WifiConfigController**（密码输入对话框）、内部类 **Scanner**（扫描轮询）。
@@ -306,7 +399,45 @@ private class Scanner extends Handler {
 
 ## 1.7 startScan 流程
 
-`WifiManager.startScanActive` → WifiService.startScan → WifiStateMachine.startScan（发 CMD_START_SCAN）。处于 DisconnectedState 的状态机调用 `mWifiNative.scan(true)` 向 WPAS 发 SCAN 命令，WPAS 完成扫描后（原书 4.5 节的流程）推送 CTRL-EVENT-SCAN-RESULTS → WifiMonitor 发 SCAN_RESULTS_EVENT 给 WifiStateMachine → 状态机调用 fetchScanResults 取回结果并发送 SCAN_RESULTS_AVAILABLE_ACTION 广播（Settings 据此刷新列表）。
+`WifiManager.startScanActive` → WifiService.startScan → WifiStateMachine.startScan（发 CMD_START_SCAN）。消息处理要对照状态层级图找位置：DisconnectedState 与其父状态对 CMD_START_SCAN 都返回 NOT_HANDLED（只处理后台扫描的开关），最终由祖父 **DriverStartedState** 处理：
+
+```java
+// WifiStateMachine.java：DriverStartedState（节选）
+public boolean processMessage(Message message) {
+    boolean ret = HANDLED;
+    switch (message.what) {
+        ......
+        case CMD_START_SCAN:
+            if (mEnableBackgroundScan)    // 取消后台扫描，改用主动触发
+                mWifiNative.enableBackgroundScan(false);
+            ret = NOT_HANDLED;            // 注意返回值：继续交给子状态处理
+            break;
+        case WifiMonitor.SCAN_RESULTS_EVENT:   // 扫描完毕收到此消息
+            if (mEnableBackgroundScan && mScanResultIsPending)
+                mWifiNative.enableBackgroundScan(true);
+            ret = NOT_HANDLED;
+            break;
+        ......
+    }
+    return ret;
+}
+```
+
+真正执行扫描的动作在 DisconnectedState 的 processMessage 中：
+
+```java
+// WifiStateMachine.java：DisconnectedState（节选）
+case CMD_START_SCAN:
+    boolean forceActive = (message.arg1 == SCAN_ACTIVE);
+    // 主动扫描模式经 "DRIVER SCAN-ACTIVE" 命令切换
+    if (forceActive && !mSetScanActive) mWifiNative.setScanMode(forceActive);
+    mWifiNative.scan();                   // 发 "SCAN" 命令给 WPAS 触发扫描
+    if (forceActive && !mSetScanActive) mWifiNative.setScanMode(mSetScanActive);
+    mScanResultIsPending = true;
+    break;
+```
+
+WPAS 完成扫描后推送 CTRL-EVENT-SCAN-RESULTS（原书 4.5 节的流程），WifiMonitor 转成 SCAN_RESULTS_EVENT 发给 WifiStateMachine → 状态机调用 fetchScanResults 取回结果并发送 SCAN_RESULTS_AVAILABLE_ACTION 广播（Settings 据此刷新列表）。
 
 ## 1.8 connect：加入网络全流程
 
@@ -409,7 +540,9 @@ flowchart TD
 
 ## 1.9 专题：WifiWatchdogStateMachine
 
-WifiWatchdogStateMachine 用于监控无线网络的信号质量，纯靠广播驱动（NETWORK_STATE_CHANGED_ACTION、RSSI_CHANGED_ACTION、SUPPLICANT_STATE_CHANGED_ACTION 等），内部 9 个状态，默认开启（初始状态 NotConnectedState）。
+WifiWatchdogStateMachine 用于监控无线网络的信号质量，纯靠广播驱动（NETWORK_STATE_CHANGED_ACTION、RSSI_CHANGED_ACTION、SUPPLICANT_STATE_CHANGED_ACTION 等），内部 9 个状态（层级关系见原书图 5-7），默认开启（初始状态 NotConnectedState）。
+
+<img src="./images/watchdog_states.jpg" style="zoom:100%;" />
 
 它与 WifiStateMachine 通过 AsyncChannel（mWsmChannel）交互。当 WifiStateMachine 在 VerifyingLinkState 发出 NETWORK_STATE_CHANGED_ACTION（携带 VERIFYING_POOR_LINK）后，Watchdog 的处理：若开启了 Poor Network Detection 则转入自己的 VerifyingLinkState，否则直接 `sendLinkStatusNotification(true)` 通知链路良好：
 

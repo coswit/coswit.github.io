@@ -74,7 +74,11 @@ Discovery 阶段（图 6-7 的上半部分）：STA 发出带 WSC IE 的 Probe R
 
 ## 1.4 Registration Protocol 与 EAP-WSC 的 M1~M8
 
-Discovery 结束后进入协商阶段。WSC 利用 EAP 的扩展功能（Type 254，Vendor-Id 0x00372a、Vendor-Type 0x00000001 即 Simple-Config）定义了 **EAP-WSC** 算法：Op-Code 标识消息类型，Flags 支持 EAP 分片（MF/LF），Message Data 就是一组 Attribute。
+Discovery 结束后进入协商阶段。STA 与 Standalone AP 采用 In-Band 交互时，RP 协议的完整流程见原书图 6-7（上半部分为 Discovery Phase，下半部分为协商阶段）：
+
+<img src="./images/wsc_rp_flow.jpg" style="zoom:100%;" />
+
+WSC 利用 EAP 的扩展功能（Type 254，Vendor-Id 0x00372a、Vendor-Type 0x00000001 即 Simple-Config）定义了 **EAP-WSC** 算法：Op-Code 标识消息类型，Flags 支持 EAP 分片（MF/LF），Message Data 就是一组 Attribute。
 
 先经历三次 EAP 包交换确定身份与算法：AP 发 EAP-Request/Identity → STA 回 EAP-Response/Identity，**Identity 固定为 `WFA-SimpleConfig-Enrollee-1-0`** → AP 发 EAP-Request/WSC_Start 启动 EAP-WSC。随后是 M1~M8 八次消息交换：
 

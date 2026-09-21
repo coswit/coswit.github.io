@@ -1,5 +1,7 @@
 # Structural Patterns（结构型模式）
 
+> Intent 中文以中译本《设计模式：可复用面向对象软件的基础（典藏版）》（机械工业出版社）译法为准。
+
 结构型模式关注**如何组合类与对象**以获得更大的结构：一类用继承来组合接口或实现（class pattern，如 Adapter 的类适配器），另一类用对象组合来组合出新的功能（object pattern）。
 
 7 个结构型模式：Adapter、Bridge、Composite、Decorator、Facade、Flyweight、Proxy。
@@ -8,7 +10,7 @@
 
 ## Adapter（别名 Wrapper）
 
-> 将一个类的接口转换成客户期望的另一个接口。Adapter 使原本接口不兼容而不能一起工作的类可以协同工作。
+> 将一个类的接口转换成客户希望的另外一个接口。Adapter 模式使得原本由于接口不兼容而不能一起工作的那些类可以一起工作。
 >
 > Convert the interface of a class into another interface clients expect.
 
@@ -167,7 +169,7 @@ class TextShapeClassAdapter extends TextView implements Shape {
 
 ## Bridge（别名 Handle/Body）
 
-> 将抽象部分与它的实现部分分离，使它们都可以独立地变化。
+> 将抽象部分与它的实现部分分离，使它们可以独立地变化。
 >
 > Decouple an abstraction from its implementation so that the two can vary independently.
 
@@ -296,7 +298,7 @@ JDBC：`Connection/Statement`（抽象侧）与各数据库 Driver（实现侧�
 
 ## Composite
 
-> 将对象组合成树形结构以表示「部分—整体」的层次结构。Composite 使客户对单个对象和组合对象的使用具有一致性。
+> 将对象组合成树形结构以表示「部分—整体」的层次结构。Composite 使客户对单个对象和复合对象的使用具有一致性。
 >
 > Compose objects into tree structures to represent part-whole hierarchies.
 
@@ -431,7 +433,7 @@ page.draw();                                        // 递归输出整页
 
 ## Decorator（别名 Wrapper）
 
-> 动态地给一个对象添加额外的职责。就增加功能而言，Decorator 比生成子类更为灵活。
+> 动态地给一个对象添加一些额外的职责。就增加功能来说，Decorator 模式相比生成子类更为灵活。
 >
 > Attach additional responsibilities to an object dynamically.
 
@@ -557,7 +559,7 @@ full.draw();   // [hello(scrollbar)]  —— 没有为组合派生任何子类
 
 ### Known Uses / 现代对应
 
-* 书中：InterViews 的 MonoGlyph 等界面工具包的装饰机制、许多 iostream 库的流抽象
+* 书中：InterViews、ET++ 和 ObjectWorks\Smalltalk 类库都用装饰为窗口组件添加图形装饰。较特殊的应用有 InterViews 的 `DebuggingGlyph`（向组件转发布局请求的前后打印调试信息，用于分析复杂组合中的布局行为）和 ParcPlace Smalltalk 的 `PassivityWrapper`（允许/禁止用户与组件交互）；ET++ 的 streaming 类用 Decorator 做 I/O 流的压缩（行程编码、Lempel-Ziv）与 7 位 ASCII 转换——说明装饰不限于图形界面
 * Java：`java.io` 流族——`BufferedInputStream`/`DataInputStream`（Decorator）包装 `InputStream`（Component），是教科书级实现
 
 ### Related Patterns
@@ -566,7 +568,7 @@ full.draw();   // [hello(scrollbar)]  —— 没有为组合派生任何子类
 
 ## Facade
 
-> 为子系统中的一组接口提供一个一致的高层界面，使这一子系统更加容易使用。
+> 为子系统中的一组接口提供一个一致的界面，Facade 模式定义了一个高层接口，这个接口使得这一子系统更加容易使用。
 >
 > Provide a unified interface to a set of interfaces in a subsystem.
 
@@ -806,7 +808,7 @@ Flyweight 的共享叶 + 不共享容器 = **Composite**；**State** 与 **Strat
 
 ## Proxy（别名 Surrogate）
 
-> 为其他对象提供一个代理，以控制对这个对象的访问。
+> 为其他对象提供一种代理以控制对这个对象的访问。
 >
 > Provide a surrogate or placeholder for another object to control access to it.
 
@@ -933,3 +935,37 @@ image1.draw(new Position(0, 0)); // 此时才真正读文件
 ### Related Patterns
 
 与 **Adapter**：Adapter 提供不同的接口，Proxy 提供相同的接口；与 **Decorator**：结构相同，但 Decorator 任意叠加职责、Proxy 侧重控制访问（创建、权限、远端化）；Virtual proxy 的实现常和 **Singleton** 式的惰性初始化同源。
+
+## 结构型模式的讨论（原书 4.8）
+
+结构型模式之间看起来很相似——尤其是参与者和协作，因为它们都依赖同一个很小的语言机制集合：class pattern 靠（多重）继承，object pattern 靠对象组合。但相似性掩盖了各自不同的意图。原书挑出三组最容易混淆的对比：
+
+### Adapter 与 Bridge
+
+共同点：都给另一对象提供了一层**间接性**，都涉及把请求从自身以外的接口转发给这个对象，都有利于系统的灵活性。
+
+关键差别在**用途与使用时机**：
+
+* **Adapter** 解决的是**两个已有接口之间不匹配**的问题——不关心接口怎样实现、未来如何演化，也不需要重新设计其中任何一个类就能让它们协同工作，目的通常是避免代码重复
+* **Bridge** 是**事先**把抽象接口与它的（可能多个）实现部分分离——允许修改实现它的类，但始终给用户提供稳定的接口，并在系统演化时容纳新的实现
+
+因此二者用于软件生命周期的不同阶段：**Adapter 在类已经设计好之后实施（事后），Bridge 在设计类之前实施（事前）**。Adapter 的使用者事先无法预见这种耦合；Bridge 的使用者必须预先知道"一个抽象将有多个实现、且二者独立演化"。这不意味着 Adapter 不如 Bridge——它们针对的是不同的问题。
+
+顺带辨析：Facade 看起来像"另一组对象的适配器"，但 **Facade 定义一个新接口，Adapter 复用原有接口**——适配器让两个已有接口协同工作，而不是发明新接口。
+
+### Composite、Decorator 与 Proxy
+
+**Composite 与 Decorator** 的结构图几乎一样——都基于递归组合来组织数目可变的对象。但把 decorator 看成"退化的 composite"没有领会要点，相似仅止于递归组合：
+
+* **Decorator** 的目的是**不生成子类就给对象添加职责**——避免为静态实现所有功能组合而导致子类急剧增加
+* **Composite** 的目的是**构造类，使多个相关对象能以统一方式处理**——多个对象可当作一个对象；重点不在修饰，而在**表示**
+
+目的不同却互补，所以二者常协同使用：无须定义新类，把对象插接在一起即可构建应用——同一个抽象类下既有 composite 子类又有 decorator 子类，共用一个接口。从 Decorator 的角度看 composite 是一个 ConcreteComponent；从 Composite 的角度看 decorator 则是一个 Leaf。
+
+**Proxy 与 Decorator** 都为对象提供一定程度的间接引用——都保留指向另一个对象的引用并向它转发请求，都给用户提供一致的接口。差别在：
+
+* **Proxy 不能动态地添加或分离性质，也不是为递归组合设计的**。它的目的是：当直接访问一个实体不方便或不符合需求时，为实体提供替代者（实体在远程设备上、访问受限制、实体是持久存储的）
+* 职责的分工不同：**Proxy 中实体定义关键功能，Proxy 提供（或拒绝）对它的访问；Decorator 中组件只提供部分功能，一个或多个 decorator 负责完成其余功能**
+* 开放性不同：Decorator 适用于编译期不能（至少不方便）确定对象全部功能的情况，这种开放性使递归组合成为 Decorator 必不可少的部分；Proxy 强调 Proxy 与实体之间**一种可以静态表达的关系**
+
+这些差异不意味着模式不能混用——可以想象 proxy-decorator 给 proxy 添加功能，或 decorator-proxy 修饰远程对象，只是这类混合可以拆分成若干有用的模式。

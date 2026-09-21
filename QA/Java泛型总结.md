@@ -64,7 +64,7 @@ class Box<T> {
 
 ## 三、类型擦除（核心原理）
 
-**Java 的泛型只存在于编译期，运行时会被擦除为原始类型（raw type）**：无边界时擦成 Object，有边界时擦成第一个边界。这也是"伪泛型"称呼的由来（对比 C# / Kotlin 的具体化泛型）。
+**Java 的泛型采用类型擦除（Type Erasure）实现，只存在于编译期，运行时会被擦除为原始类型（raw type）**：无边界时擦成 Object，有边界时擦成第一个边界。这也是"伪泛型"称呼的由来（对比 C# / Kotlin 的具体化泛型）。
 
 ```java
 List<String> a = new ArrayList<>();
@@ -81,14 +81,45 @@ System.out.println(a.getClass() == b.getClass()); // true，运行时都是 Arra
 - 在使用泛型变量的地方**自动插入强制转换**（`list.get(i)` 编译后就是 `(String) list.get(i)`）；
 - 生成**桥方法**（bridge method）保证继承泛型类 / 接口后多态仍然成立。
 
-### 擦除带来的限制（高频考点）
+桥方法长什么样，用一对父子类就能看到：
+
+```java
+class Box<T> {
+    private T value;
+    void set(T value) { this.value = value; }
+    T get() { return value; }
+}
+
+class StringBox extends Box<String> {
+    @Override void set(String value) { super.set(value); }
+    @Override String get() { return super.get(); }
+}
+```
+
+擦除后父类的方法签名是 `set(Object)` / `get(): Object`，子类是 `set(String)` / `get(): String`——参数类型不同，本来不构成重写。编译器会在 `StringBox` 中补上两个桥方法把调用接起来（`javap -p` 输出摘编，注释为补充说明）：
+
+```text
+$ javap -p StringBox
+class StringBox extends Box<java.lang.String> {
+  StringBox();
+  void set(java.lang.String);      // 子类真正的实现
+  java.lang.String get();          // 子类真正的实现
+  java.lang.Object get();          // 桥方法：转调 String get()
+  void set(java.lang.Object);      // 桥方法：checkcast String 后转调 set(String)
+}
+```
+
+这样 `((Box<String>) stringBox).get()` 经桥方法转调后仍能落到 `StringBox.get`，多态不被擦除破坏。
+
+### 擦除带来的限制
 
 | 限制 | 原因 / 绕法 |
 | --- | --- |
 | 不能 `new T()`、`new T[]`、`T.class` | 运行时不知道 T 是什么；传入 `Class<T>` 参数或工厂对象代替 |
-| 类型实参不能是基本类型 | `List<int>` 不行，擦除后是 Object 装不下基本类型；用 `List<Integer>` 自动装箱 |
+| 类型实参不能是基本类型 | JLS 要求类型实参必须是引用类型，`List<int>` 编译不过；用 `List<Integer>` 由编译器自动装箱 |
 | 静态成员不能用类的类型参数 | 类型参数随实例存在，静态成员属于类；静态方法可以自己声明 `<T>` |
 | 不能创建泛型数组 | `new List<String>[10]` 编译错误（数组协变 + 擦除会破坏类型安全）；绕法 `(T[]) new Object[n]` |
+| 泛型可变参数（`T...`）有堆污染风险 | 可变参数本质是数组，擦除后无法保证元素类型，编译给出 unchecked 警告；确认安全时标注 `@SafeVarargs`（static / final，JDK 9 起 private 实例方法也可） |
 | 泛型类不能继承 Throwable，catch 不能用泛型 | 异常匹配发生在运行时，那时泛型已被擦除 |
 | 仅类型参数不同的方法不能构成重载 | `f(List<String>)` 与 `f(List<Integer>)` 擦除后签名都是 `f(List)`，编译报错 |
 
@@ -97,29 +128,111 @@ System.out.println(a.getClass() == b.getClass()); // true，运行时都是 Arra
 能拿到**签名中声明的泛型**（字段、方法参数 / 返回值的泛型会保留在 class 文件的 Signature 属性里）：
 
 ```java
+class Person {
+    List<String> names;   // 泛型会写进 class 文件的 Signature 属性
+}
+
 Field field = Person.class.getDeclaredField("names");
 ParameterizedType type = (ParameterizedType) field.getGenericType();
-type.getActualTypeArguments()[0]; // 拿到 String
+type.getActualTypeArguments()[0];  // 拿到 String
 ```
 
-Gson 的 `TypeToken` 正是利用**匿名子类**在签名里保留泛型，从而在运行时还原 `List<String>` 这类完整类型。局部变量里的泛型则无法获取。
+Gson 的 `TypeToken` 正是利用**匿名子类的泛型父类签名**在运行时还原 `List<String>` 这类完整类型：
+
+```java
+Type type = new TypeToken<List<String>>() {}.getType();
+List<String> list = new Gson().fromJson(json, type);
+```
+
+而写在局部变量上的泛型，反射拿不到：`getGenericType` 这类 API 只覆盖字段、方法、父类等声明处的签名。
 
 ## 四、通配符与 PECS
 
 | 通配符 | 名称 | 能否读取 | 能否写入 | 典型场景 |
 | --- | --- | --- | --- | --- |
 | `?` | 无界通配符 | 只能读成 Object | 不能写（除 null） | 只关心"是个 List"，如 `list.size()` |
-| `? extends T` | 上界通配符（协变） | 可以，读出来是 T | 不能写（除 null） | **生产者**：只从它读数据 |
-| `? super T` | 下界通配符（逆变） | 只能读成 Object | 可以写 T 及其子类 | **消费者**：只往它写数据 |
+| `? extends T` | 上界通配符（协变，covariant） | 可以，读出来是 T | 不能写（除 null） | **生产者**：只从它读数据 |
+| `? super T` | 下界通配符（逆变，contravariant） | 只能读成 Object | 可以写 T 及其子类 | **消费者**：只往它写数据 |
 
-**PECS 原则（Producer Extends, Consumer Super）**：频繁往外读取用 extends，经常往里插入用 super。JDK 中的典型例子：
+下面用一组类演示（`Son extends Father extends Person`，即 Son 是子类、Father 是父类、Person 是祖父类）：
+
+```java
+class Person {}
+class Father extends Person {}
+class Son extends Father {}
+```
+
+三种通配符的读写限制，用一段代码就能验证：
+
+```java
+List<Son> sons = new ArrayList<>(List.of(new Son()));
+
+// ? extends Father：读取安全，写入禁止
+List<? extends Father> producer = sons;   // List<Son> 可以赋给 List<? extends Father>
+Father f = producer.get(0);               // 读出来一定是 Father 及其子类
+// producer.add(new Son());               // 编译错误：连子类 Son 也不能写
+
+// ? super Father：写入安全，读取只能当 Object
+List<Person> persons = new ArrayList<>();
+List<? super Father> consumer = persons;  // List<Person> 可以赋给 List<? super Father>
+consumer.add(new Father());               // 可以写入 Father
+consumer.add(new Son());                  // 也可以写入子类 Son
+// consumer.add(new Person());            // 编译错误：实际可能是 List<Father>，Person 实例装不进去
+// consumer.add(new Object());            // 编译错误：祖父类更不能写
+Object o = consumer.get(0);               // 只能读成 Object：实际可能是 List<Person>
+// Father f2 = consumer.get(0);           // 编译错误：元素不一定是 Father
+
+// ?：等价于 ? extends Object，任何 List<T> 都能赋给它
+List<?> any = sons;
+Object o2 = any.get(0);
+// any.add(new Son());                    // 编译错误，除 null 外都不能写
+```
+
+注意 `List<?>` 与 `List<Object>` 不是一回事：`List<Object>` 明确声明元素是 Object，可以往里 add 任意对象；`List<?>` 表示"某种未知具体类型的 List"，除 null 外都不能写，读出来只能当 Object 用。
+
+**PECS 原则（Producer Extends, Consumer Super）**：频繁往外读取用 extends，经常往里插入用 super。按这个原则就能写出同时接受 `List<Son>` 和 `List<Father>` 的方法：
+
+```java
+// 生产者：元素只被读取，参数用 extends；List<Son>、List<Father> 都能传
+static void printAll(List<? extends Father> list) {
+    for (Father f : list) {        // 读出来的元素能声明成 Father
+        System.out.println(f);
+    }
+}
+
+// 消费者：元素只被写入，参数用 super；List<Father>、List<Person>、List<Object> 都能传
+static void addFamily(List<? super Father> list) {
+    list.add(new Father());
+    list.add(new Son());           // 写入 Father 及其子类
+}
+
+// 组合：src 读、dest 写，正是 Collections.copy 的套路
+static void moveAll(List<? super Father> dest, List<? extends Father> src) {
+    for (Father f : src) {
+        dest.add(f);
+    }
+}
+
+List<Son> sons = new ArrayList<>(List.of(new Son()));
+printAll(sons);                    // 实参是 List<Son>：匹配 List<? extends Father>
+List<Person> persons = new ArrayList<>();
+addFamily(persons);                // 实参是 List<Person>：匹配 List<? super Father>
+moveAll(persons, sons);
+```
+
+JDK 的 `Collections.copy` 把两者组合在同一个签名里：
 
 ```java
 // src 只被读取（生产者），用 extends；dest 只被写入（消费者），用 super
 public static <T> void copy(List<? super T> dest, List<? extends T> src)
+
+// 调用：T 推导为 Son（同时满足 src 读、dest 写的最具体类型）
+List<Person> dest = new ArrayList<>(List.of(new Person(), new Person()));  // 大小不能小于 src
+List<Son> src = List.of(new Son());
+Collections.copy(dest, src);
 ```
 
-写入受限的原因：`List<? extends Number>` 可能实际是 `List<Integer>`，编译器无法确定具体类型，索性禁止写入，靠编译期保守检查换取运行时类型安全（QA 第 12 题也是这个问题）。
+写入受限的原因：`List<? extends Father>` 的实际类型可能是 `List<Son>`，也可能是其他任意 Father 子类的列表，编译器无法确定具体是哪一个，索性禁止写入，靠编译期保守检查换取运行时类型安全。读取受限同理：`List<? super Father>` 可能实际是 `List<Person>`，不能假设取出来的是 Father，只能当 Object。
 
 ## 五、泛型的不变性
 
@@ -127,8 +240,8 @@ public static <T> void copy(List<? super T> dest, List<? extends T> src)
 
 ```java
 List<String> strings = new ArrayList<>();
-// List<Object> objs = strings;  // 编译错误
-strings.add(123);                // 假如允许，这里就能放进 Integer，取出时就会出错
+// List<Object> objs = strings;  // 编译错误：List<Object> 与 List<String> 毫无继承关系
+// objs.add(123);               // 假如赋值允许，Integer 就混进了 strings，取出时 ClassCastException
 ```
 
 对比：**数组是协变的**（`String[]` 可以赋给 `Object[]`），代价是运行时可能抛 ArrayStoreException。泛型选择编译期不变 + 通配符按需"协变（extends）/逆变（super）"，把类型错误拦在编译期。
@@ -142,9 +255,16 @@ strings.add(123);                // 假如允许，这里就能放进 Integer，
 ## 六、常见面试题速答
 
 - **泛型的原理？** 编译期类型检查 + 类型擦除，运行时泛型信息被擦成原始类型。
-- **`List<String>` 能存 Integer 吗？** 直接存编译不过；通过原始类型或反射绕过检查后能存进去，取出时会抛 ClassCastException（堆污染，heap pollution）。
+- **`List<String>` 能存 Integer 吗？** 直接存编译不过；通过原始类型或反射绕过检查后能存进去，取出时会抛 ClassCastException（堆污染，heap pollution）：
+
+    ```java
+    List<String> strings = new ArrayList<>();
+    List raw = strings;         // 赋给原始类型，泛型检查被绕过
+    raw.add(123);               // 编译通过，Integer 混进了 strings
+    String s = strings.get(0);  // 运行时 ClassCastException
+    ```
 - **`List<Object>` 和 `List<String>` 是什么关系？** 没有继承关系，泛型是不变的；需要兼容用 `List<?>`。
-- **`List` 和 `List<Object>` 一样吗？** 不一样。前者绕过泛型检查（raw type），后者显式声明装 Object；两者能互相赋值但都会有 unchecked 警告。
+- **`List` 和 `List<Object>` 一样吗？** 不一样。两者都能装任意对象，但 raw `List` 完全关闭编译期泛型检查：它可以赋给 `List<String>` 等任意参数化类型（unchecked 警告），从而引发堆污染；`List<Object>` 只是元素类型声明为 Object，检查照旧。互相赋值时，raw 赋给 `List<Object>` 报 unchecked（默认开启），反向赋给 raw 默认不报（`-Xlint:rawtypes` 才提示）。
 - **如何把 `List<Integer>` 转成 `List<Number>`？** 不能直接转，逐个元素复制（或 Stream 收集）。
 - **`<T extends A & B>` 合法吗？** 合法，多重边界，擦除后保留 A。
 - **为什么静态方法不能引用类的泛型参数？** 类型参数在实例化时才确定，静态成员不依赖实例；静态方法可以自己声明 `<T>`。
@@ -155,6 +275,11 @@ Java 的型变靠使用处通配符（use-site variance），Kotlin 更进一步
 
 - **声明处型变**：`out T`（协变，只生产）、`in T`（逆变，只消费），如 `List<out E>` 本身就是协变的；
 - **星投影**：`List<*>` 对应 Java 的 `List<?>`；
-- **具体化类型参数（reified）**：`inline fun <reified T : Any> Gson.fromJson(json)` 配合内联，运行时真的拿得到 T，不需要传 `Class<T>`，也不需要 TypeToken。
+- **具体化类型参数（reified）**：用 `inline` + `reified` 把类型实参写进调用处展开的字节码，运行时真的拿得到 T：
 
-详细语法见 [Kotlin 泛型](/Kotlin/07泛型.md)。
+    ```kotlin
+    inline fun <reified T : Any> Gson.fromJson(json: String): T =
+        fromJson(json, T::class.java)
+    
+    val user = gson.fromJson<User>(json)  // 不需要传 Class<T>，也不需要 TypeToken
+    ```

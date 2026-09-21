@@ -114,6 +114,15 @@
   })();
   </script>
   <script>
+  // —— 侧边栏导航滚动锁的 hashchange 监听（v7 修复）——
+  // 必须在 docsify.min.js 之前注册：docsify 在它的 hashchange 回调里就可能同步
+  // 重建侧边栏，注册晚了锁不住。具体逻辑由下方 sidebar 修复插件安装
+  // （插件初始化早于首次路由渲染）。
+  window.__sidebarNavOnHashChange = null;
+  window.addEventListener('hashchange', function () {
+    if (window.__sidebarNavOnHashChange) window.__sidebarNavOnHashChange();
+  });
+
   window.$docsify = {
     name: '',
     repo: '',
@@ -431,8 +440,95 @@
                 }
             });
         };
+
+        // —— v7：导航期间锁定侧边栏滚动，消除“多文件夹展开时点击底部条目乱跳”——
+        // 乱跳不是单个 bug，而是四个滚动执行者在同一次导航里先后搬动 .sidebar：
+        //   1. 路由切换重建侧边栏时先整体收起，重建流程中的强制布局（sidebar-collapse
+        //      插件 doneEach 里的 getBoundingClientRect 等）量到收起后的矮内容，
+        //      scrollTop 被浏览器钳制归零（最大的一跳）；
+        //   2. 插件 doneEach 再用“点击时刻”记录的旧坐标 scrollBy 复位；
+        //   3. 本修复把文件夹重新展开时，浏览器滚动锚定又补偿一次；
+        //   4. applyActive 的 smooth scrollIntoView 被防抖与 doneEach 各触发一次，
+        //      两次平滑滚动互相追逐。
+        // 对策：导航开始（hashchange，先于 docsify 处理）记录 scrollTop 并给侧边栏
+        // 内容锁最小高度——收起的中间态再矮也钳不动滚动位置；导航窗口内屏蔽插件
+        // 对 .sidebar 的 scrollBy；关闭侧边栏滚动锚定；MutationObserver 每次回调把
+        // scrollTop 钉回记录值；最终 applyActive 精确还原。重建前后文件夹开合一致
+        // （本修复保证），布局不变，记录值可以精确还原。
+        var scrollLock = null;   // {top}：导航开始时的侧边栏 scrollTop
+        var navGuard = 0;        // >0 表示处于导航窗口（hashchange → applyActive）
+        var getSidebar = function () { return document.querySelector('.sidebar'); };
+
+        // —— 门禁写入：丢弃外部 JS 对 .sidebar.scrollTop 的赋值 ——
+        // docsify 核心的滚动处理在 body.sticky 下会随正文滚动把侧边栏子目录
+        // （app-sub-sidebar）的 active 项“滚动到视野内”；但本站子目录被
+        // display:none 隐藏（右侧自绘 TOC 面板替代），隐藏元素的 offsetTop
+        // 恒为 0、它读取的 .sidebar-nav 也不是滚动容器（scrollTop 恒为 0），
+        // 于是每次正文跨过标题都会执行 sidebar.scrollTop = 0——表现为
+        // “滑动正文时左侧猛跳回顶部”。主题依赖 body.sticky 固定侧边栏
+        // （body.sticky .sidebar{position:fixed}），不能摘这个类，改为在
+        // .sidebar 实例上遮蔽 scrollTop 赋值：默认丢弃，仅本修复显式放行
+        // （还原导航前位置）时生效。用户滚轮/滚动条滚动是原生路径，
+        // 不经过 JS 属性 setter，不受影响。
+        var sbScrollDesc = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollTop');
+        var allowSbScrollWrite = false;
+        var setSidebarScrollTop = function (sb, v) {
+            allowSbScrollWrite = true;
+            try { sb.scrollTop = v; } finally { allowSbScrollWrite = false; }
+        };
+        var guardSidebarScrollTop = function (sb) {
+            if (!sb || !sbScrollDesc || !sbScrollDesc.get || !sbScrollDesc.set) return;
+            Object.defineProperty(sb, 'scrollTop', {
+                get: function () { return sbScrollDesc.get.call(this); },
+                set: function (v) {
+                    if (allowSbScrollWrite) sbScrollDesc.set.call(this, v);
+                },
+                configurable: true
+            });
+        };
+
+        var lockStyle = document.createElement('style');
+        // 锁高规则挂在 .sidebar 上（该节点不随路由重建）：重建会整体换掉
+        // .sidebar-nav，写在内联样式上的 min-height 会随之丢失，
+        // 只有 class + CSS 变量 + 子选择器能跨重建生效。
+        // overflow-anchor:none 关闭滚动锚定——侧边栏滚动位置由本修复显式管理，
+        // 锚定的自动补偿只会成为扰动源
+        lockStyle.textContent =
+            '.sidebar{overflow-anchor:none}' +
+            '.sidebar.nav-lock>.sidebar-nav{min-height:var(--nav-min-height,0px)}';
+        document.head.appendChild(lockStyle);
+
+        // 屏蔽插件 doneEach 里基于旧坐标的 scrollBy：该坐标取自上次侧边栏点击时刻，
+        // 导航后侧边栏已重建，旧坐标只会把滚动拉去错误位置。文件夹开合的坐标补偿
+        // 发生在点击的同步流程里（无 hashchange），不受影响
+        if (typeof Element.prototype.scrollBy === 'function') {
+            var origScrollBy = Element.prototype.scrollBy;
+            Element.prototype.scrollBy = function () {
+                if (navGuard > 0 && this.classList && this.classList.contains('sidebar')) return;
+                return origScrollBy.apply(this, arguments);
+            };
+        }
+
+        window.__sidebarNavOnHashChange = function () {
+            var sb = getSidebar();
+            if (!sb) return;
+            var myLock = { top: sb.scrollTop };
+            scrollLock = myLock;
+            sb.style.setProperty('--nav-min-height', sb.scrollHeight + 'px');
+            sb.classList.add('nav-lock');
+            navGuard++;
+            // 导航意外中止（链接无效等）时兜底解锁，避免残留 min-height 撑出空白；
+            // 只清理本轮锁，快速连续导航时不动新锁。navGuard 一并复位，
+            // 防止未产生后续渲染的 hashchange 泄漏计数、误屏蔽之后的文件夹开合补偿
+            setTimeout(function () {
+                if (scrollLock !== myLock) return;
+                scrollLock = null;
+                sb.classList.remove('nav-lock');
+                navGuard = 0;
+            }, 2000);
+        };
         var applyActive = function () {
-            window.__SIDEBAR_FIX__ = 'v6';   // 版本标记：控制台输入 __SIDEBAR_FIX__ 可查当前运行的修复版本（v6=消除侧边栏重建时的展开状态闪烁）
+            window.__SIDEBAR_FIX__ = 'v8';   // 版本标记：控制台输入 __SIDEBAR_FIX__ 可查当前运行的修复版本（v8=修复滑动正文时 docsify 把侧边栏拉回顶部）
             // 两侧都要安全解码：hash 是百分号编码，而侧边栏 href 里含手写的 %20
             // （如 "Effective Java" 目录），只解码一边会导致含空格的条目永远匹配不上；
             // decode 遇到非法 % 序列会抛 URIError，需要 try/catch 兜底。
@@ -460,7 +556,7 @@
 
             // 先恢复用户手动展开过的其他文件夹，再展开当前条目的祖先文件夹
             // （sidebar-collapse 插件在路由切换后会按 sidebarDisplayLevel 重置为折叠，
-            // 当前条目虽然高亮但被藏在文件夹里看不见），并把侧边栏滚动到该条目可见
+            // 当前条目虽然高亮但被藏在文件夹里看不见）
             restoreOpen();
             if (activeLi) {
                 var node = activeLi.parentElement;
@@ -474,8 +570,21 @@
                     }
                     node = node.parentElement;
                 }
-                // 滚动侧边栏让当前条目进入视野（block:nearest 只滚动必要的祖先容器）
-                try { activeLi.scrollIntoView({block: 'nearest', behavior: 'smooth'}); } catch (e) {}
+            }
+            // 侧边栏点击触发的导航：布局与点击前一致，精确还原记录的 scrollTop，
+            // 视觉上侧边栏完全不动；随后解锁内容高度。
+            // 内容区链接等非侧边栏触发的导航没有记录值，走下方 nearest 兜底：
+            // 激活项可能在折叠文件夹里，展开祖先后滚到可见。改为瞬时滚动——
+            // 多个 smooth 滚动互相追逐正是乱跳观感的来源之一
+            var sb = getSidebar();
+            if (sb && scrollLock) setSidebarScrollTop(sb, scrollLock.top);
+            scrollLock = null;
+            if (sb) sb.classList.remove('nav-lock');
+            navGuard = 0;
+            if (activeLi) {
+                // 滚动侧边栏让当前条目进入视野（block:nearest 只滚动必要的祖先容器，
+                // 已可见时是 no-op）
+                try { activeLi.scrollIntoView({block: 'nearest'}); } catch (e) {}
             }
             // 快照最终的展开状态：含插件自动展开的当前页祖先，供下次重建后恢复
             snapshotOpen();
@@ -484,12 +593,19 @@
         hook.mounted(function () {
             var sidebar = document.querySelector('.sidebar');
             if (!sidebar || typeof MutationObserver === 'undefined') return;
+            guardSidebarScrollTop(sidebar);   // 屏蔽 docsify 滚动处理对侧边栏 scrollTop 的破坏性写入
             // 侧边栏 DOM 会被整体重建，这里把点击委托挂在不会被重建的 .sidebar 容器上；
             // 插件的切换监听挂在更深的 .sidebar-nav 上，冒泡先到达，因此这里同步
             // 快照读到的已是插件展开/收起切换后的最终状态，且早于路由触发的重建
             sidebar.addEventListener('click', snapshotOpen);
             new MutationObserver(function () {
                 restoreOpenNow();   // 绘制前同步恢复，防止闪一下；下方防抖只负责 active 高亮等完整修正
+                // 重建期间把 scrollTop 钉在记录值上：盖掉钳制归零与滚动锚定的中间
+                // 扰动。回调是微任务、先于绘制执行，中间态不会上屏
+                var sb2 = getSidebar();
+                if (sb2 && scrollLock && sb2.scrollTop !== scrollLock.top) {
+                    setSidebarScrollTop(sb2, scrollLock.top);
+                }
                 if (scheduled) return;
                 scheduled = true;
                 setTimeout(function () { scheduled = false; applyActive(); }, 50);

@@ -50,21 +50,21 @@ flowchart TD
 ```cpp
 // system/netd/server/main.cpp（Android 10 前后，节选）
 int main() {
-    // ① 内核事件监听（与 4.x 相同）
+    // (1) 内核事件监听（与 4.x 相同）
     NetlinkManager *nm = NetlinkManager::Instance();
     nm->start();
 
-    // ② 所有功能控制器。4.x 时它们在 CommandListener 内部创建，现已聚合为独立的 Controllers
+    // (2) 所有功能控制器。4.x 时它们在 CommandListener 内部创建，现已聚合为独立的 Controllers
     gCtls = new Controllers();
 
-    // ③ 各监听入口
+    // (3) 各监听入口
     CommandListener cl;                          // /dev/socket/netd（文本命令，兼容）
     DnsProxyListener dpl(&gCtls->resolverCtrl);  // /dev/socket/dnsproxyd（DNS 代理）
     FwmarkServer fs(DEFAULT_NET_ID);             // /dev/socket/fwmarkd（socket 打标选路）
     NetdNativeService *nativeService = new NetdNativeService(); // INetd binder 服务
     nativeService->start();
 
-    // ④ 各自创建独立监听线程
+    // (4) 各自创建独立监听线程
     fs.startListener();
     cl.startListener();
     dpl.startListener();
@@ -124,13 +124,13 @@ int RouteController::setDefaultNetwork(unsigned netId) {
 // system/netd/server/FwmarkServer.cpp（节选简化）
 int FwmarkServer::onDataAvailable(SocketClient* client) {
     int socketFd;
-    // ① 通过 SCM_RIGHTS 收到 bionic 转来的、App 正在 connect() 的 socket fd
+    // (1) 通过 SCM_RIGHTS 收到 bionic 转来的、App 正在 connect() 的 socket fd
     if (!recvFd(client, &socketFd)) return -1;
 
     Fwmark fwmark;
     getsockopt(socketFd, SOL_SOCKET, SO_MARK, &fwmark.intValue, &fwmarkLen);
 
-    // ② 未显式绑定网络的 socket（没调 bindToDevice / bindToNetwork）→ 标记为当前默认网络
+    // (2) 未显式绑定网络的 socket（没调 bindToDevice / bindToNetwork）→ 标记为当前默认网络
     if (!fwmark.netId) {
         fwmark.netId = mDefaultNetId;
         setsockopt(socketFd, SOL_SOCKET, SO_MARK, &fwmark.intValue, sizeof(fwmark.intValue));
@@ -234,8 +234,8 @@ Framework 侧对应 NativeDaemonConnector：发送一行文本命令，按响应
 ```cpp
 // system/netd/server/TrafficController.cpp（节选简化）
 netdutils::Status TrafficController::start() {
-    // ① 从 /sys/fs/bpf 加载内核生成的 BPF map（uid 权限、cookieTag、流量统计等）
-    // ② 把 cgroup BPF 程序 attach 到 cgroup 挂载点：收发包路径上按 uid 查 map，
+    // (1) 从 /sys/fs/bpf 加载内核生成的 BPF map（uid 权限、cookieTag、流量统计等）
+    // (2) 把 cgroup BPF 程序 attach 到 cgroup 挂载点：收发包路径上按 uid 查 map，
     //    决定放行/丢弃，并累加流量统计
     RETURN_IF_NOT_OK(mBpfMapLoader.start(loadLocally));
     return netdutils::status::ok;

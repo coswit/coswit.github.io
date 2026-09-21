@@ -62,7 +62,9 @@ DFS（Dynamic Frequency Selection，动态频率选择）指设备检测到雷�
 
 ### OSI 七层模型
 
-OSI/RM（Open Systems Interconnection Reference Model，开放式系统互联基本参考模型）将网络划分为七层，由上到下：
+OSI/RM（Open Systems Interconnection Reference Model，开放式系统互联基本参考模型）将网络划分为七层，由上到下（原书图 3-1，含与 TCP/IP 模型的对照）：
+
+<img src="./images/osi_tcpip.jpg" style="zoom:100%;" />
 
 | 层 | 数据单位 | 职责与常见协议 |
 | --- | --- | --- |
@@ -105,6 +107,10 @@ MIB（Management Information Base，管理信息库）是虚拟数据库，存�
 ## 1.5 802.11 组件与网络结构
 
 ### 四种物理组件
+
+802.11 无线网络包含四种主要物理组件（原书图 3-9）：
+
+<img src="./images/wifi_components.jpg" style="zoom:100%;" />
 
 - **WM**（Wireless Medium，无线媒介）：传输无线 MAC 帧数据的物理层。规范最早定义了射频和红外两种物理层，目前使用最多的是射频物理层。
 - **STA**（Station）："A logical entity that is a singly addressable instance of a MAC and PHY interface to the WM"。STA 是指携带无线网卡的设备，例如笔记本、智能手机。无线网卡和有线网卡的 MAC 地址均分配自同一个地址池以确保唯一性。
@@ -255,7 +261,9 @@ Addr1 总是接收方（RA），Addr2 总是发送方（TA）：
 | PIFS | AP 发送 Beacon 等管理帧 |
 | DIFS | 普通异步数据帧发送前要求的最小空闲时间 |
 
-针对隐藏节点可开启 **RTS/CTS**：发送方先发 RTS（Request To Send），AP 回 CTS（Clear To Send），两者都携带 Duration，周围站点听到任意一个都会设置 NAV 让出信道——这样即使「听不到对方」（隐藏节点）也能互相避让。以站 A 向站 B 发数据为例：站 C 能听到 A 的 RTS 但听不到 B 的 CTS，因此 C 可以同时发送而不干扰 B 接收（C 与 B 互相听不到）；站 D 听不到 RTS 但能听到 CTS，于是关闭发送避免干扰 B；站 E 两者都能听到，全程静默。RTS/CTS 帧本身很短（分别为 20 和 14 字节，数据帧最长可达 2346 字节），开销不大，802.11 提供三种策略供选择：始终使用、超过阈值才使用、不使用。
+针对隐藏节点可开启 **RTS/CTS**：发送方先发 RTS（Request To Send），AP 回 CTS（Clear To Send），两者都携带 Duration，周围站点听到任意一个都会设置 NAV 让出信道——这样即使「听不到对方」（隐藏节点）也能互相避让。以站 A 向站 B 发数据为例（原书图 3-3，站 B、C、E 在 A 的覆盖范围内，站 A、E、D 在 B 的覆盖范围内）：
+
+<img src="./images/rts_cts.jpg" style="zoom:100%;" />站 C 能听到 A 的 RTS 但听不到 B 的 CTS，因此 C 可以同时发送而不干扰 B 接收（C 与 B 互相听不到）；站 D 听不到 RTS 但能听到 CTS，于是关闭发送避免干扰 B；站 E 两者都能听到，全程静默。RTS/CTS 帧本身很短（分别为 20 和 14 字节，数据帧最长可达 2346 字节），开销不大，802.11 提供三种策略供选择：始终使用、超过阈值才使用、不使用。
 
 协议具体运作由协调功能（Coordination Function，CF）控制，共四种：DCF（Distributed CF，分布式协调功能）、PCF（Point CF，点协调功能）、HCF（Hybrid CF，混合协调功能）与用于 Mesh 网络的 MCF。CSMA/CA 属于 DCF 的内容，信道利用率低于有线的 CSMA/CD——802.11b 在 1Mbps 速率时最高信道利用率可达 90%，11Mbps 时只有 65%。
 

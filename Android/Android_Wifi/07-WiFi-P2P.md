@@ -51,7 +51,9 @@ P2P 的设备发现仍用 Probe Request / Response 帧，但比 Infrastructure B
 - **Scan Phase**：在所有支持频段上主动扫描（发 Probe Request），不处理别人的请求——与普通无线网络扫描相同；
 - **Find Phase**：在 Search State 与 Listen State 之间来回切换。规范要求 Listen State 时长为 100 TU 的整数倍，倍数取 minDiscoverableInterval 与 maxDiscoverableInterval（默认 1 与 3）之间的随机数——**防止两个设备陷入 Lock-Step 怪圈**（同时进 Listen、等相同时间又同时进 Search，互相收不到对方的 Probe Request）。
 
-两个设备只有处于同一信道时才能收到对方的帧，靠 Social Channels + 随机交替保证相遇。
+两个设备只有处于同一信道时才能收到对方的帧，靠 Social Channels + 随机交替保证相遇。两个 P2P Device 的完整 Discovery 流程见原书图 7-3（Device1 的 Listen Channel 为 1，Device2 为 6，双方在 Find Phase 中交替收发直至相遇）：
+
+<img src="./images/p2p_discovery.jpg" style="zoom:100%;" />
 
 ### Probe 帧与 P2P IE
 
@@ -70,15 +72,17 @@ P2P 的 Probe Request 帧有三个识别特征：
 
 Device A 通过 Discovery 找到 Device B 后开展 Group Formation，分两阶段：
 
-**① GO Negotiation（GON）**：协商谁做 GO。用 **P2P Public Action 帧**交换信息（GON、P2P Invitation、Device Discoverability、Provision Discovery 都用这类帧，OUI SubType 区分），共三次帧交换：
+**(1) GO Negotiation（GON）**：协商谁做 GO。用 **P2P Public Action 帧**交换信息（GON、P2P Invitation、Device Discoverability、Provision Discovery 都用这类帧，OUI SubType 区分），共三次帧交换，流程见原书图 7-10：
+
+<img src="./images/go_negotiation.jpg" style="zoom:100%;" />
 
 1. **GON Request**：携带 GO Intent（0~15，想当 GO 的渴望程度）、Configuration Timeout（GO / Client 各 1 字节，10ms 的倍数，进入角色前完成准备的时限）、Channel List（Country String + 支持频段）、Intended P2P Interface Address（入组后将用的 MAC）等；
 2. **GON Response**：携带 Status（0 表示成功）、GO Intent 等。将成为 GO 的一方在此帧中带 **P2P Group ID** 属性（Device Address + SSID，SSID 必须以 `DIRECT-xy` 开头，xy 为随机两个字母数字，Android 会在后面追加设备名如 `Android_4aa9`）；
 3. **GON Confirmation**：确认。将扮演 GO 的设备必须包含 P2P Group ID。
 
-**角色裁决规则**：GO Intent 大者胜；一般双方都用默认值 7，此时 **Tie Breaker 位为 1 的一方获胜**（该位随机，撞车概率极低）；若双方 GO Intent 都是 15（都想当 GO），GON 失败，谁都做不了 GO。Android 上收到 GON Request 会弹框让用户确认（图 7-16 场景），拒绝则流程终止。
+**角色裁决规则**：GO Intent 大者胜；一般双方都用默认值 7，此时 **Tie Breaker 位为 1 的一方获胜**（该位随机，撞车概率极低）；若双方 GO Intent 都是 15（都想当 GO），GON 失败，谁都做不了 GO。Android 上收到 GON Request 会弹框让用户确认，拒绝则流程终止。
 
-**② WSC Provisioning**：角色确定后，GO 相当于 AP、Client 相当于 STA，双方走上一篇的 WSC 流程（EAP-WSC 的 M1~M8）交换安全配置信息。
+**(2) WSC Provisioning**：角色确定后，GO 相当于 AP、Client 相当于 STA，双方走上一篇的 WSC 流程（EAP-WSC 的 M1~M8）交换安全配置信息。
 
 ### Provision Discovery：为什么需要它
 
@@ -109,9 +113,19 @@ stateDiagram-v2
 - **Group Formation Procedure**：包含 GON、WSC Provisioning Registrar / Enrollee 三个状态（Registrar 与 Enrollee 的区分即本方将扮演 GO 还是 Client）；
 - **Operational Phase**：P2P GO 与 P2P Client 两个状态，组网完成、开始工作。
 
+规范原文为每个状态定义了 EntryAction、ExitAction 与 InternalBehavior，三张分图如下（原书图 7-22 的三个阶段框图）：
+
+<img src="./images/p2p_sm_1.jpg" style="zoom:100%;" />
+
+<img src="./images/p2p_sm_2.jpg" style="zoom:100%;" />
+
+<img src="./images/p2p_sm_3.jpg" style="zoom:100%;" />
+
 ## 1.5 Framework 侧：WifiP2pSettings 与 WifiP2pService
 
-WifiP2pSettings 是 Settings 中 P2P UI 的主要类，交互对象是 SystemServer 进程中的 **WifiP2pService**（家族类图与 WifiService 类似：IWifiP2pManager.aidl、Binder 服务端 + WifiP2pManager 客户端）。核心是内部类 **P2pStateMachine**（15 个状态，初始 P2pDisabledState）。
+WifiP2pSettings 是 Settings 中 P2P UI 的主要类，交互对象是 SystemServer 进程中的 **WifiP2pService**（家族类图与 WifiService 类似：IWifiP2pManager.aidl、Binder 服务端 + WifiP2pManager 客户端）。核心是内部类 **P2pStateMachine**（15 个状态，初始 P2pDisabledState），状态层级关系见原书图 7-25：
+
+<img src="./images/p2psm_states.jpg" style="zoom:100%;" />
 
 ### 使能与初始化
 
@@ -255,7 +269,106 @@ static int wpas_p2p_scan(void *ctx, enum p2p_scan_type type, ...)
 ### Provision Discovery 与 GON 实现
 
 - **PD**：`P2P_PROV_DISC` 命令 → `p2p_ctrl_prov_disc` → `wpas_p2p_prov_disc` → `p2p_prov_disc_req`：找到对端 p2p_device、记录 req_config_methods，`p2p_send_prov_disc_req` 在对端的 listen_freq 上发出 PD Request 帧（携带 Dialog Token 与 WSC IE 的 Config Method）；对端回 PD Response 后，WPAS 上报 `P2P_PROV_DISC_PBC_RSP` 事件，Framework 据此从 ProvisionDiscoveryState 前进；
-- **GON**：`P2P_CONNECT` 命令（`P2P_CONNECT <addr> pbc go_intent=7`）→ `p2p_ctrl_connect` → `wpas_p2p_connect`：判断是否需要创建新虚拟接口（wpas_p2p_create_iface）、设置频段，然后 `p2p_connect`（p2p 模块状态机）发送 GON Request；三次帧交换完成后角色确定——**WPAS 内部用 hostapd 的代码让 GO 扮演 AP**（发 Beacon、处理关联、跑 WPS Registrar），Client 侧则作为 Enrollee 走 EAP-WSC（上一篇的 M1~M8），Credential 协商完成后 GO 上报 `P2P-GROUP-STARTED`，Framework 进入 GroupCreatedState，GO 侧还会启动 DHCP 服务为 Client 分配 IP（Android 在 Framework 层实现）。
+- **GON**：`P2P_CONNECT` 命令 → `p2p_ctrl_connect` → `wpas_p2p_connect`，流程见下文代码走读。
+
+GON 的发起链路（p2p_ctrl_connect 解析参数后进入 wpas_p2p_connect）：
+
+```c
+// p2p_supplicant.c：wpas_p2p_connect（节选）
+int wpas_p2p_connect(struct wpa_supplicant *wpa_s, const u8 *peer_addr,
+             const char *pin, enum p2p_wps_method wps_method,
+             int persistent_group, int join, int auth, int go_intent, int freq)
+{
+    if (go_intent < 0) go_intent = wpa_s->conf->p2p_go_intent;   // 默认 7
+    wpa_s->p2p_wps_method = wps_method;   // 本例为 PBC
+    ......
+    // 判断是否需要创建新的 virtual interface：驱动带
+    // WPA_DRIVER_FLAGS_P2P_MGMT_AND_NON_P2P 标志时，P2P Group 需要专用接口
+    wpa_s->create_p2p_iface = wpas_p2p_create_iface(wpa_s);
+    if (wpa_s->create_p2p_iface) {                   // 本例满足
+        iftype = WPA_IF_P2P_GROUP;
+        if (go_intent == 15) iftype = WPA_IF_P2P_GO; // intent=15 时直接建 GO 接口
+        // 创建 virtual interface 并获取其地址（内部调 wpa_driver_nl80211_if_add）。
+        // 注意两个地址不同：P2P Device Address 是 92:18:7c:69:88:e2，
+        // P2P Interface Address 是 92:18:7c:69:08:e2（以 Galaxy Note 2 为例）
+        if (wpas_p2p_add_group_interface(wpa_s, iftype) < 0) return -1;
+        if_addr = wpa_s->pending_interface_addr;
+    } else
+        if_addr = wpa_s->own_addr;
+    // 内部将调用 p2p_connect
+    if (wpas_p2p_start_go_neg(wpa_s, peer_addr, wps_method,
+                go_intent, if_addr, force_freq, persistent_group) < 0) {......}
+    return ret;
+}
+
+// p2p.c：p2p_connect（节选）
+int p2p_connect(struct p2p_data *p2p, const u8 *peer_addr,
+                       enum p2p_wps_method wps_method,
+                       int go_intent, const u8 *own_interface_addr, ...)
+{
+    struct p2p_device *dev;
+    if (p2p_prepare_channel(p2p, force_freq) < 0)  return -1;   // 频段检查
+    dev = p2p_get_device(p2p, peer_addr);
+    p2p->go_intent = go_intent;
+    // P2P 模块状态不为 P2P_IDLE 则先停止 find（对应 1.4 节状态机的 Find Phase 退出）
+    if (p2p->state != P2P_IDLE) p2p_stop_find(p2p);
+    dev->wps_method = wps_method;
+    if (p2p->p2p_scan_running) {
+        // 还在扫描中：标记扫描结束后直接进入 connect 流程
+        p2p->start_after_scan = P2P_AFTER_SCAN_CONNECT;
+        os_memcpy(p2p->after_scan_peer, peer_addr, ETH_ALEN);
+        return 0;
+    }
+    p2p->start_after_scan = P2P_AFTER_SCAN_NOTHING;
+    return p2p_connect_send(p2p, dev);   // 发送 GON Request
+}
+
+// p2p_go_neg.c：p2p_connect_send（节选）
+int p2p_connect_send(struct p2p_data *p2p, struct p2p_device *dev)
+{
+    req = p2p_build_go_neg_req(p2p, dev);
+    p2p_set_state(p2p, P2P_CONNECT);              // p2p 模块进入 CONNECT 状态
+    p2p->pending_action_state = P2P_PENDING_GO_NEG_REQUEST;
+    p2p->go_neg_peer = dev;                       // 记录 GON 对端
+    dev->flags |= P2P_DEV_WAIT_GO_NEG_RESPONSE;
+    // 在对端 listen_freq 上发送 GON Request 帧（P2P Public Action）
+    if (p2p_send_action(p2p, freq, dev->info.p2p_device_addr,
+                p2p->cfg->dev_addr, dev->info.p2p_device_addr,
+                wpabuf_head(req), wpabuf_len(req), 200) < 0) {......}
+    return 0;
+}
+```
+
+对端回 GON Response 后由 `p2p_process_go_neg_resp` 处理：解析帧中属性，调用 **`p2p_go_det(p2p->go_intent, *msg.go_intent)` 按图 7-13 的规则裁决角色**（返回正数本机做 GO、0 对端做 GO、-1 双方都想当 GO 而失败），随后发 GON Confirmation。Confirmation 发送成功的 TX 回调（`p2p_go_neg_conf_cb` → `p2p_go_complete`）将 p2p 模块状态置为 **P2P_PROVISIONING**（进入 Provisioning 阶段）并回调 `wpas_go_neg_completed`：
+
+```c
+// p2p_supplicant.c：wpas_go_neg_completed（节选）
+void wpas_go_neg_completed(void *ctx, struct p2p_go_neg_results *res)
+{
+    struct wpa_supplicant *wpa_s = ctx;
+    // 上报 P2P-GO-NEG-SUCCEEDED，Framework 的 P2pStateMachine 收到
+    // P2P_GO_NEGOTIATION_SUCCESS_EVENT
+    wpa_msg(wpa_s, MSG_INFO, P2P_EVENT_GO_NEG_SUCCESS);
+    wpas_notify_p2p_go_neg_completed(wpa_s, res);
+    if (wpa_s->create_p2p_iface) {
+        // 为 Group 再创建一个 wpa_supplicant 对象（内部调 wpa_supplicant_add_iface）：
+        // 新对象管理 P2P Group 的 virtual interface（地址为 P2P Interface Address），
+        // 原对象继续负责设备发现等非 Group 操作（地址为 P2P Device Address）
+        struct wpa_supplicant *group_wpa_s =
+            wpas_p2p_init_group_interface(wpa_s, res->role_go);
+        // GO 启动 WSC Registrar（内部用 hostapd 的代码发 Beacon、处理关联），
+        // Client 启动 WSC Enrollee（走 EAP-WSC 的 M1~M8，即上一篇的流程）
+        if (res->role_go)  wpas_start_wps_go(group_wpa_s, res, 1);
+        else               wpas_start_wps_enrollee(group_wpa_s, res);
+    }
+    // Group Formation 的总超时：15 秒 + 对端 Configuration Timeout
+    eloop_register_timeout(15 + res->peer_config_timeout / 100,
+                   (res->peer_config_timeout % 100) * 10000,
+                   wpas_p2p_group_formation_timeout, wpa_s, NULL);
+}
+```
+
+WSC Provisioning 完成、Group 正式建立后，WPAS 上报 `P2P-GROUP-STARTED`，Framework 的 P2pStateMachine 进入 GroupCreatedState，GO 侧还会启动 DHCP 服务为 Client 分配 IP（Android 在 Framework 层实现）。
 
 至此 P2P Group 建立：GO 上是 `p2p0` 接口 + 若干 Client，上层应用（如 Miracast 的 RTSP / UDP 流）即可通过这块直连链路通信。
 

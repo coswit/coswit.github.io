@@ -1,5 +1,7 @@
 # Creational Patterns（创建型模式）
 
+> Intent 中文以中译本《设计模式：可复用面向对象软件的基础（典藏版）》（机械工业出版社）译法为准。
+
 创建型模式抽象了**实例化过程**：它们把"系统如何创建、组合、表示它的对象"这一知识封装起来，让系统与具体类解耦。客户只操作抽象接口，由模式替它决定何时、如何、由谁创建具体对象。
 
 5 个创建型模式：Abstract Factory、Builder、Factory Method、Prototype、Singleton。
@@ -8,7 +10,7 @@
 
 ## Abstract Factory（别名 Kit）
 
-> 提供一个创建一系列相关或相互依赖对象的接口，而无需指定它们具体的类。
+> 提供一个接口以创建一系列相关或相互依赖的对象，而无须指定它们具体的类。
 >
 > Provide an interface for creating families of related or dependent objects without specifying their concrete classes.
 
@@ -142,7 +144,7 @@ public class Client {
 
 ### Known Uses / 现代对应
 
-* 书中：InterViews 的 inter-look 机制、ET++ 编辑器的 look-and-feel
+* 书中：InterViews 用 "Kit" 后缀表示 Abstract Factory 类——`WidgetKit`、`DialogKit` 抽象工厂生成与特定视感风格相关的界面对象，`LayoutKit` 按所需布局生成不同的组合对象；ET++ 用 Abstract Factory 实现跨窗口系统（X Windows、SunView）的可移植性——`WindowSystem` 抽象基类定义 `MakeWindow`/`MakeFont`/`MakeColor` 等创建接口，具体子类为特定窗口系统实现
 * Java：`javax.xml.parsers.DocumentBuilderFactory`、`SAXParserFactory`，AWT 的 `Toolkit`
 
 ### Related Patterns
@@ -151,7 +153,7 @@ public class Client {
 
 ## Builder
 
-> 将一个复杂对象的构建与它的表示分离，使同样的构建过程可以创建不同的表示。
+> 将一个复杂对象的构建与它的表示分离，使得同样的构建过程可以创建不同的表示。
 >
 > Separate the construction of a complex object from its representation so that the same construction process can create different representations.
 
@@ -288,7 +290,7 @@ String texProduct = tex.getTeX();
 
 ## Factory Method（别名 Virtual Constructor）
 
-> 定义一个创建对象的接口，让子类决定实例化哪一个类。Factory Method 使一个类的实例化延迟到其子类。
+> 定义一个用于创建对象的接口，让子类决定实例化哪一个类。Factory Method 使一个类的实例化延迟到其子类。
 >
 > Define an interface for creating an object, but let subclasses decide which class to instantiate.
 
@@ -401,7 +403,7 @@ app.newDocument("架构图.vsd");   // 内部创建的是 DrawingDocument，框�
 
 ## Prototype
 
-> 用原型实例指定创建对象的种类，并通过克隆（clone）这些原型来创建新对象。
+> 用原型实例指定创建对象的种类，并且通过拷贝（clone）这些原型创建新的对象。
 >
 > Specify the kinds of objects to create using a prototypical instance, and create new objects by copying this prototype.
 
@@ -603,3 +605,28 @@ MazeFactory factory = MazeFactoryRegistry.instance("bombed"); // 运行期选择
 ### Related Patterns
 
 **Abstract Factory**、**Builder**、**Prototype** 的实现常用 Singleton——它们在整个系统中往往只需一个实例。
+
+## 创建型模式的讨论（原书 3.6）
+
+用产品类对系统进行参数化，有两种常用方法，正好对应创建型模式的两个阵营。
+
+**方法一：生成创建对象的类的子类**——即 **Factory Method**。主要缺点是：仅为了改变产品类，就可能需要创建一个新的子类，而且这种改变可能是级联的（cascade）——如果产品的创建者本身也是由工厂方法创建的，它的创建者也必须一并重定义。
+
+**方法二：对象组合**——定义一个负责明确产品对象的"工厂对象"，把它作为系统的参数。这是 **Abstract Factory**、**Builder**、**Prototype** 的共同特征，三者都引入一个新的工厂对象：
+
+| 模式 | 工厂对象如何产出产品 |
+| --- | --- |
+| Abstract Factory | 一次产出**多个类**的对象（一个产品族） |
+| Builder | 按**相对复杂的协议**逐步创建一个复杂产品 |
+| Prototype | **拷贝原型**创建产品——工厂对象与原型是同一个对象 |
+
+原书用绘图编辑器的 GraphicTool 做了同一问题的三种解法对比（按产品类参数化 GraphicTool）：
+
+* **Factory Method**：为选择板中每个 Graphic 子类创建一个 GraphicTool 子类，各自重定义 `NewGraphic`。最简单直接，但 GraphicTool 子类数目激增、且个个没做多少事
+* **Abstract Factory**：建一个与 Graphic 子类一一对应的 GraphicsFactory 层次（CircleFactory 创建 Circle……）。并未改善多少——同样庞大的平行工厂层次；只有当系统其他部分本来就需要这个工厂层次（如 Smalltalk/Objective-C 编译器自动提供）时才略优
+* **Prototype**：每个 Graphic 子类实现 `Clone`，GraphicTool 以它创建的 Graphic 的原型为参数。**通常最好**——每个 Graphic 只需实现一个 Clone，类的数目最少，且 Clone 还能挪作他用（如 Duplicate 菜单操作）
+
+结论与演化路径：
+
+* Factory Method 让设计可以定制且只略微增加复杂度——别的模式要新类，它只要一个新操作。但当被实例化的类根本不变化、或实例化发生在子类很容易重定义的操作（如初始化）中时，它就多余了
+* Abstract Factory / Prototype / Builder 更灵活，但**也更复杂**。常见轨迹是：设计从 Factory Method 起步，发现需要更大灵活性时再向其他创建型模式演化。在多个设计标准之间权衡时，了解多个模式才有选择余地

@@ -1,5 +1,7 @@
 # Behavioral Patterns（行为型模式）
 
+> Intent 中文以中译本《设计模式：可复用面向对象软件的基础（典藏版）》（机械工业出版社）译法为准。
+
 行为型模式关注**算法与对象间职责的分配**：不仅描述对象/类的模式，还刻画它们之间的通信模式。它们把"谁做什么、何时做、怎么互相找到对方"从硬编码的关系中解放出来。
 
 11 个行为型模式：Chain of Responsibility、Command、Interpreter、Iterator、Mediator、Memento、Observer、State、Strategy、Template Method、Visitor。
@@ -8,7 +10,7 @@
 
 ## Chain of Responsibility
 
-> 使多个对象都有机会处理请求，从而避免请求的发送者与接收者之间的耦合关系。将这些对象连成一条链，沿着链传递请求，直到有一个对象处理它为止。
+> 使多个对象都有机会处理请求，从而避免请求的发送者和接收者之间的耦合关系。将这些对象连成一条链，并沿着这条链传递该请求，直到有一个对象处理它为止。
 >
 > Avoid coupling the sender of a request to its receiver by giving more than one object a chance to handle the request.
 
@@ -127,7 +129,7 @@ Composite 的父链本身就是一条现成的 Chain of Responsibility；请求"
 
 ## Command（别名 Action、Transaction）
 
-> 将一个请求封装为一个对象，从而使你可用不同的请求对客户进行参数化；对请求排队或记录请求日志，以及支持可撤销的操作。
+> 将一个请求封装为一个对象，从而使你可用不同的请求对客户进行参数化，对请求排队或记录请求日志，以及支持可撤销的操作。
 >
 > Encapsulate a request as an object, thereby letting you parameterize clients with different requests, queue or log requests, and support undoable operations.
 
@@ -253,7 +255,7 @@ new MenuItem(macro).clicked();
 
 ## Interpreter
 
-> 给定一个语言，定义它的文法的一种表示，并定义一个解释器，该解释器使用该表示来解释语言中的句子。
+> 给定一个语言，定义它的文法的一种表示，并定义一个解释器，这个解释器使用该表示来解释语言中的句子。
 >
 > Given a language, define a represention for its grammar along with an interpreter that uses the representation to interpret sentences in the language.
 
@@ -386,7 +388,7 @@ AST 本身是 **Composite**；终结符节点可用 **Flyweight** 共享；遍�
 
 ## Iterator（别名 Cursor）
 
-> 提供一种方法顺序访问一个聚合对象中的各个元素，而又不暴露该对象的内部表示。
+> 提供一种方法顺序访问一个聚合对象中的各个元素，而又不需要暴露该对象的内部表示。
 >
 > Provide a way to access the elements of an aggregate object sequentially without exposing its underlying representation.
 
@@ -650,7 +652,7 @@ GUI 对话框/表单联动（如 Android 用一个 Activity/ViewModel 充当 Med
 
 ## Memento（别名 Token）
 
-> 在不破坏封装性的前提下，捕获一个对象的内部状态，并在该对象之外保存这个状态。这样以后可将该对象恢复到原先保存的状态。
+> 在不破坏封装性的前提下，捕获一个对象的内部状态，并在该对象之外保存这个状态。这样以后就可将该对象恢复到原先保存的状态。
 >
 > Without violating encapsulation, capture and externalize an object's internal state.
 
@@ -752,7 +754,7 @@ caretaker.rollback(solver);     // 回滚到存档点，Caretaker 始终不知�
 
 ## Observer（别名 Dependents、Publish-Subscribe）
 
-> 定义对象间的一对多依赖，当一个对象的状态发生改变时，所有依赖于它的对象都得到通知并被自动更新。
+> 定义对象间的一种一对多的依赖关系，当一个对象的状态发生改变时，所有依赖于它的对象都得到通知并被自动更新。
 >
 > Define a one-to-many dependency between objects so that when one object changes state, all its dependents are notified.
 
@@ -870,7 +872,7 @@ data.setValue(42);   // 一次修改 => 两个视图同时更新，Data 不知�
 
 ### Known Uses / 现代对应
 
-* 书中：Smalltalk MVC 的 Model/View 依赖更新机制、InterViews 等工具包中的变化通知
+* 书中：最早也最著名的例子是 Smalltalk 的 Model/View/Controller（MVC）——Model 担任目标角色，View 是观察者的基类；Smalltalk、ET++ 和 THINK 类库把 Subject 和 Observer 接口放进系统所有其他类的父类，提供通用的依赖机制；InterViews 显式定义了 Observer 和 Observable（目标）类；Andrew Toolkit 分别称之为"视图"和"数据对象"；Unidraw 把图形编辑器对象分割成 View 和 Subject 两部分
 * Java/现代：Swing 与 Android 的各类 Listener、`java.beans.PropertyChangeListener`、RxJava 的 `Observable/Observer`、Spring 事件、消息中间件的 Publish/Subscribe
 
 ### Related Patterns
@@ -879,7 +881,7 @@ ChangeManager 扮演 **Mediator** 并常为 **Singleton**；Observer 的"一对�
 
 ## State（别名 Objects for States）
 
-> 允许一个对象在其内部状态改变时改变它的行为，对象看起来似乎修改了它的类。
+> 允许一个对象在其内部状态改变时改变它的行为。对象看起来似乎修改了它的类。
 >
 > Allow an object to alter its behavior when its internal state changes.
 
@@ -1008,7 +1010,7 @@ conn.close();               // -> CLOSED
 
 ## Strategy（别名 Policy）
 
-> 定义一系列的算法，把它们一个个封装起来，并且使它们可相互替换。此模式使得算法可以独立于使用它的客户而变化。
+> 定义一系列的算法，把它们一个个封装起来，并且使它们可相互替换。本模式使得算法可独立于使用它的客户而变化。
 >
 > Define a family of algorithms, encapsulate each one, and make them interchangeable.
 
@@ -1139,7 +1141,7 @@ c.repair();                       // TeX 式断行
 
 ## Template Method
 
-> 定义一个操作中的算法骨架，而将一些步骤延迟到子类中。Template Method 使得子类可以不改变一个算法的结构即可重定义该算法的某些特定步骤。
+> 定义一个操作中的算法的骨架，而将一些步骤延迟到子类中。Template Method 使得子类可以不改变一个算法的结构即可重定义该算法的某些特定步骤。
 >
 > Define the skeleton of an algorithm in an operation, deferring some steps to subclasses.
 
@@ -1251,7 +1253,7 @@ new DrawingApplication2().openDocument("架构图.vsd");
 
 ## Visitor
 
-> 表示一个作用于某对象结构中的各元素的操作。Visitor 使你可以在不改变各元素的类的前提下定义作用于这些元素的新操作。
+> 表示一个作用于某对象结构中的各元素的操作。它使你可以在不改变各元素的类的前提下定义作用于这些元素的新操作。
 >
 > Represent an operation to be performed on the elements of an object structure without changing the classes.
 
@@ -1411,3 +1413,53 @@ System.out.println("清单: " + inventory.inventory()); // [Chassis, FloppyDisk,
 ### Related Patterns
 
 典型应用对象是 **Composite** 与 **Interpreter** 的 AST；遍历可借 **Iterator** 完成；Visitor 与 **Decorator** 的区别——Decorator 给结构中的对象逐个加职责，Visitor 给整个结构横切地加操作。
+
+## 行为型模式的讨论（原书 5.12）
+
+除少数例外，各行为模式之间是**相互补充、相互加强**的关系。原书从四个视角对它们做了横向归纳。
+
+### 封装变化
+
+封装变化是很多行为模式的主题：当程序的某方面特征经常改变时，就定义一个**封装这方面**的对象，程序的其他部分依赖这个对象而不是直接依赖变化本身——模式也大多依据这个对象命名：
+
+* 一个 **Strategy** 对象封装一个算法
+* 一个 **State** 对象封装一个与状态相关的行为
+* 一个 **Mediator** 对象封装对象间的协议
+* 一个 **Iterator** 对象封装对聚集对象中各构件的访问与遍历方法
+
+这些模式通常涉及两种对象：封装变化的新对象、使用新对象的已有对象。不用模式的话，新对象的功能往往变成已有对象难以分割的一部分——Strategy 的代码可能嵌在 Context 类里，State 的代码可能直接实现在该状态的 Context 类中。但也非所有行为模式都这样切分功能：Chain of Responsibility 处理的可能是**已经存在于系统中**的任意数目的对象（一条链），而且并非所有行为模式都定义类之间的静态通信关系——职责链提供的是在**数目可变**的对象间进行通信的机制。
+
+### 对象作为参数
+
+一些模式引入**总是被用作参数**的对象：
+
+* **Visitor** 对象是多态的 Accept 操作的参数——以前通常把 Visitor 的代码分散在对象结构的各个类中，但 visitor 从来都不是它所访问的对象的一部分
+* **Command** 和 **Memento** 定义可作为**令牌（token）**到处传递、稍后被调用的对象——Command 的令牌代表一个请求，Memento 的令牌代表对象在某时刻的内部状态。二者令牌都可以有复杂的内部表示，而客户并不知情。区别在于：Command 中多态很重要（执行 Command 是多态操作）；Memento 的接口非常小，备忘录基本只作为一个值传递，很可能根本不给客户提供任何多态操作
+
+### 通信应该被封装还是被分布
+
+**Mediator 和 Observer 是相互竞争的模式**，差别恰在通信的组织方式：
+
+* **Observer 分布通信**：不存在一个封装约束的单个对象，由 Observer 和 Subject 相互协作维护约束，通信模式由二者连接的方式决定——一个目标通常有多个观察者，有时一个目标的观察者还是另一个目标
+* **Mediator 集中通信**：把维护约束的职责直接放进中介者
+
+权衡：**可复用的 Observer 和 Subject 比可复用的 Mediator 容易生成**——Observer 有利于分割与松耦合，产生粒度更细、更易复用的类；但 **Mediator 中的通信流更容易理解**——观察者与目标的连接在创建后很快发生，此后很难看出它们是如何连接的，Observer 引入的间接性会使系统难以理解。原书还观察到语言差异：Smalltalk 的 Observer 可以用消息参数化以访问 Subject 状态，可复用性比 C++ 版本更强，因此 Smalltalk 程序员偏好 Observer，C++ 程序员偏好 Mediator。
+
+### 对发送者和接收者解耦
+
+合作对象直接互相引用会互相依赖，损害系统的分层与复用。Command、Observer、Mediator、Chain of Responsibility 都解耦发送者与接收者，但绑定松紧不同：
+
+| 模式 | 解耦方式 | 绑定松紧与代价 |
+| --- | --- | --- |
+| **Command** | 用一个 Command 对象定义发送者与接收者的绑定（`Execute` 提交请求） | 发送者可与不同接收者工作、更易复用；名义上每个发送者—接收者连接需要一个子类 |
+| **Observer** | 定义通知目标变化的接口 | 比 Command 更松——一个目标可有数目运行期可变的多个观察者 |
+| **Mediator** | 各 Colleague 只通过 Mediator 接口交谈，中介者路由并集中通信 | 减少子类生成（通信行为集中到一个类）；但特别的分发策略通常降低类型安全 |
+| **Chain of Responsibility** | 沿潜在接收者链传递请求 | 接口固定，可能需要定制分发策略（与 Mediator 同样的类型安全问题）；若链本就是系统结构的一部分、且链上总有对象能处理请求，则是很好的解耦方式，且链可以简单地改变和扩展 |
+
+### 总结
+
+行为模式之间相互补充：职责链中的类可能包含至少一个 Template Method 的应用（用原语操作判断是否处理请求、选择转发对象）；职责链可以用 Command 把请求表示为对象；Interpreter 可以用 State 定义语法分析上下文；Iterator 遍历聚合，Visitor 对它的每一个元素进行操作。
+
+行为模式也与其他类模式协同：用 Composite 组织的系统可以用 Visitor 对组合的各成分做操作，用职责链让成分经父类访问全局属性，用 Decorator 改写组合某些部分的属性，用 Observer 把一个对象结构与另一个联系起来，用 State 让构件随状态改变行为；组合本身可以用 Builder 的方法创建，也可以被系统其他部分当作 Prototype。
+
+设计良好的面向对象系统通常有多个模式镶嵌其中——但其设计者未必用这些术语思考。**在模式级别（而不是类或对象级别）上进行系统组装，可以更方便地获得同等的协同性。**

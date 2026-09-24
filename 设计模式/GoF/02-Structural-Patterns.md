@@ -6,7 +6,7 @@
 
 7 个结构型模式：Adapter、Bridge、Composite、Decorator、Facade、Flyweight、Proxy。
 
-> 类图为 mermaid；Sample Code 用 Java 还原原书的 Motivation 场景（原书为 C++/Smalltalk）。更多 Java 示例见上级目录《设计模式之二：Structural Pattern》。
+> 类图为 mermaid。Sample Code 依据原书代码示例摘编：保留主干与推进顺序，代码与解说交替；原书为 C++/Smalltalk，一般以 Java 摘编呈现，Java 无法忠实表达的场合（如 Adapter 的多重继承）保留原书 C++ 代码。更多 Java 示例见上级目录《设计模式之二：Structural Pattern》。
 
 ## Adapter（别名 Wrapper）
 
@@ -16,18 +16,22 @@
 
 ### Motivation
 
-图形编辑器已有 `TextView`（来自界面工具包），但编辑器统一操作 `Shape` 接口（`boundingBox`、`createManipulator`…）。解法：`TextShape` **适配** TextView——作为类适配器（继承 TextView 并实现 Shape）或对象适配器（持有 TextView 并实现 Shape），编辑器即可像对待 Shape 一样对待文本。
+图形编辑器统一用 `Shape` 接口操纵所有图元（`boundingBox`、`createManipulator`……）。现在编辑器要支持文本，而显示与编辑文本的能力早已存在于界面工具包的 `TextView` 中——直接复用它最理想。问题在于 TextView 的接口与 Shape 不兼容：它不是图元，不按 Shape 的协议响应请求。
 
-两种形态：
+那就改 TextView 让它实现 Shape？不可行也不合适：TextView 属于工具包，我们控制不了（甚至拿不到源码），也不该为了某个编辑器的特殊需要去改动一个通用组件。Adapter 模式的做法是引入第三者 `TextShape`：它实现 Shape 接口，把收到的 Shape 请求**转换**成 TextView 能理解的操作，由 TextView 完成实际工作。编辑器从此把文本当普通 Shape 对待，TextView 一行不改。
 
-* **class adapter**：多重继承（实现 Target 接口 + 继承 Adaptee），静态绑定
-* **object adapter**：组合（实现 Target 接口 + 持有 Adaptee），可适配 Adaptee 及其子类
+TextShape 实现这种转换有两条路，对应 Adapter 的两种形态：
+
+* **class adapter**：多重继承——同时继承 Adaptee（TextView）获得现成实现、继承 Target（Shape）接口获得编辑器所需的多态类型。C++ 用多重继承直接表达；Java 没有类的多重继承，但"继承 Adaptee + 实现 Target 接口"组合起来表达的是同一个结构
+* **object adapter**：组合——只实现 Target 接口，内部持有一个 Adaptee 引用，把请求转发给它。因为引用声明为 Adaptee 类型而非某个具体子类，一个适配器实例就能配合 Adaptee 及其所有子类工作
+
+适配不是简单转发，常常要做接口之间的**换算**——例如 `Shape#boundingBox` 需要 `bottomLeft`、`topRight` 两个点，而 TextView 提供的是 `origin()`（原点）与 `extent()`（宽高），适配器要把后者换算成前者（见 Sample Code）。
 
 ### Applicability
 
 * 想使用一个现有的类，但它的接口不符合你的需要
 * 想创建一个可复用的类，能与无关的、事先无法预见的类（即接口不一定兼容的类）协作
-* 想同时使用多个现有的子类，但为每一个子类派生子类去适配接口并不现实。object adapter 可以直接适配其父类的接口
+* 想同时使用某个已有类层次中的**多个子类**——用 class adapter 就得为每个子类派生一个适配器子类，不现实；object adapter 持有 Adaptee（父类）引用，一个适配器就能适配全部子类
 * 大量使用第三方库的应用，会用 adapter 作为应用与第三方库之间的中间层来解耦。这样换库时只需为新库写一个 adapter，无需改动应用代码
 
 ### Structure（object adapter）
@@ -51,7 +55,7 @@ classDiagram
     Adapter --> Adaptee : 翻译并转发
 ```
 
-class adapter 的结构（Java 无多重继承，用"实现接口 + 继承被适配者"近似）：
+class adapter 的结构（Java 中以"继承 Adaptee + 实现 Target 接口"表达多重继承）：
 
 ```mermaid
 classDiagram
@@ -79,7 +83,7 @@ classDiagram
 
 ### Collaborations
 
-Client 调用 Adapter 的 Target 操作；Adapter 把请求翻译（可能改参数、换语义）后转给 Adaptee。
+Client 在 Adapter 实例上调用 Target 操作；Adapter 把该请求转换为对 Adaptee 相应操作的调用，由 Adaptee 完成实际工作。
 
 ### Consequences
 
@@ -94,7 +98,7 @@ object adapter：
 * 一个 Adapter 可以适配多个 Adaptee（Adaptee 本体及其子类），还可以一次性为它们添加功能
 * 更难覆盖 Adaptee 的行为（需要派生 Adaptee 再让 Adapter 引用派生类）
 
-其他代价：适配工作量通常不大，但**逐个适配大量相似接口**会令人厌倦——此时应考虑重新审视抽象边界。
+> Adapter 只转换接口而不增加功能，化解的是「Adaptee 不该改、Client 依赖的 Target 接口又是既定」的两难。
 
 ### Implementation（书中亮点：Pluggable Adapter）
 
@@ -104,59 +108,108 @@ object adapter：
   3. **参数化的适配**：调用方传入"该调用 Adaptee 的什么操作"的信息
 * **Two-way adapter（双向适配器）**：同时实现 Target 与 Adaptee 两个接口，可站在任一侧使用——依赖多重继承（class adapter）
 
-### Sample Code（Shape 与 TextView）
+### Sample Code（Shape 与 TextView，原书 C++ 摘编）
 
-```java
-// ---- Target：编辑器的统一接口 ----
-// （BoundingBox/Point/Manipulator 等辅助类型为示意，从略）
-interface Shape {
-    BoundingBox boundingBox();
-    Manipulator createManipulator();
-}
+先看 Target 与 Adaptee——编辑器统一操纵 Shape，而文本显示能力已在工具包的 TextView 里：
 
-// ---- Adaptee：界面工具包已有类，接口不同 ----
-class TextView {
-    Point origin() { return new Point(0, 0); }
-    Point extent() { return new Point(80, 24); }
-    boolean isEmpty() { return false; }
-}
+```cpp
+class Shape {                                      // Target：编辑器的统一图元接口
+public:
+    virtual void BoundingBox(Point& bottomLeft, Point& topRight) const;
+    virtual bool IsEmpty() const;
+    virtual Manipulator* CreateManipulator() const;
+};
 
-// ---- 对象适配器：实现 Target + 持有 Adaptee，逐个翻译 ----
-class TextShape implements Shape {
-    private final TextView textView;               // Adaptee
-
-    TextShape(TextView textView) { this.textView = textView; }
-
-    @Override
-    public BoundingBox boundingBox() {             // 用 Adaptee 的两个点拼出 Target 的结果
-        Point bottomLeft = textView.origin();
-        Point topRight = textView.extent();
-        return new BoundingBox(bottomLeft, topRight);
-    }
-
-    @Override
-    public Manipulator createManipulator() {
-        return new TextManipulator(this);          // 适配器自己的实现
-    }
-}
-
-// ---- 编辑器（Client）：TextShape 当普通 Shape 使用 ----
-Shape shape = new TextShape(new TextView());
-shape.boundingBox();                               // 编辑器无感知 TextView 的存在
+class TextView {                                   // Adaptee：工具包已有类
+public:
+    TextView();                                    // 创建并不便宜：建缓冲、查字形表……
+    void GetOrigin(Coord& x, Coord& y) const;
+    void GetExtent(Coord& width, Coord& height) const;
+    virtual bool IsEmpty() const;
+};
 ```
 
-```java
-// ---- class adapter（Java 近似：继承 Adaptee + 实现 Target）----
-class TextShapeClassAdapter extends TextView implements Shape {
-    @Override
-    public BoundingBox boundingBox() {
-        return new BoundingBox(origin(), extent()); // 直接用继承来的方法
-    }
-    @Override
-    public Manipulator createManipulator() {
-        return new TextManipulator(this);
-    }
+对象适配器：TextShape 实现 Shape、持有 TextView。构造函数只做一件事——保存 Adaptee 指针，适配器从不重新实现 TextView 的功能：
+
+```cpp
+class TextShape : public Shape {
+public:
+    TextShape(TextView*);
+    virtual void BoundingBox(Point& bottomLeft, Point& topRight) const;
+    virtual bool IsEmpty() const;
+    virtual Manipulator* CreateManipulator() const;
+private:
+    TextView* _text;
+};
+
+TextShape::TextShape(TextView* t) { _text = t; }
+```
+
+BoundingBox 完成接口之间的换算——Shape 要两点坐标，TextView 给的是原点加宽高：
+
+```cpp
+void TextShape::BoundingBox(Point& bottomLeft, Point& topRight) const {
+    Coord bottom, left, width, height;
+    _text->GetOrigin(left, bottom);
+    _text->GetExtent(width, height);
+    bottomLeft = Point(left, bottom);
+    topRight = Point(left + width, bottom + height);   // 换算：适配 ≠ 转发
 }
+
+bool TextShape::IsEmpty() const {                    // 语义一致的操作：纯转发
+    return _text->IsEmpty();
+}
+
+Manipulator* TextShape::CreateManipulator() const {  // Target 有而 Adaptee 没有：
+    return new TextManipulator(this);                // 适配器自己补上
+}
+```
+
+类适配器改为多重继承——同时继承 TextView（拿实现）与 Shape（拿接口），这正是 Java 表达不了的形态：
+
+```cpp
+class TextShape : public TextView, public Shape {
+public:
+    TextShape(TextView*);
+    virtual void BoundingBox(Point& bottomLeft, Point& topRight) const;
+    virtual bool IsEmpty() const;
+    virtual Manipulator* CreateManipulator() const;
+};
+
+void TextShape::BoundingBox(Point& bottomLeft, Point& topRight) const {
+    Coord bottom, left, width, height;
+    GetOrigin(left, bottom);                        // 继承来的 TextView 操作，直接调用
+    GetExtent(width, height);
+    bottomLeft = Point(left, bottom);
+    topRight = Point(left + width, bottom + height);
+}
+
+bool TextShape::IsEmpty() const {
+    return TextView::IsEmpty();                     // 两个基类都声明了 IsEmpty，
+}                                                   // 用域运算符消歧并复用 Adaptee 的实现
+```
+
+聪明的适配器。GetOrigin/GetExtent 这类查询最终要落到窗口系统，代价不小；聪明的 TextShape 可以缓存换算结果、只在文本变化后才重算：
+
+```cpp
+void TextShape::BoundingBox(Point& bottomLeft, Point& topRight) const {
+    if (!_cacheValid) {
+        // 重新执行上面的换算，把结果存进 _bottomLeft/_topRight；
+        // 何时失效需要 TextView 额外告知——这正是代价所在
+        _cacheValid = true;
+    }
+    bottomLeft = _bottomLeft;
+    topRight = _topRight;
+}
+```
+
+但这笔交易有代价：想知道缓存何时失效，适配器必须从 Adaptee 获取**额外信息**（文本是否变化过），因此更了解 Adaptee 的内部状态，耦合变紧。机械的适配简单且通用（换一个 TextView 子类照样工作），聪明的适配省运行时开销但与具体 Adaptee 绑定得更死——把适配做到什么粒度，是设计 Adapter 时真正要回答的问题。
+
+最后看客户侧：编辑器始终面向 Shape 编程，用哪种适配器它都无感知。
+
+```cpp
+Shape* textShape = new TextShape(new TextView);
+textShape->BoundingBox(bottomLeft, topRight);
 ```
 
 ### 现代对应
@@ -237,56 +290,66 @@ Abstraction 把客户请求转发给 Implementor 对象完成；Abstraction 高�
 * **共享 Implementor**：多个 Abstraction 实例可引用同一 Implementor（引用计数管理生命期）
 * C++ 中可用 **private 继承**复用 Implementor 的机制而不暴露其接口
 
-### Sample Code（Window 与 WindowImp）
+### Sample Code（Window 与 WindowImp，Java 摘编）
+
+实现维度先行：WindowImp 只声明平台相关的原语操作，X 与 PM 各给一份实现——每份实现内部转调各自平台库（Xlib 的 `XDrawString`、Presentation Manager 的 `GpiText`）：
 
 ```java
-// ---- Implementor：平台实现接口（原语操作，接口与 Window 不必一致）----
 interface WindowImp {
     void deviceText(String text, int x, int y);
-    void deviceRect(int x0, int y0, int x1, int y1);
+    void deviceRect(int x1, int y1, int x2, int y2);
 }
 
 class XWindowImp implements WindowImp {            // ConcreteImplementor A
     public void deviceText(String text, int x, int y) {
-        System.out.println("XWindow 绘制文本: " + text);        // 实际调用 Xlib
+        System.out.println("XWindow 绘制文本: " + text);        // 实际转调 Xlib
     }
-    public void deviceRect(int x0, int y0, int x1, int y1) { }
+    public void deviceRect(int x1, int y1, int x2, int y2) { }
 }
 class PMWindowImp implements WindowImp {           // ConcreteImplementor B
     public void deviceText(String text, int x, int y) {
-        System.out.println("PM 窗口绘制文本: " + text);          // 实际调用 Presentation Manager
+        System.out.println("PM 窗口绘制文本: " + text);          // 实际转调 Presentation Manager
     }
-    public void deviceRect(int x0, int y0, int x1, int y1) { }
+    public void deviceRect(int x1, int y1, int x2, int y2) { }
 }
+```
 
-// ---- Abstraction：窗口的高层接口 ----
+抽象维度：Window 只持有 WindowImp 引用，高层操作转手交给它。imp 的装配由窗口系统在初始化时完成（原书由 toolkit 层的工厂决定，这里示意）：
+
+```java
 class Window {
-    protected WindowImp imp;                       // 关键：持有实现维度的引用
+    protected WindowImp imp;                       // 组合而非继承：实现维度整体可换
 
     protected Window() {
-        // 装配正确的实现：WindowSystemFactory 为示意（按当前平台产出 X/PM 实现），
-        // 实际项目可由 Abstract Factory 决定——两个维度从此解耦
         this.imp = WindowSystemFactory.current().createWindowImp();
     }
 
-    void drawText(String text, int x, int y) {     // 高层策略
-        imp.deviceText(text, x, y);                // 转发给底层实现
+    void drawText(String text, int x, int y) {     // 高层语义
+        imp.deviceText(text, x, y);                // 转发给实现维度的原语
+    }
+
+    void drawRect(Point p1, Point p2) {
+        WindowImp wi = imp;
+        wi.deviceRect(Math.min(p1.x, p2.x), Math.min(p1.y, p2.y),
+                      Math.max(p1.x, p2.x), Math.max(p1.y, p2.y));  // 角点次序归一后转发
     }
 }
+```
 
-// ---- RefinedAbstraction：窗口语义的扩展，不涉及任何平台代码 ----
+窗口语义的扩展落在 Window 子类——IconWindow 画图标边框，全程只用抽象侧的操作，不含一行平台代码：
+
+```java
 class IconWindow extends Window {
     private final String iconName = "close-icon";
 
-    void drawBorder() {
-        drawText(iconName, 0, 0);                  // 复用高层接口
-        imp.deviceRect(0, 0, 16, 16);              // 需要时也可直接用原语
+    void drawContents() {
+        drawText(iconName, 0, 0);                  // 复用抽象侧的高层操作
+        drawRect(new Point(0, 0), new Point(16, 16));  // 边框：同样只走抽象侧
     }
 }
-
-// 新增平台 = 新增一个 WindowImp；新增窗口种类 = 新增一个 Window 子类
-// 2 个平台 × 3 种窗口只需 2 + 3 个类，而不是 6 个
 ```
+
+两个维度从此独立扩展：新增平台 = 新增一个 WindowImp；新增窗口种类 = 新增一个 Window 子类。2 个平台 × 3 种窗口只需要 2 + 3 个类，而不是 2 × 3 = 6 个。
 
 ### 现代对应
 
@@ -369,58 +432,80 @@ classDiagram
 * **孩子顺序**：需要有序遍历时让孩子列表维护顺序；可配合 Iterator 遍历
 * **谁删除孩子**：通常 Composite 删除孩子时递归析构未共享的子树（语言 GC 则无此忧）
 
-### Sample Code（Lexi 的 Glyph 树）
+### Sample Code（Equipment，Java 摘编）
+
+原书用一套"设备"层次示范：软驱、总线是叶（Leaf），机箱（Chassis）是容器（Composite），容器可以再套容器。先看公共基类——为所有图元声明统一接口，孩子管理操作也放在这里（透明性优先的折中，叶子调用会失败或空操作）：
 
 ```java
-// ---- Component：排版元素的统一接口（书中采用"透明优先"折中）----
-abstract class Glyph {
-    private Glyph parent;                           // 显式父指针，便于上溯
+abstract class Equipment {
+    private final String name;
+    private final List<Equipment> parts = new ArrayList<>();
 
-    Glyph parent() { return parent; }
-    void setParent(Glyph p) { this.parent = p; }
+    protected Equipment(String name) { this.name = name; }
+    String name() { return name; }
 
-    void draw() { }                                 // 缺省为空，叶子/容器各自覆盖
+    long power() { return 0; }                     // Watt（瓦），原书自定义类型，此处以 long 代
+    long netPrice() { return 0; }                  // Currency（货币），同上
+    long discountPrice() { return 0; }
 
-    void add(Glyph glyph) {                         // 叶子不支持：透明性折中的代价
-        throw new UnsupportedOperationException();
+    void add(Equipment e) { parts.add(e); }
+    void remove(Equipment e) { parts.remove(e); }
+    Iterator<Equipment> iterator() { return parts.iterator(); }   // 原书为 CreateIterator
+}
+```
+
+叶子和容器的差别只在这些操作的**实现**上。软驱只报自己的价：
+
+```java
+class FloppyDisk extends Equipment {
+    FloppyDisk() { super("Floppy Disk"); }
+    long power() { return 30; }                    // 30 瓦
+    long netPrice() { return 70; }
+    long discountPrice() { return 35; }            // 折后半价
+}
+class Bus extends Equipment {
+    Bus() { super("Bus"); }
+    long power() { return 20; }
+    long netPrice() { return 10; }
+}
+```
+
+容器的实现则是遍历孩子、逐个累加——请求沿树递归下传：
+
+```java
+class Chassis extends Equipment {                  // 容器可以嵌套容器
+    Chassis() { super("Chassis"); }
+
+    long power() {
+        long total = 0;
+        for (Iterator<Equipment> it = iterator(); it.hasNext(); ) {
+            total += it.next().power();            // 转发给孩子，递归到叶为止
+        }
+        return total;
     }
-    void remove(Glyph glyph) {
-        throw new UnsupportedOperationException();
+    long netPrice() {                              // netPrice / discountPrice 同法累加
+        long total = 0;
+        for (Iterator<Equipment> it = iterator(); it.hasNext(); ) {
+            total += it.next().netPrice();
+        }
+        return total;
     }
+    long discountPrice() { /* 同法，略 */ return 0; }
 }
+```
 
-// ---- Leaf 1：字符（书中为 Character，避开 java.lang.Character 改名）----
-class CharacterGlyph extends Glyph {
-    private final char code;                        // 书中此角色由 Flyweight 共享
-    CharacterGlyph(char code) { this.code = code; }
-    @Override void draw() { System.out.print(code); }
-}
+客户对叶与容器一视同仁——定价时不需要知道里面装了什么、套了几层：
 
-// ---- Composite：行、列都是容器，请求转发给孩子 ----
-class Row extends Glyph {
-    private final List<Glyph> children = new ArrayList<>();
+```java
+Chassis pc = new Chassis();
+pc.add(new FloppyDisk());
+pc.add(new Bus());
+Chassis inner = new Chassis();                     // 容器套容器
+inner.add(new Bus());
+pc.add(inner);
 
-    @Override void add(Glyph glyph) { glyph.setParent(this); children.add(glyph); }
-    @Override void remove(Glyph glyph) { children.remove(glyph); }
-
-    @Override void draw() {                         // 转发：递归直至叶子
-        for (Glyph child : children) child.draw();
-    }
-}
-class Column extends Glyph {                        // 与 Row 同构，可换行距等策略
-    private final List<Glyph> children = new ArrayList<>();
-    @Override void add(Glyph glyph) { glyph.setParent(this); children.add(glyph); }
-    @Override void draw() { for (Glyph child : children) { child.draw(); System.out.println(); } }
-}
-
-// ---- Client：对叶与容器一视同仁 ----
-Column page = new Column();
-Row line = new Row();
-line.add(new CharacterGlyph('H'));
-line.add(new CharacterGlyph('i'));
-page.add(line);
-page.add(new Row());                                // 空行也是 Row
-page.draw();                                        // 递归输出整页
+pc.netPrice();                                     // 70 + 10 + 10，客户端只见 Equipment
+pc.power();                                        // 30 + 20 + 20
 ```
 
 ### 现代对应
@@ -501,61 +586,69 @@ Decorator 在转发请求给内嵌组件**前后**附加自己的行为；多重
 * **保持 Component 类轻量**：不要把数据存进 Component（每个装饰层都要包一遍）；Component 只定义接口，数据放 ConcreteComponent
 * 装饰策略只有一层（如仅"画边框"）时 Decorator 也可只提供简化形式的子类
 
-### Sample Code（Lexi 的 MonoGlyph：Border / Scroll 装饰）
+### Sample Code（VisualComponent，Java 摘编）
+
+先看被装饰的组件层次。VisualComponent 是组件的公共接口，TextView 是最朴素的实现：
 
 ```java
-// ---- Component（沿用上节的 Glyph）----
-abstract class Glyph2 {
+abstract class VisualComponent {
     void draw() { }
-    BoundingBox bounds() { return new BoundingBox(); }
+    void resize() { }
 }
 
-// ---- ConcreteComponent：文本视图 ----
-class TextViewGlyph extends Glyph2 {
-    private final String text;
-    TextViewGlyph(String text) { this.text = text; }
-    @Override void draw() { System.out.print(text); }
-    @Override BoundingBox bounds() { return new BoundingBox(0, 0, 100, 20); }
+class TextView extends VisualComponent {            // ConcreteComponent：被装饰的原件
+    void draw() { System.out.print("text"); }
 }
+```
 
-// ---- Decorator 基类：持有一个 Glyph 并默认转发 ----
-abstract class MonoGlyph extends Glyph2 {
-    protected final Glyph2 component;               // 被装饰者（可再是一个 Decorator）
-    MonoGlyph(Glyph2 component) { this.component = component; }
-    @Override void draw() { component.draw(); }     // 默认：原样转发
+装饰器基类 VisualDecorator（原书类名就叫 Decorator，此处改名以免与模式名混淆）是关键一笔：它与组件实现**同一接口**，并持有一个组件——除转发外什么都不做：
+
+```java
+abstract class VisualDecorator extends VisualComponent {
+    private final VisualComponent component;        // 被装饰者（可再是一个装饰器）
+
+    protected VisualDecorator(VisualComponent c) { this.component = c; }
+    @Override void draw() { component.draw(); }     // 默认行为：原样转发
+    @Override void resize() { component.resize(); }
 }
+```
 
-// ---- ConcreteDecorator 1：边框 ----
-class BorderDecorator extends MonoGlyph {
+具体装饰器在转发前后附加职责。BorderDecorator 画边框，ScrollDecorator 附加滚动条（并拥有自己的滚动状态）：
+
+```java
+class BorderDecorator extends VisualDecorator {
     private final int width;
-    BorderDecorator(Glyph2 g, int width) { super(g); this.width = width; }
+    BorderDecorator(VisualComponent c, int width) { super(c); this.width = width; }
     @Override void draw() {
-        System.out.print("[");                      // 附加职责（前）
-        super.draw();                               // 转发给内层
-        System.out.print("]");                      // 附加职责（后）
+        super.draw();                               // 转发给内层组件
+        drawBorder(width);                          // 附加职责：画宽度为 width 的边框
     }
-    @Override BoundingBox bounds() {
-        BoundingBox inner = component.bounds();
-        return inner.expand(width);                 // 职责带来的语义变化
-    }
+    private void drawBorder(int w) { System.out.print("[边框" + w + "]"); }
 }
 
-// ---- ConcreteDecorator 2：滚动条 ----
-class ScrollDecorator extends MonoGlyph {
-    ScrollDecorator(Glyph2 g) { super(g); }
+class ScrollDecorator extends VisualDecorator {
+    private final int scrollableWidth;              // 装饰器自己的状态
+    ScrollDecorator(VisualComponent c, int w) { super(c); this.scrollableWidth = w; }
     @Override void draw() {
         super.draw();
-        System.out.print("(scrollbar)");            // 附加职责（后）
+        drawScrollBar();                            // 附加职责：滚动条
     }
+    void scrollTo(int position) { /* 滚动逻辑，独立于被装饰组件 */ }
+    private void drawScrollBar() { System.out.print("(滚动条)"); }
 }
-
-// ---- Client：按需层层包装，任意组合 ----
-Glyph2 plain    = new TextViewGlyph("hello");
-Glyph2 bordered = new BorderDecorator(plain, 1);                 // 只要边框
-Glyph2 full     = new BorderDecorator(                           // 边框 + 滚动条
-                    new ScrollDecorator(plain), 1);
-full.draw();   // [hello(scrollbar)]  —— 没有为组合派生任何子类
 ```
+
+客户按需层层包装——要"带滚动条再加边框"的文本视图，不必派生 BorderScrollTextView，包两层即可；窗口始终只认 VisualComponent：
+
+```java
+Window window = new Window();                       // 界面容器，示意
+VisualComponent content = new TextView();
+content = new ScrollDecorator(content);             // 先包滚动
+content = new BorderDecorator(content, 1);          // 再包边框——包装顺序即职责层次
+window.setContents(content);
+```
+
+装饰器自己也是组件，所以可以继续被包装；职责在运行期叠加或拆除，这是静态继承给不了的灵活性。
 
 ### Known Uses / 现代对应
 
@@ -624,10 +717,11 @@ classDiagram
 * **抽象 Facade 类**：需要多种子系统实现时，可把 Facade 做成抽象类 + 每种子系统一个具体 Facade 子类（另一种做法是直接换不同的 Facade 对象/配置，组合优先）
 * **子系统私有化**：语言允许时（package/C++ namespace），把子系统类对 Facade 之外的世界隐藏
 
-### Sample Code（编译器子系统）
+### Sample Code（编译器子系统，Java 摘编）
+
+子系统是一组相互协作的类——Scanner 逐 token 扫描、Parser 配合 ProgramNodeBuilder 构建语法树、ProgramNode 遍历树驱动 CodeGenerator 生成代码。任何一步都依赖前一步的产物，客户若直接驱动它们，必须熟知整套协作次序：
 
 ```java
-// ---- 子系统：一组相互协作的类，客户直接使用它们会非常繁琐 ----
 class Scanner {
     Scanner(InputStream source) { }
     Token scan() { return null; }
@@ -649,25 +743,28 @@ class RISCCodeGenerator extends CodeGenerator {
     void generate() { }
 }
 class BytecodeStream { }
+```
 
-// ---- Facade：一个方法收口全部子系统交互 ----
+Facade 把这套编排收进一个高层方法。客户只调 `compile()`，Scanner/Parser/Builder/Generator 的协作次序全部被封在门面内：
+
+```java
 class Compiler {
-    // 客户只需调用 compile()；Scanner/Parser/Builder/Generator 的编排被封装在这里
     void compile(InputStream source, BytecodeStream target) {
         Scanner scanner = new Scanner(source);
         ProgramNodeBuilder builder = new ProgramNodeBuilder();
         Parser parser = new Parser(builder);
 
-        parser.parse(scanner);                       // 子系统内部协作 1：解析建树
+        parser.parse(scanner);                        // 协作 1：解析建树
 
         RISCCodeGenerator generator = new RISCCodeGenerator(target);
-        builder.getProgramNode().traverse(generator); // 子系统内部协作 2：遍历生成代码
+        builder.getProgramNode().traverse(generator); // 协作 2：遍历生成代码
     }
 }
 
-// ---- Client ----
 new Compiler().compile(new FileInputStream("a.c"), new BytecodeStream());
 ```
+
+客户要打交道的对象从"六个类一套协作次序"变成"一个类一个方法"；子系统内部的重构（换 parser、换生成器）不再波及客户。
 
 ### 现代对应
 
@@ -740,47 +837,63 @@ classDiagram
 * **管理共享对象**：Factory 内维护 `key → flyweight` 表；享元不引用 Factory（避免循环）；不再使用的享元的回收（引用计数/GC，或干脆不回收——数量有限）
 * 共享的范围：常按"字符/图元类别"共享，容器（行、列）不共享（UnsharedConcreteFlyweight），构成 Composite
 
-### Sample Code（字符 Glyph 的共享与 GlyphContext）
+### Sample Code（字符 Glyph 的共享，Java 摘编）
+
+享元的关键先体现在接口的形状上：操作多带一个 **GlyphContext** 参数——外蕴状态（当前位置、当前字体）不存进享元，调用时从外部传入：
 
 ```java
-// ---- Flyweight：接口多带一个 extrinsic 上下文参数 ----
-abstract class Glyph3 {
+abstract class Glyph {
     abstract void draw(Window w, GlyphContext ctx);
-    void insert(Glyph3 g, GlyphContext ctx) { }
+    void insert(Glyph g, GlyphContext ctx) { }
 }
+```
 
-// ---- ConcreteFlyweight：只存 intrinsic state（字符编码），必须可共享 ----
-class CharacterGlyph3 extends Glyph3 {
-    private final char code;                        // intrinsic：与位置无关
-    CharacterGlyph3(char code) { this.code = code; }
+ConcreteFlyweight 只保存内蕴状态。字符 Glyph 除字符编码外什么都不存，因此同一个实例可以代表文档中任意位置的这个字符：
+
+```java
+class CharacterGlyph extends Glyph {
+    private final char code;                        // intrinsic：与位置无关，可共享
+
+    CharacterGlyph(char code) { this.code = code; }
     @Override void draw(Window w, GlyphContext ctx) {
-        // extrinsic（位置、字体）不在对象里，画的时候向 ctx 要
-        Font font = ctx.getFont();
+        Font font = ctx.getFont();                  // extrinsic：画的时候向 ctx 要
         int x = ctx.getX(), y = ctx.getY();
         System.out.println("draw '" + code + "' @" + x + "," + y + " font=" + font);
     }
 }
+```
 
-// ---- UnsharedConcreteFlyweight：行/列不共享，作为共享叶的容器 ----
-class Row3 extends Glyph3 {
-    private final List<Glyph3> children = new ArrayList<>();
-    @Override void insert(Glyph3 g, GlyphContext ctx) { children.add(g); }
+行、列不共享（UnsharedConcreteFlyweight）——它们是共享叶子的容器，draw 时负责推进 ctx 的游标，让下一个字符拿到正确的外蕴状态：
+
+```java
+class Row extends Glyph {
+    private final List<Glyph> children = new ArrayList<>();
+    @Override void insert(Glyph g, GlyphContext ctx) { children.add(g); }
     @Override void draw(Window w, GlyphContext ctx) {
-        for (Glyph3 child : children) { child.draw(w, ctx); ctx.next(1); }
+        for (Glyph child : children) {
+            child.draw(w, ctx);
+            ctx.next(1);                            // 游标前移：外蕴状态由容器推进
+        }
     }
 }
+```
 
-// ---- FlyweightFactory：按字符缓存，每种字符只有一个实例 ----
+GlyphFactory 负责共享：按字符缓存实例，同一字符永远只建一次：
+
+```java
 class GlyphFactory {
-    private final CharacterGlyph3[] cache = new CharacterGlyph3[128];
-    CharacterGlyph3 characterGlyph(char c) {
-        if (cache[c] == null) cache[c] = new CharacterGlyph3(c);
+    private final CharacterGlyph[] cache = new CharacterGlyph[128];
+    CharacterGlyph characterGlyph(char c) {
+        if (cache[c] == null) cache[c] = new CharacterGlyph(c);
         return cache[c];                            // 命中即共享
     }
-    Row3 row() { return new Row3(); }               // 不共享的类型每次新建
+    Row row() { return new Row(); }                 // 不共享的类型每次新建
 }
+```
 
-// ---- Client 侧：外蕴状态（当前字体/游标）由 GlyphContext 持有 ----
+最后是客户侧的 GlyphContext——外蕴状态的持有者：
+
+```java
 class GlyphContext {
     private int x = 0, y = 0;
     private Font font = new Font("Serif");
@@ -790,11 +903,11 @@ class GlyphContext {
 }
 
 GlyphFactory factory = new GlyphFactory();
-Row3 row = factory.row();
-row.insert(factory.characterGlyph('g'), null);     // 两个 'o' 命中同一个缓存实例
-row.insert(factory.characterGlyph('o'), null);
-row.insert(factory.characterGlyph('o'), null);
-row.draw(new Window(), new GlyphContext());        // Window 见 Bridge 一节（示意）
+Row row = factory.row();
+row.insert(factory.characterGlyph('g'), null);     // 两个 'o' 命中同一个实例：
+row.insert(factory.characterGlyph('o'), null);     // 文档里每个 'o' 都是同一个
+row.insert(factory.characterGlyph('o'), null);     // CharacterGlyph 对象
+row.draw(new Window(), new GlyphContext());        // Window 为示意类型
 ```
 
 ### Known Uses / 现代对应
@@ -871,24 +984,24 @@ classDiagram
 * **Copy-on-write**：Proxy 先与原对象共享，写操作时才真正复制——用 Proxy 实现"惰性复制"，配合引用计数管理
 * Proxy 与 RealSubject 的创建时机解耦：真实对象在代理首次需要时才创建
 
-### Sample Code（ImageProxy：Virtual Proxy）
+### Sample Code（ImageProxy：Virtual Proxy，Java 摘编）
+
+先看 Subject 与 RealSubject。Graphic 是图形的公共接口，Image 构造即读入整幅图像：
 
 ```java
-// ---- Subject ----
 interface Graphic {
     void draw(Position pos);
     BoundingBox extent();
     void store();
 }
 
-// ---- RealSubject：加载开销大（读入整幅图像）----
-class Image implements Graphic {
+class Image implements Graphic {                   // RealSubject：加载开销大
     private final String fileName;
     private byte[] pixels;                          // 体积大
 
     Image(String fileName) {
         this.fileName = fileName;
-        this.pixels = readFromFile(fileName);       // 构造即加载 —— 昂贵
+        this.pixels = readFromFile(fileName);       // 构造即加载——昂贵
     }
     public void draw(Position pos) { System.out.println("绘制图像 " + fileName); }
     public BoundingBox extent() { return readExtent(pixels); }
@@ -896,36 +1009,45 @@ class Image implements Graphic {
     private static byte[] readFromFile(String f) { return new byte[0]; }
     private static BoundingBox readExtent(byte[] p) { return new BoundingBox(); }
 }
+```
 
-// ---- Proxy：与 Image 同接口，先占位、真正需要时才加载 ----
+Proxy 与 Image 同接口，但三个操作各有心思：`extent` 不加载也能答（从旁侧信息取尺寸），`draw` 才触发加载，`store` 只在真图已存在时转发：
+
+```java
 class ImageProxy implements Graphic {
-    private Graphic image;                          // 延迟到首次使用才创建
+    private Graphic image;                          // 延迟到首次 draw 才创建
     private final String fileName;
-    private BoundingBox extent;                     // 代理自己的小状态
+    private BoundingBox extentCache;                // 代理自己的小状态
 
     ImageProxy(String fileName) { this.fileName = fileName; }
 
     public BoundingBox extent() {
-        if (image != null) extent = image.extent(); // 已加载：直接转发
-        else if (extent == null)
-            extent = readExtentFromSidecar(fileName); // 未加载：从旁侧信息取尺寸，不动真图
-        return extent;
+        if (image != null) extentCache = image.extent();        // 已加载：直接转发
+        else if (extentCache == null)
+            extentCache = readExtentFromSidecar(fileName);      // 未加载：取旁侧尺寸，不动真图
+        return extentCache;
     }
 
     public void draw(Position pos) {
-        if (image == null) image = new Image(fileName); // Virtual Proxy 的核心：按需加载
-        image.draw(pos);
+        if (image == null) image = new Image(fileName);         // Virtual Proxy 的核心：按需加载
+        image.draw(pos);                                        // 之后与真图行为一致
     }
-    public void store() { if (image != null) image.store(); }
+
+    public void store() {
+        if (image != null) image.store();          // 从未加载过的图，无需保存
+    }
 
     private static BoundingBox readExtentFromSidecar(String f) { return new BoundingBox(); }
 }
+```
 
-// ---- Client：文档里放的是 Proxy，多数图像从未被加载 ----
+客户侧：文档里放的是 Proxy。多数图像从不被查看，就从不付出加载代价：
+
+```java
 Graphic image1 = new ImageProxy("cover.png");
 Graphic image2 = new ImageProxy("figure-1.png");
-image1.extent();      // 不触发加载
-image1.draw(new Position(0, 0)); // 此时才真正读文件
+image1.extent();                    // 查尺寸：不触发加载
+image1.draw(new Position(0, 0));    // 真正要看了，此时才读文件
 ```
 
 ### 现代对应

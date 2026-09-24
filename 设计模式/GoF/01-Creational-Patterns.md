@@ -6,7 +6,7 @@
 
 5 个创建型模式：Abstract Factory、Builder、Factory Method、Prototype、Singleton。
 
-> 类图为 mermaid；Sample Code 用 Java 还原原书的 Motivation 场景（原书为 C++/Smalltalk）。更多 Java 示例见上级目录《设计模式之一：Creational Pattern》。
+> 类图为 mermaid。Sample Code 依据原书代码示例摘编：保留主干与推进顺序，代码与解说交替；原书为 C++/Smalltalk，一般以 Java 摘编呈现。更多 Java 示例见上级目录《设计模式之一：Creational Pattern》。
 
 ## Abstract Factory（别名 Kit）
 
@@ -97,50 +97,65 @@ classDiagram
 * **参数化工厂**（`get(class)` 一个方法创建任意产品）：减少方法数量，但失去类型安全，且要求所有产品接口统一——一般不推荐
 * 若必须支持新种类产品，可给工厂加"更少的创造方法 + 更参数化的产品"这类折中
 
-### Sample Code（look-and-feel 的 WidgetFactory）
+### Sample Code（迷宫工厂，Java 摘编）
+
+原书用"造迷宫"一套例子贯穿全部创建型模式。先看 AbstractFactory——MazeFactory 为每类迷宫构件声明一个创建操作，缺省产出普通构件：
 
 ```java
-// ---- AbstractProduct：一族抽象产品 ----
-interface ScrollBar { void paint(); }
-interface Window { void drawFrame(); }
-
-// ---- ConcreteProduct：Motif / PM 两个产品族 ----
-class MotifScrollBar implements ScrollBar {
-    public void paint() { System.out.println("MotifScrollBar"); }
-}
-class MotifWindow implements Window {
-    public void drawFrame() { System.out.println("MotifWindow"); }
-}
-class PMScrollBar implements ScrollBar {
-    public void paint() { System.out.println("PMScrollBar"); }
-}
-class PMWindow implements Window {
-    public void drawFrame() { System.out.println("PMWindow"); }
-}
-
-// ---- AbstractFactory / ConcreteFactory ----
-interface WidgetFactory {
-    ScrollBar createScrollBar();
-    Window createWindow();
-}
-class MotifWidgetFactory implements WidgetFactory {
-    public ScrollBar createScrollBar() { return new MotifScrollBar(); }
-    public Window createWindow() { return new MotifWindow(); }
-}
-class PMWidgetFactory implements WidgetFactory {
-    public ScrollBar createScrollBar() { return new PMScrollBar(); }
-    public Window createWindow() { return new PMWindow(); }
-}
-
-// ---- Client：只依赖抽象，整族切换只改这一行 ----
-public class Client {
-    public static void main(String[] args) {
-        WidgetFactory factory = new MotifWidgetFactory();
-        factory.createScrollBar().paint();   // MotifScrollBar
-        factory.createWindow().drawFrame();  // MotifWindow
-    }
+class MazeFactory {
+    Maze makeMaze() { return new Maze(); }
+    Wall makeWall() { return new Wall(); }
+    Room makeRoom(int n) { return new Room(n); }
+    Door makeDoor(Room r1, Room r2) { return new Door(r1, r2); }
 }
 ```
+
+客户代码以工厂为参数，创建流程中**不再出现任何具体类名**：
+
+```java
+Maze createMaze(MazeFactory factory) {
+    Maze maze = factory.makeMaze();
+    Room r1 = factory.makeRoom(1);
+    Room r2 = factory.makeRoom(2);
+    Door door = factory.makeDoor(r1, r2);
+
+    maze.addRoom(r1);
+    maze.addRoom(r2);
+
+    r1.setSide(Direction.NORTH, factory.makeWall());
+    r1.setSide(Direction.EAST, door);
+    // ……其余各面类似，略
+    return maze;
+}
+```
+
+换产品族 = 换工厂子类。施了魔法的迷宫只覆盖需要变化的两个操作：
+
+```java
+class EnchantedMazeFactory extends MazeFactory {
+    @Override Room makeRoom(int n) {
+        return new EnchantedRoom(n, castSpell());  // 房间带一道咒语
+    }
+    @Override Door makeDoor(Room r1, Room r2) {
+        return new DoorNeedingSpell(r1, r2);       // 门需要咒语才能打开
+    }
+    protected Spell castSpell() { return new Spell(); }
+}
+```
+
+带炸弹的迷宫同理，只覆盖墙与房间：
+
+```java
+class BombedMazeFactory extends MazeFactory {
+    @Override Wall makeWall() { return new BombedWall(); }       // 被炸会损坏的墙
+    @Override Room makeRoom(int n) { return new RoomWithABomb(n); }
+}
+
+Maze maze = createMaze(new BombedMazeFactory());
+// 同一个 createMaze，换传 EnchantedMazeFactory 即产出施魔迷宫
+```
+
+createMaze 与具体构件双向解耦——"换族只换一个工厂实例"落到了实处。MazeFactory 在整个应用中通常只需一份，因此它常与 Singleton（3.5）配合。
 
 ### Known Uses / 现代对应
 
@@ -226,59 +241,82 @@ classDiagram
 * **通常不定义公共的 Product 抽象类**：各表示差异太大，没有统一接口的意义，客户按具体 Builder 类型取回产品
 * Director 可用同样方式构造多个产品（Builder 状态多次复用）
 
-### Sample Code（RTF 转换器）
+### Sample Code（MazeBuilder，Java 摘编）
+
+原书的 Builder 示例仍是迷宫，但换了一个问题：不但要能建"普通/施魔/炸弹"迷宫，还想**数一数**迷宫里有几个房间几扇门。Builder 只声明构建步骤，全部给空实现：
 
 ```java
-// ---- Builder：为"构建文档的每个部分"声明接口，默认空实现 ----
-abstract class TextConverter {
-    void convertCharacter(char c) {}
-    void convertFontChange(String font) {}
-    void convertParagraphStart() {}
-    void convertParagraphEnd() {}
+abstract class MazeBuilder {
+    void buildMaze() { }
+    void buildRoom(int room) { }
+    void buildDoor(int roomFrom, int roomTo) { }
+    Maze getMaze() { return null; }
 }
-
-// ---- ConcreteBuilder 1：目标表示为纯文本 ----
-class PlainTextConverter extends TextConverter {
-    private final StringBuilder text = new StringBuilder(); // Product
-    @Override void convertCharacter(char c) { text.append(c); }
-    @Override void convertParagraphEnd() { text.append('\n'); }
-    String getText() { return text.toString(); }            // 取回产品
-}
-
-// ---- ConcreteBuilder 2：目标表示为 TeX ----
-class TeXConverter extends TextConverter {
-    private final StringBuilder tex = new StringBuilder();  // 另一种 Product
-    @Override void convertCharacter(char c) { tex.append(c); }
-    @Override void convertParagraphStart() { tex.append("\\begin{para}"); }
-    @Override void convertParagraphEnd() { tex.append("\\end{para}"); }
-    String getTeX() { return tex.toString(); }
-}
-
-// ---- Director：RTF 解析算法固定，只面向 Builder 接口 ----
-class RTFReader {
-    private final TextConverter builder;
-    RTFReader(TextConverter builder) { this.builder = builder; }
-    void parseRTF(String rtf) {
-        // tokenize(rtf) 产出 Token 流（CHAR / FONT / PARA_END …，此处示意）
-        for (Token token : tokenize(rtf)) {
-            switch (token.kind) {
-                case CHAR:     builder.convertCharacter(token.ch);    break;
-                case FONT:     builder.convertFontChange(token.font); break;
-                case PARA_END: builder.convertParagraphEnd();         break;
-            }
-        }
-    }
-}
-
-// ---- Client：同一个 Director + 不同 Builder => 不同表示 ----
-PlainTextConverter plain = new PlainTextConverter();
-new RTFReader(plain).parseRTF(rtfSource);
-String product = plain.getText();
-
-TeXConverter tex = new TeXConverter();
-new RTFReader(tex).parseRTF(rtfSource);           // 解析算法完全复用
-String texProduct = tex.getTeX();
 ```
+
+Director（这里是 MazeGame 的方法）按固定算法逐step调用 builder，与产品内部表示完全隔离：
+
+```java
+Maze createMaze(MazeBuilder builder) {
+    builder.buildMaze();
+    builder.buildRoom(1);
+    builder.buildRoom(2);
+    builder.buildDoor(1, 2);
+    return builder.getMaze();
+}
+```
+
+第一个 ConcreteBuilder 真的建迷宫——它知道迷宫的内部结构（房间的四面墙、公共墙上开门）：
+
+```java
+class StandardMazeBuilder extends MazeBuilder {
+    private Maze currentMaze;
+
+    @Override void buildMaze() { currentMaze = new Maze(); }
+
+    @Override void buildRoom(int n) {
+        if (currentMaze.roomNo(n) != null) return;   // 已建过则忽略
+        Room room = new Room(n);
+        currentMaze.addRoom(room);
+        room.setSide(Direction.NORTH, new Wall());   // 四面先设墙，
+        // ……SOUTH/EAST/WEST 同法，略
+    }
+
+    @Override void buildDoor(int n1, int n2) {
+        Room r1 = currentMaze.roomNo(n1);
+        Room r2 = currentMaze.roomNo(n2);
+        Door door = new Door(r1, r2);
+        r1.setSide(commonWall(r1, r2), door);        // 公共墙上开门
+        r2.setSide(commonWall(r2, r1), door);
+    }
+
+    @Override Maze getMaze() { return currentMaze; }
+
+    private Direction commonWall(Room a, Room b) { /* 找两房间的公共墙面 */ return null; }
+}
+```
+
+第二个 ConcreteBuilder 什么迷宫都不建，只数数——注意它的产物**根本不是迷宫**：
+
+```java
+class CountingMazeBuilder extends MazeBuilder {
+    private int rooms, doors;
+
+    @Override void buildMaze() { rooms = doors = 0; }
+    @Override void buildRoom(int n) { rooms++; }
+    @Override void buildDoor(int from, int to) { doors++; }
+    @Override Maze getMaze() { return null; }        // 故意返回 null
+}
+```
+
+同一个 createMaze 驱动两种 builder，得到完全不同的结果：
+
+```java
+Maze maze = createMaze(new StandardMazeBuilder());  // 建出两房一门的迷宫
+createMaze(new CountingMazeBuilder());              // 只得到 rooms=2, doors=1 的计数
+```
+
+这就是 Builder 与工厂一族的本质差别：**Director 掌握算法、Builder 决定每个步骤落到什么上**——步骤可以建迷宫、可以计数、甚至可以什么也不做；产物的内部表示（Room 四面墙、公共墙开门）被完全封装在 StandardMazeBuilder 里。原书还指出：需要更复杂的迷宫时，Director 侧加一个 `createComplexMaze(MazeBuilder)` 即可复用全部 builder。
 
 ### 现代对应
 
@@ -355,43 +393,61 @@ Creator 依赖子类实现工厂方法，从而返回正确的 ConcreteProduct�
 * 命名惯例：工厂方法常以 `Create…/Make…/New…` 前缀命名（Java 世界如 `createXxx`、`valueOf`、`getInstance`）
 * C++ 中可用模板（template method + 模板参数）避免为每种产品派生 Creator
 
-### Sample Code（框架的 Application/Document）
+### Sample Code（框架的 Application/Document，Java 摘编）
+
+原书示例是一个框架类：Application 管理文档并在合适时机创建它们，但它**无法预知**应用会派生什么文档。先看框架侧——`createDocument()` 就是工厂方法，纯抽象：
 
 ```java
-// ---- Product ----
-interface Document {
-    void open();
-    void save();
-    void close();
-}
-
-class DrawingDocument implements Document {          // ConcreteProduct
-    public void open()  { System.out.println("打开绘图文档"); }
-    public void save()  { /* ... */ }
-    public void close() { /* ... */ }
-}
-
-// ---- Creator：框架逻辑（newDocument）与具体文档解耦 ----
 abstract class Application {
     private final List<Document> docs = new ArrayList<>();
 
-    abstract Document createDocument();              // Factory Method
+    abstract Document createDocument();              // Factory Method：留给子类
 
-    void newDocument(String name) {                  // 框架代码，不关心具体文档类型
+    void openDocument(String name) {                 // 框架逻辑（OpenDocument）
+        if (!canOpenDocument(name)) {                // 检查能否打开（如类型/权限）
+            System.out.println("无法打开: " + name);
+            return;
+        }
         Document doc = createDocument();             // 只依赖抽象 Product
         docs.add(doc);
-        doc.open();
+        aboutToOpenDocument(doc);                    // hook：默认空实现
+        doc.doRead();                                // 读入内容
+        doc.doRestoreView();                         // 恢复视图
     }
+
+    protected boolean canOpenDocument(String name) { return name != null; }
+    protected void aboutToOpenDocument(Document doc) { }
+}
+```
+
+注意 openDocument 的骨架与具体文档的耦合点只有一处——`createDocument()` 调用。Document 侧同样是抽象骨架：
+
+```java
+abstract class Document {
+    abstract void doRead();
+    void doRestoreView() { }                         // hook
+    void save() { doSerialize(); }
+    abstract void doSerialize();
+}
+```
+
+应用子类只需填空——这是"知道具体产品类"的唯一地方：
+
+```java
+class DrawingDocument extends Document {             // ConcreteProduct
+    void doRead() { System.out.println("读入绘图文档"); }
+    void doSerialize() { }
 }
 
-// ---- ConcreteCreator：唯一需要知道具体产品类的地方 ----
-class DrawingApplication extends Application {
+class DrawingApplication extends Application {       // ConcreteCreator
     @Override Document createDocument() { return new DrawingDocument(); }
 }
 
-Application app = new DrawingApplication();
-app.newDocument("架构图.vsd");   // 内部创建的是 DrawingDocument，框架无感知
+new DrawingApplication().openDocument("架构图.vsd");
+// 框架无感知：内部创建的是 DrawingDocument
 ```
+
+换一个电子表格应用，只需再派生 SpreadsheetApplication/SpreadsheetDocument——Application 的全部逻辑原样复用。原书还把同一个例子用于 Template Method（5.10）：openDocument 的骨架本身就是一个模板方法，工厂方法则是它调用的原语操作之一。
 
 ### 现代对应
 
@@ -468,47 +524,54 @@ classDiagram
 * `clone()` 的实现：基本类型直接复制；对象成员需决定浅/深拷贝；C++ 用拷贝构造、Smalltalk 用 `copy`，Java 实现 `Cloneable` 并重写 `clone()`
 * 克隆后常用 `Initialize(参数)` 重新初始化状态，避免为每种配置准备一个原型
 
-### Sample Code（乐谱编辑器的 GraphicTool）
+### Sample Code（MazePrototypeFactory，Java 摘编）
+
+原型版迷宫工厂不再为每族构件派生子类，而是**持有一族原型，克隆它们产出产品**：
 
 ```java
-// ---- Prototype ----
-interface Graphic {
-    Graphic clone();
-    void draw(int x, int y);
-}
+class MazePrototypeFactory extends MazeFactory {
+    private final Maze prototypeMaze;
+    private final Wall prototypeWall;
+    private final Room prototypeRoom;
+    private final Door prototypeDoor;
 
-class MusicalNote implements Graphic {               // ConcretePrototype
-    private final String note;                       // 需要深拷贝的成员
-    MusicalNote(String note) { this.note = note; }
-    @Override public Graphic clone() { return new MusicalNote(note); }
-    public void draw(int x, int y) {
-        System.out.println(note + " @(" + x + "," + y + ")");
+    MazePrototypeFactory(Maze m, Wall w, Room r, Door d) {
+        prototypeMaze = m; prototypeWall = w;        // 存的就是"原型"
+        prototypeRoom = r; prototypeDoor = d;
+    }
+
+    @Override Maze makeMaze() { return prototypeMaze.clone(); }
+    @Override Wall makeWall() { return prototypeWall.clone(); }
+
+    @Override Room makeRoom(int n) {
+        Room room = prototypeRoom.clone();           // 克隆原型
+        room.initialize(n);                          // 再用参数重初始化
+        return room;
+    }
+
+    @Override Door makeDoor(Room r1, Room r2) {
+        Door door = prototypeDoor.clone();
+        door.initialize(r1, r2);                     // 重新接线两端的房间
+        return door;
     }
 }
-
-// ---- Client（书中场景）：工具持原型，用克隆代替 new ----
-class GraphicTool {
-    private final Graphic prototype;
-    GraphicTool(Graphic prototype) { this.prototype = prototype; }
-    Graphic apply(int x, int y) {
-        Graphic g = prototype.clone();               // 克隆，不依赖具体类
-        g.draw(x, y);
-        return g;
-    }
-}
-
-// ---- PrototypeManager：运行期动态注册/查找原型 ----
-class PrototypeManager {
-    private final Map<String, Graphic> prototypes = new HashMap<>();
-    void register(String key, Graphic p) { prototypes.put(key, p); }
-    Graphic create(String key) { return prototypes.get(key).clone(); }
-}
-
-PrototypeManager mgr = new PrototypeManager();
-mgr.register("quarter-note", new MusicalNote("♩"));
-Graphic g1 = mgr.create("quarter-note");   // 两次 create 得到两个
-Graphic g2 = mgr.create("quarter-note");   // 相互独立的实例（区别于 Flyweight 的共享）
 ```
+
+换产品族变成换一组原型，**零子类**：
+
+```java
+MazeFactory factory = new MazePrototypeFactory(
+        new Maze(), new Wall(), new Room(0), new Door(null, null));
+Maze maze = createMaze(factory);                    // 复用 Abstract Factory 一节的 createMaze
+
+// 炸弹迷宫：不需要 BombedMazeFactory 子类了
+factory = new MazePrototypeFactory(
+        new Maze(), new BombedWall(), new RoomWithABomb(0), new Door(null, null));
+```
+
+`door.initialize(r1, r2)` 这一步值得注意：clone 是浅拷贝，Door 原型里指向的两个房间引用会被一并复制——所以克隆后必须**重新接线**（原书对每个实现 Clone 的类都有类似约定：克隆自己是浅的，凡是指向"这一次不该共享"的成员都要在克隆后修正，必要时做深拷贝；含循环引用的组合对象克隆尤其困难）。
+
+对照乐谱编辑器的 Motivation：GraphicTool 持有一个 Graphic 原型、被使用时 `clone()` 它——同一个思想在"工具"和"工厂"两个场合都消掉了平行子类层次。
 
 ### 现代对应
 
@@ -566,35 +629,62 @@ classDiagram
 * 保证唯一性：构造器私有（或保护），静态方法 `Instance()` 惰性创建并返回唯一实例（C++ 用函数内 static，Java 用 `private static` 字段 + `getInstance()`，多线程需同步或 holder/enum 方案——详见上级目录的 Java 版三种写法）
 * **子类化 Singleton** 的问题：`Instance()` 必须决定返回哪个子类的实例——常用 **注册表**（按名字查找已注册的 Singleton 子类）解决；实例的真正类型在编译期不再固定
 
-### Sample Code（MazeFactory 及其注册表式子类化）
+### Sample Code（MazeFactory 单件，Java 摘编）
+
+最简形态。MazeFactory 把构造器藏起来，`instance()` 惰性创建并返回唯一实例：
 
 ```java
-// 基本形态：静态持有 + 私有构造 + 全局访问点
 class MazeFactory {
-    private static final MazeFactory INSTANCE = new MazeFactory();
+    private static MazeFactory instance;
 
-    static MazeFactory instance() { return INSTANCE; }
+    protected MazeFactory() { }                      // 外部无法 new；protected 留给子类
 
-    protected MazeFactory() {}        // 外部无法 new；protected 允许子类化
-    // makeMaze()/makeWall()/makeRoom() ...
-}
-
-// 子类化 + 注册表：instance(key) 返回不同子类的唯一实例
-class BombedMazeFactory extends MazeFactory { }
-class EnchantedMazeFactory extends MazeFactory { }
-
-class MazeFactoryRegistry {
-    private static final Map<String, MazeFactory> REGISTRY = new HashMap<>();
-    static {  // 或由子类静态代码块自注册：MazeFactory.register("bombed", this)
-        REGISTRY.put("bombed",    new BombedMazeFactory());
-        REGISTRY.put("enchanted", new EnchantedMazeFactory());
+    public static MazeFactory instance() {
+        if (instance == null) {
+            instance = new MazeFactory();            // 第一次调用才创建（惰性）
+        }
+        return instance;
     }
-    static void register(String key, MazeFactory f) { REGISTRY.put(key, f); }
-    static MazeFactory instance(String key) { return REGISTRY.get(key); }
+    // makeMaze()/makeWall()/makeRoom()/makeDoor() 同前
+}
+```
+
+要支持子类化——instance() 该返回 BombedMazeFactory 还是 EnchantedMazeFactory 的实例？——必须有个地方知道答案。原书的办法是**注册表**：子类把自己的实例注册进来，instance() 按外部配置选择（原书用环境变量 `SINGLETON` 决定，此处以系统属性示意）：
+
+```java
+class MazeFactory {
+    private static MazeFactory instance;
+    private static final Map<String, MazeFactory> REGISTRY = new HashMap<>();
+
+    protected MazeFactory() { }
+
+    public static void register(String name, MazeFactory f) { REGISTRY.put(name, f); }
+
+    public static MazeFactory instance() {
+        if (instance == null) {
+            String style = System.getProperty("MAZE_STYLE", "standard");
+            instance = REGISTRY.get(style);          // 运行期决定实例的真正类型
+        }
+        return instance;
+    }
+}
+```
+
+子类用静态代码块自注册，注册发生在类加载时；客户代码永远只调 `instance()`：
+
+```java
+class BombedMazeFactory extends MazeFactory {
+    static {
+        MazeFactory.register("bombed", new BombedMazeFactory());
+    }
+    // 只覆盖 makeWall()/makeRoom()
 }
 
-MazeFactory factory = MazeFactoryRegistry.instance("bombed"); // 运行期选择实现
+MazeFactory factory = MazeFactory.instance();       // 编译期类型是 MazeFactory，
+                                                    // 运行期可以是任何注册过的子类
 ```
+
+代价也随之而来：instance() 的返回类型只能是 MazeFactory，客户拿到的具体类型在编译期不再确定——这正是"允许细化与扩展"换来的取舍。
 
 > Java 平台上更完备的线程安全写法（饿汉式 / 静态内部类 holder / volatile DCL / 单元素 enum）见上级目录《设计模式之一：Creational Pattern》的 Singleton 一节。
 
@@ -630,3 +720,18 @@ MazeFactory factory = MazeFactoryRegistry.instance("bombed"); // 运行期选择
 
 * Factory Method 让设计可以定制且只略微增加复杂度——别的模式要新类，它只要一个新操作。但当被实例化的类根本不变化、或实例化发生在子类很容易重定义的操作（如初始化）中时，它就多余了
 * Abstract Factory / Prototype / Builder 更灵活，但**也更复杂**。常见轨迹是：设计从 Factory Method 起步，发现需要更大灵活性时再向其他创建型模式演化。在多个设计标准之间权衡时，了解多个模式才有选择余地
+
+## 附：创建型模式的讨论（3.6）英文原文
+
+> 以下为原书 3.6 节英文原文，供与上文中文对照。
+
+There are two common ways to parameterize a system by the classes of objects it  creates. One way is to subclass the class that creates the objects; this corresponds  to using the Factory Method (121) pattern. The main drawback of this approach is  that it can require creating a new subclass just to change the class of the product.  Such changes can cascade. For example, when the product creator is itself created by  a factory method, then you have to override its creator as well.
+
+The other way to parameterize a system relies more on object composition: Define an  object that's responsible for knowing the class of the product objects, and make it  a parameter of the system. This is a key aspect of the Abstract Factory (99),  Builder (110), and Prototype (133) patterns. All three involve creating a new  "factory object" whose responsibility is to create product objects. Abstract Factory  has the factory object producing objects of several classes. Builder has the factory  object building a complex product incrementally using a correspondingly complex  protocol. Prototype has the factory object building a product by copying a prototype  object. In this case, the factory object and the prototype are the same object,  because the prototype is responsible for returning the product.
+
+Consider the drawing editor framework described in the Prototype pattern. There are  several ways to parameterize a GraphicTool by the class of product: 
+
+By applying the Factory Method pattern, a subclass of GraphicTool will be created  for each subclass of Graphic in the palette. GraphicTool will have a NewGraphic  operation that each GraphicTool subclass will redefine.  By applying the Abstract Factory pattern, there will be a class hierarchy of  GraphicsFactories, one for each Graphic subclass. Each factory creates just one  product in this case: CircleFactory will create Circles, LineFactory will create  Lines, and so on. A GraphicTool will be parameterized with a factory for creating  the appropriate kind of Graphics.
+
+By applying the Prototype pattern, each subclass of Graphics will implement the  Clone operation, and a GraphicTool will be parameterized with a prototype of the  Graphic it creates. 
+

@@ -12,8 +12,6 @@
 - **Dependent Components vs. Subcomponents**：拆分组件的两种方式——dependent components 要求父组件显式暴露下游所需依赖（方法名随意、只看返回类型），且两个依赖组件不能共用同一 scope；subcomponents 只需在父组件中声明工厂方法，封装性弱一些但更省事；v2.7 起还可用 `@Subcomponent.Builder` 把子组件的创建与父组件进一步解耦。
 - **ProGuard / Troubleshooting**：依赖声明要用 `annotationProcessor` 而不是 `provided`；升级 Dagger 版本后出现 `MemberInjector` 等报错时，先 clean 全项目并统一版本。
 
-> 背景阅读：Dependency Injection 的理论出处见 [设计模式-Ioc](设计模式-Ioc.md)（Martin Fowler 原文导读）；Dagger 2 代码生成的底层机制见 [设计模式-依赖注入](设计模式-依赖注入.md)（Annotation Processing 教程）。
-
 ## Overview
 
 Many Android apps rely on instantiating objects that often require other dependencies.  For instance, a Twitter API client may be built using a networking library such as Retrofit. To use this library, you might also need to add parsing libraries such as Gson.  In addition, classes that implement authentication or caching may require accessing SharedPreferences or other common storage, requiring instantiating them first and creating an inherent dependency chain.

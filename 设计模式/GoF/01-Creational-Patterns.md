@@ -1,12 +1,8 @@
 # Creational Patterns（创建型模式）
 
-> Intent 中文以中译本《设计模式：可复用面向对象软件的基础（典藏版）》（机械工业出版社）译法为准。
-
 创建型模式抽象了**实例化过程**：它们把"系统如何创建、组合、表示它的对象"这一知识封装起来，让系统与具体类解耦。客户只操作抽象接口，由模式替它决定何时、如何、由谁创建具体对象。
 
 5 个创建型模式：Abstract Factory、Builder、Factory Method、Prototype、Singleton。
-
-> 类图为 mermaid。Sample Code 依据原书代码示例摘编：保留主干与推进顺序，代码与解说交替；原书为 C++/Smalltalk，一般以 Java 摘编呈现。更多 Java 示例见上级目录《设计模式之一：Creational Pattern》。
 
 ## Abstract Factory（别名 Kit）
 
@@ -97,65 +93,88 @@ classDiagram
 * **参数化工厂**（`get(class)` 一个方法创建任意产品）：减少方法数量，但失去类型安全，且要求所有产品接口统一——一般不推荐
 * 若必须支持新种类产品，可给工厂加"更少的创造方法 + 更参数化的产品"这类折中
 
-### Sample Code（迷宫工厂，Java 摘编）
+### Sample Code（原书迷宫示例，C++）
 
-原书用"造迷宫"一套例子贯穿全部创建型模式。先看 AbstractFactory——MazeFactory 为每类迷宫构件声明一个创建操作，缺省产出普通构件：
+原书用"造迷宫"一套例子贯穿全部创建型模式。MazeFactory 为每类迷宫构件声明一个创建操作，缺省实现返回普通构件：
 
-```java
+```cpp
 class MazeFactory {
-    Maze makeMaze() { return new Maze(); }
-    Wall makeWall() { return new Wall(); }
-    Room makeRoom(int n) { return new Room(n); }
-    Door makeDoor(Room r1, Room r2) { return new Door(r1, r2); }
+public:
+    MazeFactory();
+
+    virtual Maze* MakeMaze() const
+        { return new Maze; }
+    virtual Wall* MakeWall() const
+        { return new Wall; }
+    virtual Room* MakeRoom(long n) const
+        { return new Room(n); }
+    virtual Door* MakeDoor(Room* r1, Room* r2) const
+        { return new Door(r1, r2); }
+};
+```
+
+客户代码以工厂为参数，创建流程中**不再出现任何具体构件类名**：
+
+```cpp
+Maze* MazeGame::CreateMaze (MazeFactory& factory) {
+    Maze* aMaze = factory.MakeMaze();
+    Room* r1 = factory.MakeRoom(1);
+    Room* r2 = factory.MakeRoom(2);
+    Door* aDoor = factory.MakeDoor(r1, r2);
+
+    aMaze->AddRoom(r1);
+    aMaze->AddRoom(r2);
+
+    r1->SetSide(North, factory.MakeWall());
+    r1->SetSide(East, aDoor);
+    // ...
+
+    return aMaze;
 }
 ```
 
-客户代码以工厂为参数，创建流程中**不再出现任何具体类名**：
+换产品族 = 换工厂子类。施了魔法的迷宫只覆盖需要变化的两个操作——EnchantedRoom 需要房间号与一道咒语，DoorNeedingSpell 只有用咒语才能打开：
 
-```java
-Maze createMaze(MazeFactory factory) {
-    Maze maze = factory.makeMaze();
-    Room r1 = factory.makeRoom(1);
-    Room r2 = factory.makeRoom(2);
-    Door door = factory.makeDoor(r1, r2);
+```cpp
+class EnchantedMazeFactory : public MazeFactory {
+public:
+    EnchantedMazeFactory();
 
-    maze.addRoom(r1);
-    maze.addRoom(r2);
+    virtual Room* MakeRoom(long n) const
+        { return new EnchantedRoom(n, CastSpell()); }
+    virtual Door* MakeDoor(Room* r1, Room* r2) const
+        { return new DoorNeedingSpell(r1, r2); }
 
-    r1.setSide(Direction.NORTH, factory.makeWall());
-    r1.setSide(Direction.EAST, door);
-    // ……其余各面类似，略
-    return maze;
-}
+protected:
+    Spell* CastSpell() const;
+};
 ```
 
-换产品族 = 换工厂子类。施了魔法的迷宫只覆盖需要变化的两个操作：
+带炸弹的迷宫同理，只覆盖 MakeWall 与 MakeRoom：
 
-```java
-class EnchantedMazeFactory extends MazeFactory {
-    @Override Room makeRoom(int n) {
-        return new EnchantedRoom(n, castSpell());  // 房间带一道咒语
-    }
-    @Override Door makeDoor(Room r1, Room r2) {
-        return new DoorNeedingSpell(r1, r2);       // 门需要咒语才能打开
-    }
-    protected Spell castSpell() { return new Spell(); }
-}
+```cpp
+class BombedMazeFactory : public MazeFactory {
+public:
+    BombedMazeFactory();
+
+    virtual Wall* MakeWall() const
+        { return new BombedWall; }
+    virtual Room* MakeRoom(long n) const
+        { return new RoomWithABomb(n); }
+};
 ```
 
-带炸弹的迷宫同理，只覆盖墙与房间：
+客户侧只需换一个工厂实例，CreateMaze 一字不改：
 
-```java
-class BombedMazeFactory extends MazeFactory {
-    @Override Wall makeWall() { return new BombedWall(); }       // 被炸会损坏的墙
-    @Override Room makeRoom(int n) { return new RoomWithABomb(n); }
-}
+```cpp
+Maze* maze;
+MazeGame game;
+BombedMazeFactory bombedMazeFactory;
 
-Maze maze = createMaze(new BombedMazeFactory());
-// 同一个 createMaze，换传 EnchantedMazeFactory 即产出施魔迷宫
+maze = game.CreateMaze(bombedMazeFactory);
 ```
 
-createMaze 与具体构件双向解耦——"换族只换一个工厂实例"落到了实处。MazeFactory 在整个应用中通常只需一份，因此它常与 Singleton（3.5）配合。
+原书指出：MazeFactory 不过是一组工厂方法的集合；它同时充当缺省实现的"落脚点"——子类只需覆盖有变化的操作。MazeFactory 在整个应用中通常只需一份，因此它常与 Singleton（3.5）配合。
 
 ### Known Uses / 现代对应
 
@@ -241,82 +260,148 @@ classDiagram
 * **通常不定义公共的 Product 抽象类**：各表示差异太大，没有统一接口的意义，客户按具体 Builder 类型取回产品
 * Director 可用同样方式构造多个产品（Builder 状态多次复用）
 
-### Sample Code（MazeBuilder，Java 摘编）
+### Sample Code（原书迷宫示例，C++）
 
-原书的 Builder 示例仍是迷宫，但换了一个问题：不但要能建"普通/施魔/炸弹"迷宫，还想**数一数**迷宫里有几个房间几扇门。Builder 只声明构建步骤，全部给空实现：
+原书的 Builder 示例仍是迷宫，但换了一个问题：不但要能建出迷宫，还想**统计**迷宫里有几个房间几扇门。Builder 只声明构建步骤，全部操作给空实现：
 
-```java
-abstract class MazeBuilder {
-    void buildMaze() { }
-    void buildRoom(int room) { }
-    void buildDoor(int roomFrom, int roomTo) { }
-    Maze getMaze() { return null; }
+```cpp
+class MazeBuilder {
+public:
+    virtual void BuildMaze() { }
+    virtual void BuildRoom(int room) { }
+    virtual void BuildDoor(int roomFrom, int roomTo) { }
+
+    virtual Maze* GetMaze() { return 0; }
+protected:
+    MazeBuilder();
+};
+```
+
+Director（这里是 MazeGame 的方法）按固定算法逐步调用 builder，与产品的内部表示完全隔离：
+
+```cpp
+Maze* MazeGame::CreateMaze (MazeBuilder& builder) {
+    builder.BuildMaze();
+
+    builder.BuildRoom(1);
+    builder.BuildRoom(2);
+    builder.BuildDoor(1, 2);
+
+    return builder.GetMaze();
 }
 ```
 
-Director（这里是 MazeGame 的方法）按固定算法逐step调用 builder，与产品内部表示完全隔离：
+第一个 ConcreteBuilder 真的建迷宫——迷宫的内部结构（房间的四面墙、公共墙上开门）被封装在它这里：
 
-```java
-Maze createMaze(MazeBuilder builder) {
-    builder.buildMaze();
-    builder.buildRoom(1);
-    builder.buildRoom(2);
-    builder.buildDoor(1, 2);
-    return builder.getMaze();
-}
+```cpp
+class StandardMazeBuilder : public MazeBuilder {
+public:
+    StandardMazeBuilder();
+
+    virtual void BuildMaze();
+    virtual void BuildRoom(int room);
+    virtual void BuildDoor(int roomFrom, int roomTo);
+    virtual Maze* GetMaze();
+
+private:
+    Direction CommonWall(Room*, Room*);
+    Maze* _currentMaze;
+};
 ```
 
-第一个 ConcreteBuilder 真的建迷宫——它知道迷宫的内部结构（房间的四面墙、公共墙上开门）：
+```cpp
+void StandardMazeBuilder::BuildMaze () {
+    _currentMaze = new Maze;
+}
 
-```java
-class StandardMazeBuilder extends MazeBuilder {
-    private Maze currentMaze;
+void StandardMazeBuilder::BuildRoom (int n) {
+    if (!_currentMaze->RoomNo(n)) {
+        Room* room = new Room(n);
 
-    @Override void buildMaze() { currentMaze = new Maze(); }
+        _currentMaze->AddRoom(room);
 
-    @Override void buildRoom(int n) {
-        if (currentMaze.roomNo(n) != null) return;   // 已建过则忽略
-        Room room = new Room(n);
-        currentMaze.addRoom(room);
-        room.setSide(Direction.NORTH, new Wall());   // 四面先设墙，
-        // ……SOUTH/EAST/WEST 同法，略
+        room->SetSide(North, new Wall);
+        room->SetSide(South, new Wall);
+        room->SetSide(East, new Wall);
+        room->SetSide(West, new Wall);
     }
+}
 
-    @Override void buildDoor(int n1, int n2) {
-        Room r1 = currentMaze.roomNo(n1);
-        Room r2 = currentMaze.roomNo(n2);
-        Door door = new Door(r1, r2);
-        r1.setSide(commonWall(r1, r2), door);        // 公共墙上开门
-        r2.setSide(commonWall(r2, r1), door);
-    }
+void StandardMazeBuilder::BuildDoor (int n1, int n2) {
+    Room* r1 = _currentMaze->RoomNo(n1);
+    Room* r2 = _currentMaze->RoomNo(n2);
+    Door* d = new Door(r1, r2);
 
-    @Override Maze getMaze() { return currentMaze; }
+    r1->SetSide(CommonWall(r1,r2), d);
+    r2->SetSide(CommonWall(r2,r1), d);
+}
 
-    private Direction commonWall(Room a, Room b) { /* 找两房间的公共墙面 */ return null; }
+Maze* StandardMazeBuilder::GetMaze () {
+    return _currentMaze;
 }
 ```
 
-第二个 ConcreteBuilder 什么迷宫都不建，只数数——注意它的产物**根本不是迷宫**：
+第二个 ConcreteBuilder 什么迷宫都不建，只做计数——注意它的产物**根本不是迷宫**（GetMaze 继承基类缺省实现，返回 0）：
 
-```java
-class CountingMazeBuilder extends MazeBuilder {
-    private int rooms, doors;
+```cpp
+class CountingMazeBuilder : public MazeBuilder {
+public:
+    CountingMazeBuilder();
 
-    @Override void buildMaze() { rooms = doors = 0; }
-    @Override void buildRoom(int n) { rooms++; }
-    @Override void buildDoor(int from, int to) { doors++; }
-    @Override Maze getMaze() { return null; }        // 故意返回 null
+    virtual void BuildMaze();
+    virtual void BuildRoom(int room);
+    virtual void BuildDoor(int roomFrom, int roomTo);
+    virtual Maze* GetMaze();
+
+    void GetCounts(int& rooms, int& doors) const;
+
+private:
+    int _doors;
+    int _rooms;
+};
+```
+
+```cpp
+CountingMazeBuilder::CountingMazeBuilder () {
+    _doors = _rooms = 0;
+}
+
+void CountingMazeBuilder::BuildRoom (int) {
+    _rooms++;
+}
+
+void CountingMazeBuilder::BuildDoor (int, int) {
+    _doors++;
+}
+
+void CountingMazeBuilder::GetCounts (int& rooms, int& doors) const {
+    rooms = _rooms;
+    doors = _doors;
 }
 ```
 
-同一个 createMaze 驱动两种 builder，得到完全不同的结果：
+同一个 CreateMaze 驱动两种 builder，得到完全不同的结果：
 
-```java
-Maze maze = createMaze(new StandardMazeBuilder());  // 建出两房一门的迷宫
-createMaze(new CountingMazeBuilder());              // 只得到 rooms=2, doors=1 的计数
+```cpp
+int rooms, doors;
+MazeGame game;
+CountingMazeBuilder builder;
+
+game.CreateMaze(builder);
+builder.GetCounts(rooms, doors);
 ```
 
-这就是 Builder 与工厂一族的本质差别：**Director 掌握算法、Builder 决定每个步骤落到什么上**——步骤可以建迷宫、可以计数、甚至可以什么也不做；产物的内部表示（Room 四面墙、公共墙开门）被完全封装在 StandardMazeBuilder 里。原书还指出：需要更复杂的迷宫时，Director 侧加一个 `createComplexMaze(MazeBuilder)` 即可复用全部 builder。
+这就是 Builder 与工厂一族的差别：**Director 掌握算法、Builder 决定每个步骤落到什么上**——步骤可以建迷宫、可以计数、甚至可以什么也不做。Director 侧还可以加一个更复杂的算法复用全部 builder：
+
+```cpp
+Maze* MazeGame::CreateComplexMaze (MazeBuilder& builder) {
+    builder.BuildRoom(1);
+    // ...
+    builder.BuildRoom(1001);
+
+    return builder.GetMaze();
+}
+```
 
 ### 现代对应
 
@@ -334,7 +419,7 @@ createMaze(new CountingMazeBuilder());              // 只得到 rooms=2, doors=
 
 ### Motivation
 
-框架类（如 Application、Document）无法预知应用要派生哪些子类（MyApplication、MyDocument），却又必须创建它们。解法：框架只提供工厂方法 `createDocument()`，把"创建什么"留给子类实现；框架代码调用工厂方法拿到抽象产品继续工作。
+框架类（如 Application、Document）无法预知应用要派生哪些子类（MyApplication、MyDocument），却又必须创建它们。解法：框架只声明工厂方法 `DoMakeDocument()`，把"创建什么"留给子类实现；框架的 OpenDocument 骨架调用工厂方法拿到抽象产品继续工作。
 
 ### Applicability
 
@@ -393,61 +478,89 @@ Creator 依赖子类实现工厂方法，从而返回正确的 ConcreteProduct�
 * 命名惯例：工厂方法常以 `Create…/Make…/New…` 前缀命名（Java 世界如 `createXxx`、`valueOf`、`getInstance`）
 * C++ 中可用模板（template method + 模板参数）避免为每种产品派生 Creator
 
-### Sample Code（框架的 Application/Document，Java 摘编）
+### Sample Code（原书迷宫示例，C++）
 
-原书示例是一个框架类：Application 管理文档并在合适时机创建它们，但它**无法预知**应用会派生什么文档。先看框架侧——`createDocument()` 就是工厂方法，纯抽象：
+原书的示例回到迷宫：本章开头的 `CreateMaze` 对迷宫、房间、门和墙的类做了硬编码，引入工厂方法让子类来选择这些构件。MazeGame 为每类构件声明一个工厂方法，并提供返回最普通构件的缺省实现：
 
-```java
-abstract class Application {
-    private final List<Document> docs = new ArrayList<>();
+```cpp
+class MazeGame {
+public:
+    MazeGame();
 
-    abstract Document createDocument();              // Factory Method：留给子类
+    virtual Maze* MakeMaze() const
+        { return new Maze; }
+    virtual Room* MakeRoom(long n) const
+        { return new Room(n); }
+    virtual Wall* MakeWall() const
+        { return new Wall; }
+    virtual Door* MakeDoor(Room* r1, Room* r2) const
+        { return new Door(r1, r2); }
 
-    void openDocument(String name) {                 // 框架逻辑（OpenDocument）
-        if (!canOpenDocument(name)) {                // 检查能否打开（如类型/权限）
-            System.out.println("无法打开: " + name);
-            return;
-        }
-        Document doc = createDocument();             // 只依赖抽象 Product
-        docs.add(doc);
-        aboutToOpenDocument(doc);                    // hook：默认空实现
-        doc.doRead();                                // 读入内容
-        doc.doRestoreView();                         // 恢复视图
-    }
+    virtual Maze* CreateMaze();
+};
+```
 
-    protected boolean canOpenDocument(String name) { return name != null; }
-    protected void aboutToOpenDocument(Document doc) { }
+CreateMaze 与 Abstract Factory 一节的版本结构相同，差别在于它不再接收工厂参数，而是**调用成员工厂方法**——不同的游戏创建 MazeGame 的子类、重定义需要的工厂方法即可：
+
+```cpp
+Maze* MazeGame::CreateMaze () {
+    Maze* aMaze = MakeMaze();
+
+    Room* r1 = MakeRoom(1);
+    Room* r2 = MakeRoom(2);
+    Door* theDoor = MakeDoor(r1, r2);
+
+    aMaze->AddRoom(r1);
+    aMaze->AddRoom(r2);
+
+    r1->SetSide(North, MakeWall());
+    r1->SetSide(East, theDoor);
+    r1->SetSide(South, MakeWall());
+    r1->SetSide(West, MakeWall());
+
+    r2->SetSide(North, MakeWall());
+    r2->SetSide(East, MakeWall());
+    r2->SetSide(South, MakeWall());
+    r2->SetSide(West, theDoor);
+
+    return aMaze;
 }
 ```
 
-注意 openDocument 的骨架与具体文档的耦合点只有一处——`createDocument()` 调用。Document 侧同样是抽象骨架：
+带炸弹的游戏只重定义 MakeWall 与 MakeRoom：
 
-```java
-abstract class Document {
-    abstract void doRead();
-    void doRestoreView() { }                         // hook
-    void save() { doSerialize(); }
-    abstract void doSerialize();
-}
+```cpp
+class BombedMazeGame : public MazeGame {
+public:
+    BombedMazeGame();
+
+    virtual Wall* MakeWall() const
+        { return new BombedWall; }
+
+    virtual Room* MakeRoom(long n) const
+        { return new RoomWithABomb(n); }
+};
 ```
 
-应用子类只需填空——这是"知道具体产品类"的唯一地方：
+施了魔法的游戏重定义 MakeRoom 与 MakeDoor：
 
-```java
-class DrawingDocument extends Document {             // ConcreteProduct
-    void doRead() { System.out.println("读入绘图文档"); }
-    void doSerialize() { }
-}
+```cpp
+class EnchantedMazeGame : public MazeGame {
+public:
+    EnchantedMazeGame();
 
-class DrawingApplication extends Application {       // ConcreteCreator
-    @Override Document createDocument() { return new DrawingDocument(); }
-}
+    virtual Room* MakeRoom(long n) const
+        { return new EnchantedRoom(n, CastSpell()); }
 
-new DrawingApplication().openDocument("架构图.vsd");
-// 框架无感知：内部创建的是 DrawingDocument
+    virtual Door* MakeDoor(Room* r1, Room* r2) const
+        { return new DoorNeedingSpell(r1, r2); }
+
+protected:
+    Spell* CastSpell() const;
+};
 ```
 
-换一个电子表格应用，只需再派生 SpreadsheetApplication/SpreadsheetDocument——Application 的全部逻辑原样复用。原书还把同一个例子用于 Template Method（5.10）：openDocument 的骨架本身就是一个模板方法，工厂方法则是它调用的原语操作之一。
+对照 Motivation 里的框架例子：Application 声明纯虚的 `DoMakeDocument()`，把"创建什么文档"留给 MyApplication 这样的子类；这里的 MazeGame 则给出缺省实现、允许子类只覆盖有变化的操作——工厂方法在两种形态（纯虚 vs 缺省实现）下的用法都齐了。原书还把这个例子带到 Template Method（5.10）：Application::OpenDocument 的骨架本身就是一个模板方法，工厂方法则是它调用的原语操作之一。
 
 ### 现代对应
 
@@ -524,54 +637,93 @@ classDiagram
 * `clone()` 的实现：基本类型直接复制；对象成员需决定浅/深拷贝；C++ 用拷贝构造、Smalltalk 用 `copy`，Java 实现 `Cloneable` 并重写 `clone()`
 * 克隆后常用 `Initialize(参数)` 重新初始化状态，避免为每种配置准备一个原型
 
-### Sample Code（MazePrototypeFactory，Java 摘编）
+### Sample Code（原书迷宫示例，C++）
 
 原型版迷宫工厂不再为每族构件派生子类，而是**持有一族原型，克隆它们产出产品**：
 
-```java
-class MazePrototypeFactory extends MazeFactory {
-    private final Maze prototypeMaze;
-    private final Wall prototypeWall;
-    private final Room prototypeRoom;
-    private final Door prototypeDoor;
+```cpp
+class MazePrototypeFactory : public MazeFactory {
+public:
+    MazePrototypeFactory(Maze*, Wall*, Room*, Door*);
 
-    MazePrototypeFactory(Maze m, Wall w, Room r, Door d) {
-        prototypeMaze = m; prototypeWall = w;        // 存的就是"原型"
-        prototypeRoom = r; prototypeDoor = d;
-    }
+    virtual Maze* MakeMaze() const;
+    virtual Room* MakeRoom(long n) const;
+    virtual Wall* MakeWall() const;
+    virtual Door* MakeDoor(Room* r1, Room* r2) const;
 
-    @Override Maze makeMaze() { return prototypeMaze.clone(); }
-    @Override Wall makeWall() { return prototypeWall.clone(); }
+private:
+    Maze* _prototypeMaze;
+    Room* _prototypeRoom;
+    Wall* _prototypeWall;
+    Door* _prototypeDoor;
+};
+```
 
-    @Override Room makeRoom(int n) {
-        Room room = prototypeRoom.clone();           // 克隆原型
-        room.initialize(n);                          // 再用参数重初始化
-        return room;
-    }
+```cpp
+MazePrototypeFactory::MazePrototypeFactory (
+    Maze* m, Wall* w, Room* r, Door* d
+) {
+    _prototypeMaze = m;
+    _prototypeWall = w;
+    _prototypeRoom = r;
+    _prototypeDoor = d;
+}
 
-    @Override Door makeDoor(Room r1, Room r2) {
-        Door door = prototypeDoor.clone();
-        door.initialize(r1, r2);                     // 重新接线两端的房间
-        return door;
-    }
+Maze* MazePrototypeFactory::MakeMaze () const {
+    return _prototypeMaze->Clone();
+}
+
+Room* MazePrototypeFactory::MakeRoom (long n) const {
+    Room* room = _prototypeRoom->Clone();
+
+    room->Initialize(n);
+
+    return room;
+}
+
+Wall* MazePrototypeFactory::MakeWall () const {
+    return _prototypeWall->Clone();
+}
+
+Door* MazePrototypeFactory::MakeDoor (Room* r1, Room* r2) const {
+    Door* door = _prototypeDoor->Clone();
+
+    door->Initialize(r1, r2);
+
+    return door;
 }
 ```
 
-换产品族变成换一组原型，**零子类**：
+前提是 Maze、Wall、Room、Door 都要实现 `Clone`；克隆出的对象还要能用 `Initialize` 重新初始化——克隆 Room 后必须重新设定房间号，克隆 Door 后必须重新绑定两端的房间（这两个 Initialize 调用就出现在上面的 MakeRoom / MakeDoor 里）。
 
-```java
-MazeFactory factory = new MazePrototypeFactory(
-        new Maze(), new Wall(), new Room(0), new Door(null, null));
-Maze maze = createMaze(factory);                    // 复用 Abstract Factory 一节的 createMaze
+换产品族变成换一组原型，**零子类**——直接复用 Abstract Factory 一节的 CreateMaze：
 
-// 炸弹迷宫：不需要 BombedMazeFactory 子类了
-factory = new MazePrototypeFactory(
-        new Maze(), new BombedWall(), new RoomWithABomb(0), new Door(null, null));
+```cpp
+MazeGame game;
+MazePrototypeFactory simpleMazeFactory(
+    new Maze, new Wall, new Room, new Door
+);
+Maze* maze = game.CreateMaze(simpleMazeFactory);
 ```
 
-`door.initialize(r1, r2)` 这一步值得注意：clone 是浅拷贝，Door 原型里指向的两个房间引用会被一并复制——所以克隆后必须**重新接线**（原书对每个实现 Clone 的类都有类似约定：克隆自己是浅的，凡是指向"这一次不该共享"的成员都要在克隆后修正，必要时做深拷贝；含循环引用的组合对象克隆尤其困难）。
+带炸弹的迷宫不再需要 BombedMazeFactory 子类：
 
-对照乐谱编辑器的 Motivation：GraphicTool 持有一个 Graphic 原型、被使用时 `clone()` 它——同一个思想在"工具"和"工厂"两个场合都消掉了平行子类层次。
+```cpp
+MazePrototypeFactory bombedMazeFactory(
+    new Maze, new BombedWall,
+    new RoomWithABomb, new Door
+);
+```
+
+施了魔法的迷宫同理，而且连"带参数构造"的问题都消失了——原型只管用无参构造造一次，EnchantedRoom 所需的咒语等差异交给克隆后的修正：
+
+```cpp
+MazePrototypeFactory enchantedMazeFactory(
+    new Maze, new Wall, new EnchantedRoom, new DoorNeedingSpell
+);
+```
+
+对照乐谱编辑器的 Motivation：GraphicTool 持有一个 Graphic 原型、被使用时 `Clone()` 它——同一个思想在"工具"和"工厂"两个场合都消掉了平行子类层次。
 
 ### 现代对应
 
@@ -626,67 +778,125 @@ classDiagram
 
 ### Implementation
 
-* 保证唯一性：构造器私有（或保护），静态方法 `Instance()` 惰性创建并返回唯一实例（C++ 用函数内 static，Java 用 `private static` 字段 + `getInstance()`，多线程需同步或 holder/enum 方案——详见上级目录的 Java 版三种写法）
-* **子类化 Singleton** 的问题：`Instance()` 必须决定返回哪个子类的实例——常用 **注册表**（按名字查找已注册的 Singleton 子类）解决；实例的真正类型在编译期不再固定
+* 保证唯一性：构造器保护（protected），静态方法 `Instance()` 惰性创建并返回唯一实例（C++ 静态成员初始化为 0 + Instance 里判空创建；Java 用 `private static` 字段 + `getInstance()`，多线程需同步或 holder/enum 方案）
+* **删除操作**（C++）：单件通常不删除——删除时机难以确定，全局销毁期其他对象可能还要用它；可以注册一个销毁例程集中处理
+* **子类化 Singleton** 的问题：`Instance()` 必须决定返回哪个子类的实例——把 Instance 放到子类（链接期决定）、在 Instance 里写条件判断、或用**注册表**（按名字查找已注册的 Singleton 子类）解决；实例的真正类型在编译期不再固定
 
-### Sample Code（MazeFactory 单件，Java 摘编）
+注册表方案的原书代码——Singleton 类把 Register/Lookup 和注册表作为公共接口的一部分：
 
-最简形态。MazeFactory 把构造器藏起来，`instance()` 惰性创建并返回唯一实例：
+```cpp
+#include <string.h>
+#include "List.h"
+#include "MazeParts.h"
 
-```java
+class NameSingletonPair {
+public:
+    NameSingletonPair(const char* name, Singleton*);
+
+private:
+    const char* _name;
+    Singleton* _singleton;
+};
+
+class Singleton {
+public:
+    static void Register(const char*, Singleton*);
+    static Singleton* Instance();
+
+private:
+    static Singleton* Lookup(const char* name);
+
+private:
+    static List<NameSingletonPair*>* _registry;
+};
+
+Singleton* Singleton::Instance () {
+    if (_instance == 0) {
+        const char* singletonName = getenv("SINGLETON");
+        // user or environment supplies this at start-up
+
+        _instance = Lookup(singletonName);
+        // _instance is defined in the base class
+    }
+    return _instance;
+}
+```
+
+Singleton 子类在哪里注册自己？一种可能是在构造器中：
+
+```cpp
+MySingleton::MySingleton() {
+    Singleton::Register("MySingleton", this);
+}
+```
+
+当然，不实例化类这个构造器就不会被调用——这恰恰是 Singleton 模式要解决的问题。C++ 中可以在包含 MySingleton 实现的文件里定义一个 MySingleton 的静态实例来规避。静态对象方法也有缺点：所有可能的 Singleton 子类的实例都必须被创建，否则它们不会被注册。
+
+### Sample Code（原书迷宫工厂示例，C++）
+
+原书仍用迷宫工厂做例子：Maze 应用只需要一个 MazeFactory 实例，且要对建造迷宫任何部件的代码可用——把 MazeFactory 做成 Singleton。先看模式的最简形态：
+
+```cpp
+class Singleton {
+public:
+    static Singleton* Instance();
+protected:
+    Singleton();
+private:
+    static Singleton* _instance;
+};
+
+Singleton* Singleton::_instance = 0;
+
+Singleton* Singleton::Instance () {
+    if (_instance == 0) {
+        _instance = new Singleton;
+    }
+    return _instance;
+}
+```
+
+套到 MazeFactory 上——加静态 Instance 操作、静态成员 `_instance`，构造器保护起来防止意外实例化：
+
+```cpp
 class MazeFactory {
-    private static MazeFactory instance;
+public:
+    static MazeFactory* Instance();
 
-    protected MazeFactory() { }                      // 外部无法 new；protected 留给子类
+    // existing interface goes here
+protected:
+    MazeFactory();
+private:
+    static MazeFactory* _instance;
+};
+```
 
-    public static MazeFactory instance() {
-        if (instance == null) {
-            instance = new MazeFactory();            // 第一次调用才创建（惰性）
+存在多个 MazeFactory 子类、应用必须决定用哪个时，选择逻辑放进 Instance——原书用环境变量指定迷宫种类：
+
+```cpp
+MazeFactory* MazeFactory::_instance = 0;
+
+MazeFactory* MazeFactory::Instance () {
+    if (_instance == 0) {
+        const char* mazeStyle = getenv("MAZESTYLE");
+
+        if (strcmp(mazeStyle, "bombed") == 0) {
+            _instance = new BombedMazeFactory;
+
+        } else if (strcmp(mazeStyle, "enchanted") == 0) {
+            _instance = new EnchantedMazeFactory;
+
+        // ... other possible subclasses
+
+        } else {        // default
+            _instance = new MazeFactory;
         }
-        return instance;
     }
-    // makeMaze()/makeWall()/makeRoom()/makeDoor() 同前
+    return _instance;
 }
 ```
 
-要支持子类化——instance() 该返回 BombedMazeFactory 还是 EnchantedMazeFactory 的实例？——必须有个地方知道答案。原书的办法是**注册表**：子类把自己的实例注册进来，instance() 按外部配置选择（原书用环境变量 `SINGLETON` 决定，此处以系统属性示意）：
-
-```java
-class MazeFactory {
-    private static MazeFactory instance;
-    private static final Map<String, MazeFactory> REGISTRY = new HashMap<>();
-
-    protected MazeFactory() { }
-
-    public static void register(String name, MazeFactory f) { REGISTRY.put(name, f); }
-
-    public static MazeFactory instance() {
-        if (instance == null) {
-            String style = System.getProperty("MAZE_STYLE", "standard");
-            instance = REGISTRY.get(style);          // 运行期决定实例的真正类型
-        }
-        return instance;
-    }
-}
-```
-
-子类用静态代码块自注册，注册发生在类加载时；客户代码永远只调 `instance()`：
-
-```java
-class BombedMazeFactory extends MazeFactory {
-    static {
-        MazeFactory.register("bombed", new BombedMazeFactory());
-    }
-    // 只覆盖 makeWall()/makeRoom()
-}
-
-MazeFactory factory = MazeFactory.instance();       // 编译期类型是 MazeFactory，
-                                                    // 运行期可以是任何注册过的子类
-```
-
-代价也随之而来：instance() 的返回类型只能是 MazeFactory，客户拿到的具体类型在编译期不再确定——这正是"允许细化与扩展"换来的取舍。
-
-> Java 平台上更完备的线程安全写法（饿汉式 / 静态内部类 holder / volatile DCL / 单元素 enum）见上级目录《设计模式之一：Creational Pattern》的 Singleton 一节。
+原书随之指出其局限：**每定义一个新的 MazeFactory 子类，Instance 都必须修改**。对独立应用这或许无所谓，但对框架中的抽象工厂就是问题了——此时改用 Implementation 一节的注册表方案，Singleton 基类不再负责创建单件，主要职责变成让被选中的单件对象在系统中可被访问。
 
 ### 现代对应
 
@@ -698,28 +908,27 @@ MazeFactory factory = MazeFactory.instance();       // 编译期类型是 MazeFa
 
 ## 创建型模式的讨论（原书 3.6）
 
-用产品类对系统进行参数化，有两种常用方法，正好对应创建型模式的两个阵营。
+用一个系统所创建对象的类来对系统进行参数化，有两种常用方法。
 
-**方法一：生成创建对象的类的子类**——即 **Factory Method**。主要缺点是：仅为了改变产品类，就可能需要创建一个新的子类，而且这种改变可能是级联的（cascade）——如果产品的创建者本身也是由工厂方法创建的，它的创建者也必须一并重定义。
+一种方法是生成创建对象的类的子类，这对应于使用 **Factory Method** 模式。这种方法的主要缺点是：仅仅为了改变产品的类，就可能需要创建一个新的子类，而且这种改变可能是级联的（cascade）——如果产品的创建者本身也是由工厂方法创建的，那么你还必须重定义它的创建者。
 
-**方法二：对象组合**——定义一个负责明确产品对象的"工厂对象"，把它作为系统的参数。这是 **Abstract Factory**、**Builder**、**Prototype** 的共同特征，三者都引入一个新的工厂对象：
+另一种方法更多地依赖对象组合：定义一个**负责知道产品对象的类**的对象，并把它作为系统的一个参数。这是 **Abstract Factory**、**Builder** 和 **Prototype** 模式的关键特征。三者都要创建一个新的"工厂对象"，其职责就是创建产品对象，但方式各不相同：**Abstract Factory** 让工厂对象生产多个类的对象；**Builder** 让工厂对象按一套相对复杂的协议逐步构建一个复杂产品；**Prototype** 让工厂对象通过拷贝一个原型对象来构建产品——在这种情况下工厂对象和原型是同一个对象，因为原型自己就负责返回产品。
 
-| 模式 | 工厂对象如何产出产品 |
-| --- | --- |
-| Abstract Factory | 一次产出**多个类**的对象（一个产品族） |
-| Builder | 按**相对复杂的协议**逐步创建一个复杂产品 |
-| Prototype | **拷贝原型**创建产品——工厂对象与原型是同一个对象 |
+原书以绘图编辑器框架（见 Prototype 的 Motivation）为例，演示了用产品类参数化 GraphicTool 的几种途径：
 
-原书用绘图编辑器的 GraphicTool 做了同一问题的三种解法对比（按产品类参数化 GraphicTool）：
+* 用 **Factory Method**：为选择板中的每个 Graphic 子类创建一个 GraphicTool 子类，GraphicTool 声明一个 `NewGraphic` 操作，每个子类各自重定义它
+* 用 **Abstract Factory**：建一个与 Graphic 子类一一对应的 GraphicsFactory 类层次——此时每个工厂只创建一种产品：CircleFactory 创建 Circle、LineFactory 创建 Line，依此类推；GraphicTool 以一个能创建合适种类 Graphic 的工厂作为参数
+* 用 **Prototype**：每个 Graphic 子类实现 `Clone` 操作，GraphicTool 以它要创建的 Graphic 的原型作为参数
 
-* **Factory Method**：为选择板中每个 Graphic 子类创建一个 GraphicTool 子类，各自重定义 `NewGraphic`。最简单直接，但 GraphicTool 子类数目激增、且个个没做多少事
-* **Abstract Factory**：建一个与 Graphic 子类一一对应的 GraphicsFactory 层次（CircleFactory 创建 Circle……）。并未改善多少——同样庞大的平行工厂层次；只有当系统其他部分本来就需要这个工厂层次（如 Smalltalk/Objective-C 编译器自动提供）时才略优
-* **Prototype**：每个 Graphic 子类实现 `Clone`，GraphicTool 以它创建的 Graphic 的原型为参数。**通常最好**——每个 Graphic 只需实现一个 Clone，类的数目最少，且 Clone 还能挪作他用（如 Duplicate 菜单操作）
+究竟哪种模式最好，取决于诸多因素。在绘图编辑器框架里，乍看之下 **Factory Method** 最简单：定义一个新的 GraphicTool 子类很容易，而且只有当选择板被定义的时候，GraphicTool 的实例才会被创建。它的主要缺点在于 GraphicTool 子类的数目会激增，而且这些子类个个都没做多少事情。
 
-结论与演化路径：
+**Abstract Factory** 并没有很大的改善，因为它需要一个同样庞大的 GraphicsFactory 类层次。只有当 GraphicsFactory 层次**早已存在**时，Abstract Factory 才比 Factory Method 好一点——或是因为编译器自动提供了它（像在 Smalltalk 或 Objective-C 中），或是因为系统的其他部分本来就需要这个类层次。
 
-* Factory Method 让设计可以定制且只略微增加复杂度——别的模式要新类，它只要一个新操作。但当被实例化的类根本不变化、或实例化发生在子类很容易重定义的操作（如初始化）中时，它就多余了
-* Abstract Factory / Prototype / Builder 更灵活，但**也更复杂**。常见轨迹是：设计从 Factory Method 起步，发现需要更大灵活性时再向其他创建型模式演化。在多个设计标准之间权衡时，了解多个模式才有选择余地
+总的来说，**Prototype** 对绘图编辑器框架可能是最好的：每个 Graphic 类只需实现一个 Clone 操作，这就减少了类的数目；而且 Clone 还可以用于纯粹的实例化以外的目的（例如实现 Duplicate 菜单操作）。
+
+Factory Method 使一个设计可以定制，且只略微增加一些复杂度。其他创建型模式都需要新的类，而 Factory Method 只需要一个新的操作。人们通常把 Factory Method 当作创建对象的标准做法。但是，当被实例化的类根本不会发生变化时，或者当实例化发生在子类很容易重定义的操作（比如初始化操作）之中时，这样做就多余了。
+
+使用 Abstract Factory、Prototype 或 Builder 的设计甚至比使用 Factory Method 的设计更灵活，但它们也更加复杂。通常，设计以 Factory Method 起步，当设计者发现需要更大的灵活性时，设计便会向其他创建型模式演化。当你在设计标准之间进行权衡的时候，了解多个模式可以给你提供更多的选择余地。
 
 ## 附：创建型模式的讨论（3.6）英文原文
 

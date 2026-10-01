@@ -1,12 +1,8 @@
 # Structural Patterns（结构型模式）
 
-> Intent 中文以中译本《设计模式：可复用面向对象软件的基础（典藏版）》（机械工业出版社）译法为准。
-
 结构型模式关注**如何组合类与对象**以获得更大的结构：一类用继承来组合接口或实现（class pattern，如 Adapter 的类适配器），另一类用对象组合来组合出新的功能（object pattern）。
 
 7 个结构型模式：Adapter、Bridge、Composite、Decorator、Facade、Flyweight、Proxy。
-
-> 类图为 mermaid。Sample Code 依据原书代码示例摘编：保留主干与推进顺序，代码与解说交替；原书为 C++/Smalltalk，一般以 Java 摘编呈现，Java 无法忠实表达的场合（如 Adapter 的多重继承）保留原书 C++ 代码。更多 Java 示例见上级目录《设计模式之二：Structural Pattern》。
 
 ## Adapter（别名 Wrapper）
 
@@ -18,7 +14,7 @@
 
 图形编辑器统一用 `Shape` 接口操纵所有图元（`boundingBox`、`createManipulator`……）。现在编辑器要支持文本，而显示与编辑文本的能力早已存在于界面工具包的 `TextView` 中——直接复用它最理想。问题在于 TextView 的接口与 Shape 不兼容：它不是图元，不按 Shape 的协议响应请求。
 
-那就改 TextView 让它实现 Shape？不可行也不合适：TextView 属于工具包，我们控制不了（甚至拿不到源码），也不该为了某个编辑器的特殊需要去改动一个通用组件。Adapter 模式的做法是引入第三者 `TextShape`：它实现 Shape 接口，把收到的 Shape 请求**转换**成 TextView 能理解的操作，由 TextView 完成实际工作。编辑器从此把文本当普通 Shape 对待，TextView 一行不改。
+那就改 TextView 让它实现 Shape？不可行也不合适：TextView 属于工具包，我们控制不了（甚至拿不到源码），也不该为了某个编辑器的特殊需要去改动一个通用组件。Adapter 模式的做法是引入 `TextShape`：它实现 Shape 接口，把收到的 Shape 请求**转换**成 TextView 能理解的操作，由 TextView 完成实际工作。编辑器从此拿它当普通 Shape 用，TextView 一行不改。
 
 TextShape 实现这种转换有两条路，对应 Adapter 的两种形态：
 
@@ -50,7 +46,7 @@ classDiagram
     class Adaptee {
         +specificRequest()
     }
-    Client --> Target : 依赖目标接口
+    Client --> Target : 只依赖 Target 接口
     Target <|.. Adapter
     Adapter --> Adaptee : 翻译并转发
 ```
@@ -104,11 +100,11 @@ object adapter：
 
 * **Pluggable Adapter（可插拔适配器）**：让 Adapter 不写死对 Adaptee 的调用。三种手段——
   1. 用**抽象操作**：Adapter 声明抽象方法，由子类提供与 Adaptee 的实际绑定
-  2. 用**委托对象**：Adapter 把"取数据/发请求"委托给内部的 delegate，换 delegate 即换被适配者
+  2. 用**委托对象**：Adapter 把"取数据/发请求"委托给内部的 delegate，换 delegate 即换 Adaptee
   3. **参数化的适配**：调用方传入"该调用 Adaptee 的什么操作"的信息
 * **Two-way adapter（双向适配器）**：同时实现 Target 与 Adaptee 两个接口，可站在任一侧使用——依赖多重继承（class adapter）
 
-### Sample Code（Shape 与 TextView，原书 C++ 摘编）
+### Sample Code（原书 TextShape 示例，C++）
 
 先看 Target 与 Adaptee——编辑器统一操纵 Shape，而文本显示能力已在工具包的 TextView 里：
 
@@ -290,66 +286,137 @@ Abstraction 把客户请求转发给 Implementor 对象完成；Abstraction 高�
 * **共享 Implementor**：多个 Abstraction 实例可引用同一 Implementor（引用计数管理生命期）
 * C++ 中可用 **private 继承**复用 Implementor 的机制而不暴露其接口
 
-### Sample Code（Window 与 WindowImp，Java 摘编）
+### Sample Code（原书 Window 示例，C++）
 
-实现维度先行：WindowImp 只声明平台相关的原语操作，X 与 PM 各给一份实现——每份实现内部转调各自平台库（Xlib 的 `XDrawString`、Presentation Manager 的 `GpiText`）：
+原书的例子是一个可移植的 Window 抽象与 X Window、Presentation Manager 两种实现。先看抽象侧——Window 的接口分两组：窗口自己处理的请求，与**转发给实现部分**的请求：
 
-```java
-interface WindowImp {
-    void deviceText(String text, int x, int y);
-    void deviceRect(int x1, int y1, int x2, int y2);
-}
-
-class XWindowImp implements WindowImp {            // ConcreteImplementor A
-    public void deviceText(String text, int x, int y) {
-        System.out.println("XWindow 绘制文本: " + text);        // 实际转调 Xlib
-    }
-    public void deviceRect(int x1, int y1, int x2, int y2) { }
-}
-class PMWindowImp implements WindowImp {           // ConcreteImplementor B
-    public void deviceText(String text, int x, int y) {
-        System.out.println("PM 窗口绘制文本: " + text);          // 实际转调 Presentation Manager
-    }
-    public void deviceRect(int x1, int y1, int x2, int y2) { }
-}
-```
-
-抽象维度：Window 只持有 WindowImp 引用，高层操作转手交给它。imp 的装配由窗口系统在初始化时完成（原书由 toolkit 层的工厂决定，这里示意）：
-
-```java
+```cpp
 class Window {
-    protected WindowImp imp;                       // 组合而非继承：实现维度整体可换
+public:
+    Window(View* contents);
 
-    protected Window() {
-        this.imp = WindowSystemFactory.current().createWindowImp();
+    // requests handled by window
+    virtual void DrawContents();
+
+    virtual void Open();
+    virtual void Close();
+    virtual void Iconify();
+    virtual void Deiconify();
+
+    // requests forwarded to implementation
+    virtual void SetOrigin(const Point& at);
+    virtual void SetExtent(const Point& extent);
+    virtual void Raise();
+    virtual void Lower();
+    virtual void DrawLine(const Point&, const Point&);
+    virtual void DrawRect(const Point&, const Point&);
+    virtual void DrawPolygon(const Point[], int n);
+    virtual void DrawText(const char*, const Point&);
+
+protected:
+    WindowImp* GetWindowImp();
+    View* GetView();
+
+private:
+    WindowImp* _imp;
+    View* _contents; // the window's contents
+};
+```
+
+实现维度先行——WindowImp 只声明平台相关的原语操作：
+
+```cpp
+class WindowImp {
+public:
+    virtual void DeviceText(const char*, Coord x, Coord y) = 0;
+    virtual void DeviceBitmap(const char*, Coord x, Coord y) = 0;
+    // ... lots more
+};
+```
+
+每份实现内部转调各自平台库——X 版转调 Xlib（XDrawImageString），PM 版转调 Presentation Manager（GpiText）：
+
+```cpp
+class XWindowImp : public WindowImp {
+public:
+    virtual void DeviceText(const char*, Coord x, Coord y);
+    virtual void DeviceBitmap(const char*, Coord x, Coord y);
+    // ...
+
+private:
+    // lots of X window system-specific state
+    // Display* _dpy;
+    // Drawable _winID;      // window id;
+    // GC _gc;               // window graphics context
+};
+
+void XWindowImp::DeviceText (const char* s, Coord x, Coord y) {
+    int font_height = ...;
+
+    XDrawImageString(
+        _dpy, _winID, _gc, int(x), int(y - font_height / 2), s, strlen(s)
+    );
+}
+```
+
+```cpp
+class PMWindowImp : public WindowImp {
+public:
+    virtual void DeviceText(const char*, Coord x, Coord y);
+    virtual void DeviceBitmap(const char*, Coord x, Coord y);
+    // ...
+
+private:
+    // lots of PM window system-specific state
+    // HPS _hps;
+};
+
+void PMWindowImp::DeviceText (const char* s, Coord x, Coord y) {
+    GpiText(
+        _hps, int(x), int(y), s, strlen(s)
+    );
+}
+```
+
+Window 的高层操作把请求转发给实现维度持有的原语：
+
+```cpp
+void Window::DrawRect (const Point& p1, const Point& p2) {
+    WindowImp* imp = GetWindowImp();
+    imp->DeviceRect(p1.X(), p1.Y(), p2.X(), p2.Y());
+}
+```
+
+窗口怎样拿到正确的 WindowImp 子类实例？原书让 Window 的 GetWindowImp 从一个抽象工厂获取——WindowSystemFactory::Instance() 返回的工厂封装了所有窗口系统细节，做成 Singleton 供 Window 直接访问：
+
+```cpp
+WindowImp* Window::GetWindowImp () {
+    if (_imp == 0) {
+        _imp = WindowSystemFactory::Instance()->MakeWindowImp();
     }
+    return _imp;
+}
+```
 
-    void drawText(String text, int x, int y) {     // 高层语义
-        imp.deviceText(text, x, y);                // 转发给实现维度的原语
-    }
+窗口语义的扩展落在 Window 子类——IconWindow 画图标位图，全程只用抽象侧的操作，不含一行平台代码：
 
-    void drawRect(Point p1, Point p2) {
-        WindowImp wi = imp;
-        wi.deviceRect(Math.min(p1.x, p2.x), Math.min(p1.y, p2.y),
-                      Math.max(p1.x, p2.x), Math.max(p1.y, p2.y));  // 角点次序归一后转发
+```cpp
+class IconWindow : public Window {
+public:
+    virtual void DrawContents();
+private:
+    Bitmap* _bitmap;
+};
+
+void IconWindow::DrawContents () {
+    WindowImp* imp = GetWindowImp();
+    if (imp != 0) {
+        imp->DeviceBitmap(_bitmap);
     }
 }
 ```
 
-窗口语义的扩展落在 Window 子类——IconWindow 画图标边框，全程只用抽象侧的操作，不含一行平台代码：
-
-```java
-class IconWindow extends Window {
-    private final String iconName = "close-icon";
-
-    void drawContents() {
-        drawText(iconName, 0, 0);                  // 复用抽象侧的高层操作
-        drawRect(new Point(0, 0), new Point(16, 16));  // 边框：同样只走抽象侧
-    }
-}
-```
-
-两个维度从此独立扩展：新增平台 = 新增一个 WindowImp；新增窗口种类 = 新增一个 Window 子类。2 个平台 × 3 种窗口只需要 2 + 3 个类，而不是 2 × 3 = 6 个。
+两个维度从此独立扩展：新增平台 = 新增一个 WindowImp 子类；新增窗口种类 = 新增一个 Window 子类。2 个平台 × 3 种窗口只需要 2 + 3 个类，而不是 2 × 3 = 6 个。原书补充：这个例子来自 ET++，其中 WindowImp 称为 WindowPort（有 XWindowPort、SunWindowPort 等子类），并且 WindowPort 保留一个指回 Window 的指针，用来向抽象侧通知输入事件、窗口调整大小等——Bridge 的双向变体。
 
 ### 现代对应
 
@@ -367,12 +434,12 @@ JDBC：`Connection/Statement`（抽象侧）与各数据库 Driver（实现侧�
 
 ### Motivation
 
-图形编辑器里图元（直线、多边形、文本）与图组（Picture，本身可再嵌套图组）应有一致的操作（draw、resize、reorder）。解法：定义 `Graphic` 抽象，`Picture` 实现 Graphic 并**持有 Graphic 子节点列表**，把请求转发（forward）给所有孩子——递归组合出任意深度。
+图形编辑器里图元（直线、多边形、文本）与图组（Picture，本身可再嵌套图组）应有一致的操作（draw、resize、reorder）。解法：定义 `Graphic` 抽象，`Picture` 实现 Graphic 并**持有 Graphic 子部件列表**，把请求转发（forward）给所有子部件——递归组合出任意深度。
 
 ### Applicability
 
 * 想表示对象的「部分—整体」层次结构
-* 希望客户忽略组合对象与单个对象的差别，统一使用层次中的所有对象
+* 希望客户忽略组合对象与单个对象的差别——拿到手都用同样的方式调用，无须关心面前是 Leaf 还是 Composite
 
 ### Structure
 
@@ -398,114 +465,171 @@ classDiagram
     class Client
     Component <|-- Leaf
     Component <|-- Composite
-    Composite o-- Component : 递归持有子节点
-    Client --> Component : 统一对待叶与容器
+    Composite o-- Component : 递归持有子部件
+    Client --> Component : 不区分 Leaf 与 Composite
 ```
 
 ### Participants
 
-* **Component**：为 Leaf 与 Composite 声明公共接口；可为管理子节点等操作声明默认行为
-* **Leaf**：叶子对象，无孩子
-* **Composite**：容器，存储子 Component，实现与孩子相关的操作
+* **Component**：为 Leaf 与 Composite 声明公共接口；可为管理子部件等操作声明默认行为
+* **Leaf**：没有子部件（如 FloppyDisk）
+* **Composite**：存储子 Component，实现与子部件相关的操作
 * **Client**：通过 Component 接口统一操作
 
 ### Collaborations
 
-客户请求到达 Composite 时，Composite 把请求转发给它的子节点并可能附加前后处理；递归到 Leaf 为止。
+客户请求到达 Composite 时，Composite 把请求转发给它的子部件并可能附加前后处理；递归到 Leaf 为止。
 
 ### Consequences
 
 * **定义了包含基本对象与组合对象的类层次**：基本对象可以组合成复合对象，复合对象又可以再组合——递归嵌套
-* **简化客户代码**：客户统一面向 Component，无需区分叶与容器
+* **简化客户代码**：客户统一面向 Component，无需区分 Leaf 与 Composite
 * **易于增加新组件类型**：新 Leaf/Composite 无需改动现有代码
-* **使设计过于一般化**：很难"限制"组合的成分类型（无法在编译期保证某容器只含某类叶子），需要运行期检查
+* **使设计过于一般化**：很难"限制"组合的成分类型（无法在编译期保证某 Composite 只含某类 Leaf），需要运行期检查
 
 ### Implementation（关键权衡：透明性 vs 安全性）
 
-* **在哪声明孩子管理操作（add/remove/getChild）**——本模式最经典的权衡：
+* **在哪声明子部件管理操作（add/remove/getChild）**——本模式最经典的权衡：
   * 放在 **Component**：对客户**透明**（统一接口），但对 Leaf 来说不安全（空实现或抛异常）
-  * 只放在 **Composite**：**安全**（类型保证），但客户必须区分对待、丧失透明性
+  * 只放在 **Composite**：**安全**（类型保证），但客户必须先判断类型再调用、丧失透明性
   * 书中倾向透明性（牺牲安全），这是设计权衡而非定论
-* **显式父指针**：子节点持父引用便于 `Parent()` 上溯；变更时须维护一致性
-* **共享组件**：孩子常被多方共享，配合 **Flyweight**；父指针与共享冲突（谁的父亲？）
-* **最大化 Component 接口 vs 单一职责**：接口塞入过多子类操作会污染叶子；可用"缺省失败（报错）"的折中
-* **孩子顺序**：需要有序遍历时让孩子列表维护顺序；可配合 Iterator 遍历
-* **谁删除孩子**：通常 Composite 删除孩子时递归析构未共享的子树（语言 GC 则无此忧）
+* **显式父指针**：子部件持父引用便于 `Parent()` 上溯；变更时须维护一致性
+* **共享组件**：子部件常被多方共享，配合 **Flyweight**；父指针与共享冲突（它属于哪个父部件？）
+* **最大化 Component 接口 vs 单一职责**：接口塞入过多子类操作会污染 Leaf；可用"缺省失败（报错）"的折中
+* **子部件的顺序**：需要有序遍历时让子部件列表维护顺序；可配合 Iterator 遍历
+* **谁删除子部件**：通常 Composite 删除子部件时递归析构未共享的子树（语言 GC 则无此忧）
 
-### Sample Code（Equipment，Java 摘编）
+### Sample Code（原书 Equipment 示例，C++）
 
-原书用一套"设备"层次示范：软驱、总线是叶（Leaf），机箱（Chassis）是容器（Composite），容器可以再套容器。先看公共基类——为所有图元声明统一接口，孩子管理操作也放在这里（透明性优先的折中，叶子调用会失败或空操作）：
+原书用一套"设备"层次示范：FloppyDisk 与 Bus 直接继承 Equipment（Leaf 角色），Chassis 继承 CompositeEquipment（Composite 角色），Composite 可以再嵌套 Composite。Watt 与 Currency 只是两个 int 别名：
 
-```java
-abstract class Equipment {
-    private final String name;
-    private final List<Equipment> parts = new ArrayList<>();
-
-    protected Equipment(String name) { this.name = name; }
-    String name() { return name; }
-
-    long power() { return 0; }                     // Watt（瓦），原书自定义类型，此处以 long 代
-    long netPrice() { return 0; }                  // Currency（货币），同上
-    long discountPrice() { return 0; }
-
-    void add(Equipment e) { parts.add(e); }
-    void remove(Equipment e) { parts.remove(e); }
-    Iterator<Equipment> iterator() { return parts.iterator(); }   // 原书为 CreateIterator
-}
+```cpp
+typedef int Watt;
+typedef int Currency;
 ```
 
-叶子和容器的差别只在这些操作的**实现**上。软驱只报自己的价：
+公共基类为所有设备声明统一接口——**子部件管理操作也声明在这里**（透明性优先的折中，Leaf 侧实现会失败或空操作）：
 
-```java
-class FloppyDisk extends Equipment {
-    FloppyDisk() { super("Floppy Disk"); }
-    long power() { return 30; }                    // 30 瓦
-    long netPrice() { return 70; }
-    long discountPrice() { return 35; }            // 折后半价
-}
-class Bus extends Equipment {
-    Bus() { super("Bus"); }
-    long power() { return 20; }
-    long netPrice() { return 10; }
-}
+```cpp
+class Equipment {
+public:
+    virtual ~Equipment();
+
+    const char* Name() { return _name; }
+
+    virtual Watt Power();
+    virtual Currency NetPrice();
+    virtual Currency DiscountPrice();
+
+    virtual void Add(Equipment*);
+    virtual void Remove(Equipment*);
+    virtual Iterator<Equipment*>* CreateIterator();
+
+protected:
+    Equipment(const char*);
+
+private:
+    const char* _name;
+};
 ```
 
-容器的实现则是遍历孩子、逐个累加——请求沿树递归下传：
+Leaf 与 Composite 的差别只在这些操作的**实现**上。FloppyDisk、Bus 直接继承 Equipment，只报告自己的量：
 
-```java
-class Chassis extends Equipment {                  // 容器可以嵌套容器
-    Chassis() { super("Chassis"); }
+```cpp
+class FloppyDisk : public Equipment {
+public:
+    FloppyDisk(const char*);
+    virtual ~FloppyDisk();
 
-    long power() {
-        long total = 0;
-        for (Iterator<Equipment> it = iterator(); it.hasNext(); ) {
-            total += it.next().power();            // 转发给孩子，递归到叶为止
-        }
-        return total;
+    virtual Watt Power();
+    virtual Currency NetPrice();
+    virtual Currency DiscountPrice();
+};
+
+class Bus : public Equipment {
+public:
+    Bus(const char*);
+    virtual ~Bus();
+
+    virtual Watt Power();
+    virtual Currency NetPrice();
+    virtual Currency DiscountPrice();
+};
+```
+
+CompositeEquipment 同样继承 Equipment，但持有子部件列表并重定义管理操作；Chassis 是它的子类——Composite 嵌套 Composite 就从这里来：
+
+```cpp
+class CompositeEquipment : public Equipment {
+public:
+    virtual ~CompositeEquipment();
+
+    virtual Watt Power();
+    virtual Currency NetPrice();
+    virtual Currency DiscountPrice();
+
+    virtual void Add(Equipment*);
+    virtual void Remove(Equipment*);
+    virtual Iterator<Equipment*>* CreateIterator();
+
+protected:
+    CompositeEquipment(const char*);
+
+private:
+    List<Equipment*> _equipment;
+};
+
+class Chassis : public CompositeEquipment {
+public:
+    Chassis(const char*);
+    virtual ~Chassis();
+
+    virtual Watt Power();
+    virtual Currency NetPrice();
+    virtual Currency DiscountPrice();
+};
+```
+
+CompositeEquipment::NetPrice 用迭代器累加所有子部件的价格——请求转发给子部件，递归到 Leaf 为止：
+
+```cpp
+Currency CompositeEquipment::NetPrice () {
+    Iterator<Equipment*>* i = CreateIterator();
+    Currency total = 0;
+
+    for (i->First(); !i->IsDone(); i->Next()) {
+        total += i->CurrentItem()->NetPrice();
     }
-    long netPrice() {                              // netPrice / discountPrice 同法累加
-        long total = 0;
-        for (Iterator<Equipment> it = iterator(); it.hasNext(); ) {
-            total += it.next().netPrice();
-        }
-        return total;
-    }
-    long discountPrice() { /* 同法，略 */ return 0; }
+    delete i;
+    return total;
 }
 ```
 
-客户对叶与容器一视同仁——定价时不需要知道里面装了什么、套了几层：
+Add/Remove/CreateIterator 则是对子部件列表的封装：
 
-```java
-Chassis pc = new Chassis();
-pc.add(new FloppyDisk());
-pc.add(new Bus());
-Chassis inner = new Chassis();                     // 容器套容器
-inner.add(new Bus());
-pc.add(inner);
+```cpp
+void CompositeEquipment::Add (Equipment* anEquipment) {
+    _equipment.Append(anEquipment);
+}
 
-pc.netPrice();                                     // 70 + 10 + 10，客户端只见 Equipment
-pc.power();                                        // 30 + 20 + 20
+void CompositeEquipment::Remove (Equipment* anEquipment) {
+    _equipment.Remove(anEquipment);
+}
+
+Iterator<Equipment*>* CompositeEquipment::CreateIterator () {
+    return new ListIterator<Equipment*>(_equipment);
+}
+```
+
+客户对 Leaf 与 Composite 一视同仁——组装与计价不需要知道里面装了什么、套了几层：
+
+```cpp
+Chassis chassis("PC chassis");
+chassis.Add(new FloppyDisk("3.5in Floppy"));
+chassis.Add(new Bus("ISA Bus"));
+// etc.
+
+Currency total = chassis.NetPrice();
 ```
 
 ### 现代对应
@@ -514,7 +638,7 @@ pc.power();                                        // 30 + 20 + 20
 
 ### Related Patterns
 
-**Decorator** 常与 Composite 一起用（同为递归组合，但 Decorator 只包一个孩子且加职责）；叶节点可用 **Flyweight** 共享；遍历用 **Iterator**；对整棵树分发操作用 **Visitor**；父—子通知可用 **Observer**；父链请求转发即 **Chain of Responsibility**。
+**Decorator** 常与 Composite 一起用（同为递归组合，但 Decorator 只包一个子部件且加职责）；Leaf 可用 **Flyweight** 共享；遍历用 **Iterator**；对整棵树分发操作用 **Visitor**；父—子通知可用 **Observer**；父链请求转发即 **Chain of Responsibility**。
 
 ## Decorator（别名 Wrapper）
 
@@ -559,12 +683,12 @@ classDiagram
     Component <|.. Decorator
     Decorator <|-- ConcreteDecoratorA
     Decorator <|-- ConcreteDecoratorB
-    Decorator o-- Component : 被装饰者（可再是 Decorator）
+    Decorator o-- Component : 内层 Component（可再是 Decorator）
 ```
 
 ### Participants
 
-* **Component**：声明接口，Decorator 与被装饰者共同实现它
+* **Component**：声明接口，Decorator 与内层 Component 共同实现它
 * **ConcreteComponent**：被装饰的原始对象
 * **Decorator**：维持对 Component 的引用，并实现 Component 接口（默认转发）
 * **ConcreteDecorator**：向组件添加职责
@@ -586,69 +710,101 @@ Decorator 在转发请求给内嵌组件**前后**附加自己的行为；多重
 * **保持 Component 类轻量**：不要把数据存进 Component（每个装饰层都要包一遍）；Component 只定义接口，数据放 ConcreteComponent
 * 装饰策略只有一层（如仅"画边框"）时 Decorator 也可只提供简化形式的子类
 
-### Sample Code（VisualComponent，Java 摘编）
+### Sample Code（原书 VisualComponent 示例，C++）
 
-先看被装饰的组件层次。VisualComponent 是组件的公共接口，TextView 是最朴素的实现：
+先看被装饰的组件层次——VisualComponent 是组件的公共接口：
 
-```java
-abstract class VisualComponent {
-    void draw() { }
-    void resize() { }
+```cpp
+class VisualComponent {
+public:
+    VisualComponent();
+
+    virtual void Draw();
+    virtual void Resize();
+
+    // ...
+};
+```
+
+Decorator 基类是关键一笔：它与组件实现**同一接口**，并持有一个组件：
+
+```cpp
+class Decorator : public VisualComponent {
+public:
+    Decorator(VisualComponent*);
+
+    virtual void Draw();
+    virtual void Resize();
+
+    // ...
+
+private:
+    VisualComponent* _component;
+};
+```
+
+Decorator 的操作除转发外什么都不做：
+
+```cpp
+void Decorator::Draw () {
+    _component->Draw();
 }
 
-class TextView extends VisualComponent {            // ConcreteComponent：被装饰的原件
-    void draw() { System.out.print("text"); }
+void Decorator::Resize () {
+    _component->Resize();
 }
 ```
 
-装饰器基类 VisualDecorator（原书类名就叫 Decorator，此处改名以免与模式名混淆）是关键一笔：它与组件实现**同一接口**，并持有一个组件——除转发外什么都不做：
+具体 Decorator 在转发前后附加职责。BorderDecorator 画边框——先让 Decorator 转发给内层组件，再画自己宽度为 _width 的边框：
 
-```java
-abstract class VisualDecorator extends VisualComponent {
-    private final VisualComponent component;        // 被装饰者（可再是一个装饰器）
+```cpp
+class BorderDecorator : public Decorator {
+public:
+    BorderDecorator(VisualComponent*, int borderWidth);
 
-    protected VisualDecorator(VisualComponent c) { this.component = c; }
-    @Override void draw() { component.draw(); }     // 默认行为：原样转发
-    @Override void resize() { component.resize(); }
+    virtual void Draw();
+
+private:
+    void DrawBorder(int);
+
+private:
+    int _width;
+};
+
+void BorderDecorator::Draw () {
+    Decorator::Draw();
+    DrawBorder(_width);
 }
 ```
 
-具体装饰器在转发前后附加职责。BorderDecorator 画边框，ScrollDecorator 附加滚动条（并拥有自己的滚动状态）：
+ScrollDecorator 附加滚动条（原书只给出声明，实现方式与 BorderDecorator 同理）：
 
-```java
-class BorderDecorator extends VisualDecorator {
-    private final int width;
-    BorderDecorator(VisualComponent c, int width) { super(c); this.width = width; }
-    @Override void draw() {
-        super.draw();                               // 转发给内层组件
-        drawBorder(width);                          // 附加职责：画宽度为 width 的边框
-    }
-    private void drawBorder(int w) { System.out.print("[边框" + w + "]"); }
-}
+```cpp
+class TextView : public VisualComponent {
+    // ...
+};
 
-class ScrollDecorator extends VisualDecorator {
-    private final int scrollableWidth;              // 装饰器自己的状态
-    ScrollDecorator(VisualComponent c, int w) { super(c); this.scrollableWidth = w; }
-    @Override void draw() {
-        super.draw();
-        drawScrollBar();                            // 附加职责：滚动条
-    }
-    void scrollTo(int position) { /* 滚动逻辑，独立于被装饰组件 */ }
-    private void drawScrollBar() { System.out.print("(滚动条)"); }
-}
+class ScrollDecorator : public Decorator {
+public:
+    ScrollDecorator(VisualComponent*);
+    // ...
+};
 ```
 
 客户按需层层包装——要"带滚动条再加边框"的文本视图，不必派生 BorderScrollTextView，包两层即可；窗口始终只认 VisualComponent：
 
-```java
-Window window = new Window();                       // 界面容器，示意
-VisualComponent content = new TextView();
-content = new ScrollDecorator(content);             // 先包滚动
-content = new BorderDecorator(content, 1);          // 再包边框——包装顺序即职责层次
-window.setContents(content);
+```cpp
+Window* window = new Window;
+TextView* textView = new TextView;
+
+window->SetContents(
+    new BorderDecorator(
+        new ScrollDecorator(textView), 1
+    )
+);
 ```
 
-装饰器自己也是组件，所以可以继续被包装；职责在运行期叠加或拆除，这是静态继承给不了的灵活性。
+Decorator 自己也是组件，所以可以继续被包装；职责在运行期叠加或拆除，这是静态继承给不了的灵活性。
 
 ### Known Uses / 现代对应
 
@@ -657,7 +813,7 @@ window.setContents(content);
 
 ### Related Patterns
 
-**Adapter** 结构相似但意图不同：Decorator 不改接口只加职责，Adapter 改接口；Decorator 是退化的 **Composite**（只有单孩子）；**Proxy** 结构也相似，但 Proxy 控制访问而非加职责；与 **Strategy** 的分工——**Decorator 改"外壳"（skin，对象外观上的职责），Strategy 改"内脏"（guts，对象内部的算法）**。
+**Adapter** 结构相似但意图不同：Decorator 不改接口只加职责，Adapter 改接口；Decorator 是退化的 **Composite**（只有单个子部件）；**Proxy** 结构也相似，但 Proxy 控制访问而非加职责；与 **Strategy** 的分工——**Decorator 改"外壳"（skin，对象外观上的职责），Strategy 改"内脏"（guts，对象内部的算法）**。
 
 ## Facade
 
@@ -667,7 +823,7 @@ window.setContents(content);
 
 ### Motivation
 
-编译器子系统包含 Scanner、Parser、ProgramNode、CodeGenerator 等众多类，彼此协作方式复杂。绝大多数客户只需要"编译一个源文件"。解法：定义 **Compiler** 门面类，提供 `compile(source, target)` 一个高层方法，内部编排子系统各对象——客户不必与子系统内部类打交道。
+编译器子系统包含 Scanner、Parser、ProgramNode、CodeGenerator 等众多类，彼此协作方式复杂。绝大多数客户只需要"编译一个源文件"。解法：定义一个 Facade 类 **Compiler**，提供 `compile(source, target)` 一个高层方法，内部编排子系统各对象——客户不必与子系统内部类打交道。
 
 ### Applicability
 
@@ -693,7 +849,7 @@ classDiagram
         +step()
     }
     class Client
-    Client --> Facade : 只面对门面
+    Client --> Facade : 只与 Facade 交互
     Facade --> SubsystemA : 编排
     Facade --> SubsystemB
     Facade --> SubsystemC
@@ -717,51 +873,85 @@ classDiagram
 * **抽象 Facade 类**：需要多种子系统实现时，可把 Facade 做成抽象类 + 每种子系统一个具体 Facade 子类（另一种做法是直接换不同的 Facade 对象/配置，组合优先）
 * **子系统私有化**：语言允许时（package/C++ namespace），把子系统类对 Facade 之外的世界隐藏
 
-### Sample Code（编译器子系统，Java 摘编）
+### Sample Code（原书编译器子系统示例，C++）
 
-子系统是一组相互协作的类——Scanner 逐 token 扫描、Parser 配合 ProgramNodeBuilder 构建语法树、ProgramNode 遍历树驱动 CodeGenerator 生成代码。任何一步都依赖前一步的产物，客户若直接驱动它们，必须熟知整套协作次序：
+子系统是一组相互协作的类——Scanner 从输入流逐 token 扫描，Parser 配合 ProgramNodeBuilder 构建语法树，ProgramNode 的层次（语法树节点）通过 Traverse 遍历驱动代码生成：
 
-```java
+```cpp
 class Scanner {
-    Scanner(InputStream source) { }
-    Token scan() { return null; }
-}
+public:
+    Scanner(istream&);
+    virtual ~Scanner();
+
+    virtual Token& Scan();
+
+private:
+    istream& _inputStream;
+};
+
+
+
 class Parser {
-    private final ProgramNodeBuilder builder;
-    Parser(ProgramNodeBuilder builder) { this.builder = builder; }
-    void parse(Scanner scanner) { /* 逐 token 构建语法树 */ }
-}
+public:
+    Parser();
+    virtual ~Parser();
+
+    void Parse(Scanner&, ProgramNodeBuilder&);
+};
+
+
+
 class ProgramNodeBuilder {
-    ProgramNode getProgramNode() { return new ProgramNode(); }
-}
+public:
+    ProgramNodeBuilder();
+
+    virtual ProgramNode* NewVariable(const char* variableName) const;
+    virtual ProgramNode* NewAssignment(ProgramNode* variable,
+                                       ProgramNode* expression) const;
+    virtual ProgramNode* NewReturnStatement(ProgramNode* value) const;
+    virtual ProgramNode* NewCondition(ProgramNode* condition,
+                                      ProgramNode* truePart,
+                                      ProgramNode* falsePart) const;
+    // ...
+
+    ProgramNode* GetRootNode();
+
+private:
+    ProgramNode* _node;
+};
+
+
+
 class ProgramNode {
-    void traverse(CodeGenerator g) { /* 遍历语法树，驱动代码生成 */ }
-}
-abstract class CodeGenerator { abstract void generate(); }
-class RISCCodeGenerator extends CodeGenerator {
-    RISCCodeGenerator(BytecodeStream target) { }
-    void generate() { }
-}
-class BytecodeStream { }
+public:
+    // ...
+
+    // traverses this node's children
+    virtual void Traverse(CodeGenerator&);
+};
 ```
 
-Facade 把这套编排收进一个高层方法。客户只调 `compile()`，Scanner/Parser/Builder/Generator 的协作次序全部被封在门面内：
+Facade 把这套编排收进一个高层方法。客户只调 `Compile(istream&, BytecodeStream&)`——Scanner、Builder、Parser、生成器的协作次序全部被封装在 Facade 内：
 
-```java
+```cpp
 class Compiler {
-    void compile(InputStream source, BytecodeStream target) {
-        Scanner scanner = new Scanner(source);
-        ProgramNodeBuilder builder = new ProgramNodeBuilder();
-        Parser parser = new Parser(builder);
+public:
+    Compiler();
 
-        parser.parse(scanner);                        // 协作 1：解析建树
+    virtual void Compile(istream&, BytecodeStream&);
+};
 
-        RISCCodeGenerator generator = new RISCCodeGenerator(target);
-        builder.getProgramNode().traverse(generator); // 协作 2：遍历生成代码
-    }
+void Compiler::Compile (istream& input, BytecodeStream& output) {
+    Scanner scanner(input);
+    Builder builder;
+    Parser parser;
+
+    parser.Parse(scanner, builder);
+
+    RISCCodeGenerator generator(output);
+    ParseTree* parseTree = builder.GetParseTree();
+    parseTree->Traverse(generator);
 }
-
-new Compiler().compile(new FileInputStream("a.c"), new BytecodeStream());
 ```
 
 客户要打交道的对象从"六个类一套协作次序"变成"一个类一个方法"；子系统内部的重构（换 parser、换生成器）不再波及客户。
@@ -772,7 +962,7 @@ Spring 的 `JdbcTemplate`（把 JDBC 的连接/语句/异常处理收进一个�
 
 ### Related Patterns
 
-与 **Mediator** 的对比——Facade 是**单向**抽象（客户→子系统，子系统不知 Facade），Mediator 是**多向**协调（同事对象知道 Mediator 并双向互动）；**Abstract Factory** 可与 Facade 搭配以配置子系统；Facade 常实现为 **Singleton**。
+与 **Mediator** 的对比——Facade 是**单向**抽象（客户→子系统，子系统不知 Facade），Mediator 是**多向**协调（Colleague 知道 Mediator 并双向互动）；**Abstract Factory** 可与 Facade 搭配以配置子系统；Facade 常实现为 **Singleton**。
 
 ## Flyweight
 
@@ -823,7 +1013,7 @@ classDiagram
 
 * **Flyweight**：声明接口，通过它 Flyweight 可接收外蕴状态
 * **ConcreteFlyweight**：实现接口，存储内蕴状态；必须可共享
-* **UnsharedConcreteFlyweight**：不被共享的 Flyweight（常作为共享叶节点的容器）
+* **UnsharedConcreteFlyweight**：不被共享的 Flyweight（常作为持有共享 Leaf 的 Composite 节点）
 * **FlyweightFactory**：创建并管理 Flyweight，确保合理共享
 * **Client**：持有/引用 Flyweight，计算/存储外蕴状态并传入调用
 
@@ -833,81 +1023,129 @@ classDiagram
 
 ### Implementation
 
-* **移除外蕴状态**：模式成败的关键在于多少状态能外蕴化——设计时常把"坐标、样式、容器关系"外移
-* **管理共享对象**：Factory 内维护 `key → flyweight` 表；享元不引用 Factory（避免循环）；不再使用的享元的回收（引用计数/GC，或干脆不回收——数量有限）
-* 共享的范围：常按"字符/图元类别"共享，容器（行、列）不共享（UnsharedConcreteFlyweight），构成 Composite
+* **移除外蕴状态**：模式成败的关键在于多少状态能外蕴化——设计时常把"坐标、样式、所属组合的引用"外移
+* **管理共享对象**：Factory 内维护 `key → flyweight` 表；Flyweight 不引用 Factory（避免循环）；不再使用的 Flyweight 的回收（引用计数/GC，或干脆不回收——数量有限）
+* 共享的范围：常按"字符/图元类别"共享，组合节点（行、列）不共享（UnsharedConcreteFlyweight），构成 Composite
 
-### Sample Code（字符 Glyph 的共享，Java 摘编）
+### Sample Code（原书字符 Glyph 示例，C++）
 
-享元的关键先体现在接口的形状上：操作多带一个 **GlyphContext** 参数——外蕴状态（当前位置、当前字体）不存进享元，调用时从外部传入：
+Flyweight 的关键先体现在接口的形状上：Glyph 的操作多带一个 **GlyphContext** 参数——外蕴状态（位置、字体等）不存进 Flyweight，调用时从外部传入：
 
-```java
-abstract class Glyph {
-    abstract void draw(Window w, GlyphContext ctx);
-    void insert(Glyph g, GlyphContext ctx) { }
-}
+```cpp
+class Glyph {
+public:
+    virtual ~Glyph();
+
+    virtual void Draw(Window*, GlyphContext&);
+
+    virtual void SetFont(Font*, GlyphContext&);
+    virtual Font* GetFont(GlyphContext&);
+
+    virtual void First(GlyphContext&);
+    virtual void Next(GlyphContext&);
+    virtual bool IsDone(GlyphContext&);
+    virtual Glyph* Current(GlyphContext&);
+
+    virtual void Insert(Glyph*, GlyphContext&);
+    virtual void Remove(GlyphContext&);
+
+protected:
+    Glyph();
+};
 ```
 
 ConcreteFlyweight 只保存内蕴状态。字符 Glyph 除字符编码外什么都不存，因此同一个实例可以代表文档中任意位置的这个字符：
 
-```java
-class CharacterGlyph extends Glyph {
-    private final char code;                        // intrinsic：与位置无关，可共享
+```cpp
+class Character : public Glyph {
+public:
+    Character(char);
 
-    CharacterGlyph(char code) { this.code = code; }
-    @Override void draw(Window w, GlyphContext ctx) {
-        Font font = ctx.getFont();                  // extrinsic：画的时候向 ctx 要
-        int x = ctx.getX(), y = ctx.getY();
-        System.out.println("draw '" + code + "' @" + x + "," + y + " font=" + font);
-    }
-}
+    virtual void Draw(Window*, GlyphContext&);
+
+private:
+    char _charcode;
+};
 ```
 
-行、列不共享（UnsharedConcreteFlyweight）——它们是共享叶子的容器，draw 时负责推进 ctx 的游标，让下一个字符拿到正确的外蕴状态：
+GlyphContext 是外蕴状态的持有者——`_index` 跟踪文本流中的当前位置，`_fonts`（一棵 BTree）记录该位置上生效的字体。BTree 的结构使得字体的设置可以覆盖一段区间（span），而不必为每个字符存一份字体：
 
-```java
-class Row extends Glyph {
-    private final List<Glyph> children = new ArrayList<>();
-    @Override void insert(Glyph g, GlyphContext ctx) { children.add(g); }
-    @Override void draw(Window w, GlyphContext ctx) {
-        for (Glyph child : children) {
-            child.draw(w, ctx);
-            ctx.next(1);                            // 游标前移：外蕴状态由容器推进
-        }
-    }
-}
-```
-
-GlyphFactory 负责共享：按字符缓存实例，同一字符永远只建一次：
-
-```java
-class GlyphFactory {
-    private final CharacterGlyph[] cache = new CharacterGlyph[128];
-    CharacterGlyph characterGlyph(char c) {
-        if (cache[c] == null) cache[c] = new CharacterGlyph(c);
-        return cache[c];                            // 命中即共享
-    }
-    Row row() { return new Row(); }                 // 不共享的类型每次新建
-}
-```
-
-最后是客户侧的 GlyphContext——外蕴状态的持有者：
-
-```java
+```cpp
 class GlyphContext {
-    private int x = 0, y = 0;
-    private Font font = new Font("Serif");
-    Font getFont() { return font; }
-    int getX() { return x; }  int getY() { return y; }
-    void next(int step) { x += step * 8; }
+public:
+    GlyphContext();
+    virtual ~GlyphContext();
+
+    virtual void Next(int step = 1);
+    virtual void Insert(int quantity = 1);
+
+    virtual Font* GetFont();
+    virtual void SetFont(Font*, int span = 1);
+
+private:
+    int _index;
+    BTree* _fonts;
+};
+```
+
+```cpp
+GlyphContext::GlyphContext () {
+    _index = 1;
+    _fonts = new BTree;
 }
 
-GlyphFactory factory = new GlyphFactory();
-Row row = factory.row();
-row.insert(factory.characterGlyph('g'), null);     // 两个 'o' 命中同一个实例：
-row.insert(factory.characterGlyph('o'), null);     // 文档里每个 'o' 都是同一个
-row.insert(factory.characterGlyph('o'), null);     // CharacterGlyph 对象
-row.draw(new Window(), new GlyphContext());        // Window 为示意类型
+GlyphContext::~GlyphContext () {
+    delete _fonts;
+}
+
+void GlyphContext::Next (int step) {
+    _index = _index + step;
+}
+
+void GlyphContext::Insert (int quantity) {
+    _fonts->Insert(_index, quantity);
+}
+```
+
+GlyphFactory 负责共享：`_character[128]` 按字符编码缓存实例，同一字符永远只建一次；Row、Column 则每次新建——它们是不共享的（unshared），作为持有共享字符的组合节点：
+
+```cpp
+const int NCHARCODES = 128;
+
+class GlyphFactory {
+public:
+    GlyphFactory();
+    virtual ~GlyphFactory();
+
+    virtual Character* CreateCharacter(char);
+    virtual Row* CreateRow();
+    virtual Column* CreateColumn();
+
+private:
+    Character* _character[NCHARCODES];
+};
+
+GlyphFactory::GlyphFactory () {
+    for (int i = 0; i < NCHARCODES; i++) {
+        _character[i] = 0;
+    }
+}
+
+Character* GlyphFactory::CreateCharacter (char c) {
+    if (!_character[c]) {
+        _character[c] = new Character(c);
+    }
+
+    return _character[c];
+}
+
+Row* GlyphFactory::CreateRow () {
+    return new Row;
+}
+
+Column* GlyphFactory::CreateColumn () {
+    return new Column;
+}
 ```
 
 ### Known Uses / 现代对应
@@ -917,7 +1155,7 @@ row.draw(new Window(), new GlyphContext());        // Window 为示意类型
 
 ### Related Patterns
 
-Flyweight 的共享叶 + 不共享容器 = **Composite**；**State** 与 **Strategy** 的对象通常无内蕴状态、天然适合作为 Flyweight 共享。
+Flyweight 的共享 Leaf + 不共享的组合节点 = **Composite**；**State** 与 **Strategy** 的对象通常无内蕴状态、天然适合作为 Flyweight 共享。
 
 ## Proxy（别名 Surrogate）
 
@@ -984,70 +1222,120 @@ classDiagram
 * **Copy-on-write**：Proxy 先与原对象共享，写操作时才真正复制——用 Proxy 实现"惰性复制"，配合引用计数管理
 * Proxy 与 RealSubject 的创建时机解耦：真实对象在代理首次需要时才创建
 
-### Sample Code（ImageProxy：Virtual Proxy，Java 摘编）
+### Sample Code（原书 ImageProxy：Virtual Proxy，C++）
 
-先看 Subject 与 RealSubject。Graphic 是图形的公共接口，Image 构造即读入整幅图像：
+先看 Subject 与 RealSubject。Graphic 是图形的公共接口：
 
-```java
-interface Graphic {
-    void draw(Position pos);
-    BoundingBox extent();
-    void store();
-}
+```cpp
+class Graphic {
+public:
+    virtual ~Graphic();
 
-class Image implements Graphic {                   // RealSubject：加载开销大
-    private final String fileName;
-    private byte[] pixels;                          // 体积大
+    virtual void Draw(const Point& at) = 0;
+    virtual void HandleMouse(Event& event) = 0;
+    virtual const Point& GetExtent() = 0;
 
-    Image(String fileName) {
-        this.fileName = fileName;
-        this.pixels = readFromFile(fileName);       // 构造即加载——昂贵
-    }
-    public void draw(Position pos) { System.out.println("绘制图像 " + fileName); }
-    public BoundingBox extent() { return readExtent(pixels); }
-    public void store() { }
-    private static byte[] readFromFile(String f) { return new byte[0]; }
-    private static BoundingBox readExtent(byte[] p) { return new BoundingBox(); }
+    virtual void Load(istream& from) = 0;
+    virtual void Save(ostream& to) = 0;
+
+protected:
+    Graphic();
+};
+```
+
+Image 从文件加载图像（构造开销大），并实现 Graphic 的全部接口。Proxy 与 Image 同接口，但构造函数只记下文件名——**不加载**：
+
+```cpp
+class ImageProxy : public Graphic {
+public:
+    ImageProxy(const char* imageFile);
+    virtual ~ImageProxy();
+
+    virtual void Draw(const Point& at);
+    virtual void HandleMouse(Event& event);
+
+    virtual const Point& GetExtent();
+
+    virtual void Load(istream& from);
+    virtual void Save(ostream& to);
+
+private:
+    Image* GetImage();
+
+private:
+    Image* _image;
+    Point _extent;
+    char* _fileName;
+};
+```
+
+```cpp
+ImageProxy::ImageProxy (const char* imageFile) {
+    _image = 0;
+    _extent = Point::Zero;
+    _fileName = strdup(imageFile);
 }
 ```
 
-Proxy 与 Image 同接口，但三个操作各有心思：`extent` 不加载也能答（从旁侧信息取尺寸），`draw` 才触发加载，`store` 只在真图已存在时转发：
+GetImage 是 Virtual Proxy 的核心——第一次真正用到时才创建真实对象，之后它就在场了：
 
-```java
-class ImageProxy implements Graphic {
-    private Graphic image;                          // 延迟到首次 draw 才创建
-    private final String fileName;
-    private BoundingBox extentCache;                // 代理自己的小状态
-
-    ImageProxy(String fileName) { this.fileName = fileName; }
-
-    public BoundingBox extent() {
-        if (image != null) extentCache = image.extent();        // 已加载：直接转发
-        else if (extentCache == null)
-            extentCache = readExtentFromSidecar(fileName);      // 未加载：取旁侧尺寸，不动真图
-        return extentCache;
+```cpp
+Image* ImageProxy::GetImage () {
+    if (_image == 0) {
+        _image = new Image(_fileName);
     }
+    return _image;
+}
+```
 
-    public void draw(Position pos) {
-        if (image == null) image = new Image(fileName);         // Virtual Proxy 的核心：按需加载
-        image.draw(pos);                                        // 之后与真图行为一致
+各操作把请求转发给真实对象；Draw 与 HandleMouse 都经由 GetImage，因此第一次调用即触发加载：
+
+```cpp
+void ImageProxy::Draw (const Point& at) {
+    return GetImage()->Draw(at);
+}
+
+void ImageProxy::HandleMouse (Event& event) {
+    GetImage()->HandleMouse(event);
+}
+```
+
+GetExtent 例外——尺寸取过一次后缓存在 `_extent` 里。注意：未加载时取尺寸同样要**通过 GetImage 加载真图**才能拿到，不是从别处旁取：
+
+```cpp
+const Point& ImageProxy::GetExtent () {
+    if (_extent == Point::Zero) {
+        _extent = GetImage()->GetExtent();
     }
+    return _extent;
+}
+```
 
-    public void store() {
-        if (image != null) image.store();          // 从未加载过的图，无需保存
-    }
+Save/Load 只序列化代理自己的 _extent 与 _fileName，不碰真图：
 
-    private static BoundingBox readExtentFromSidecar(String f) { return new BoundingBox(); }
+```cpp
+void ImageProxy::Save (ostream& to) {
+    to << _extent << _fileName;
+}
+
+void ImageProxy::Load (istream& from) {
+    from >> _extent >> _fileName;
 }
 ```
 
 客户侧：文档里放的是 Proxy。多数图像从不被查看，就从不付出加载代价：
 
-```java
-Graphic image1 = new ImageProxy("cover.png");
-Graphic image2 = new ImageProxy("figure-1.png");
-image1.extent();                    // 查尺寸：不触发加载
-image1.draw(new Position(0, 0));    // 真正要看了，此时才读文件
+```cpp
+class TextDocument {
+public:
+    TextDocument();
+
+    void Insert(Graphic*);
+    // ...
+};
+
+TextDocument* text = ...;
+text->Insert(new ImageProxy("anImageFileName"));
 ```
 
 ### 现代对应
@@ -1060,34 +1348,30 @@ image1.draw(new Position(0, 0));    // 真正要看了，此时才读文件
 
 ## 结构型模式的讨论（原书 4.8）
 
-结构型模式之间看起来很相似——尤其是参与者和协作，因为它们都依赖同一个很小的语言机制集合：class pattern 靠（多重）继承，object pattern 靠对象组合。但相似性掩盖了各自不同的意图。原书挑出三组最容易混淆的对比：
+你可能已经注意到结构型模式之间的相似性，尤其是它们的参与者和协作之间的相似。这可能是因为结构型模式都依赖同一个很小的语言机制集合来构造代码和对象：基于类的模式靠单继承和多重继承机制，对象模式靠对象组合机制。但这些相似性掩盖了这些模式的不同意图。本节对比这些结构型模式，帮助你了解它们各自的优点。
 
 ### Adapter 与 Bridge
 
-共同点：都给另一对象提供了一层**间接性**，都涉及把请求从自身以外的接口转发给这个对象，都有利于系统的灵活性。
+Adapter 和 Bridge 具有一些共同的特征：它们都给另一对象提供了一定程度的**间接性**，因而有利于系统的灵活性；它们都涉及把请求从自身以外的一个接口转发给这个对象。
 
-关键差别在**用途与使用时机**：
+两个模式的不同主要在于各自的**用途**。Adapter 主要是为了解决两个**已有接口**之间不匹配的问题——它不关心这些接口是怎样实现的，也不考虑它们各自可能会如何演化；这种方式不需要对两个独立设计的类中的任何一个进行重新设计，就能使它们协同工作，目的一般是避免代码重复。Bridge 则是对抽象接口与它的（可能是多个）实现部分进行桥接——虽然这一模式允许你修改实现它的类，但它始终为用户提供一个稳定的接口，并且在系统演化时能够适应新的实现。
 
-* **Adapter** 解决的是**两个已有接口之间不匹配**的问题——不关心接口怎样实现、未来如何演化，也不需要重新设计其中任何一个类就能让它们协同工作，目的通常是避免代码重复
-* **Bridge** 是**事先**把抽象接口与它的（可能多个）实现部分分离——允许修改实现它的类，但始终给用户提供稳定的接口，并在系统演化时容纳新的实现
+由于这些不同点，Adapter 和 Bridge 通常被用于软件生命周期的**不同阶段**。当你发现两个不兼容的类必须一起工作时，就有必要使用 Adapter，此时耦合是不可预见的；相反，Bridge 的使用者必须**事先**知道：一个抽象将有多个实现部分，并且抽象和实现两者是独立演化的。**Adapter 在类已经设计好之后实施，而 Bridge 在设计类之前实施。**这并不意味着 Adapter 不如 Bridge，只是它们针对了不同的问题。
 
-因此二者用于软件生命周期的不同阶段：**Adapter 在类已经设计好之后实施（事后），Bridge 在设计类之前实施（事前）**。Adapter 的使用者事先无法预见这种耦合；Bridge 的使用者必须预先知道"一个抽象将有多个实现、且二者独立演化"。这不意味着 Adapter 不如 Bridge——它们针对的是不同的问题。
-
-顺带辨析：Facade 看起来像"另一组对象的适配器"，但 **Facade 定义一个新接口，Adapter 复用原有接口**——适配器让两个已有接口协同工作，而不是发明新接口。
+你可能认为 Facade 是另外一组对象的适配器。但这种解释忽视了一个事实：**Facade 定义一个新的接口，而 Adapter 复用一个原有的接口**——记住，适配器使两个已有的接口协同工作，而不是定义一个全新的接口。
 
 ### Composite、Decorator 与 Proxy
 
-**Composite 与 Decorator** 的结构图几乎一样——都基于递归组合来组织数目可变的对象。但把 decorator 看成"退化的 composite"没有领会要点，相似仅止于递归组合：
+Composite 和 Decorator 具有类似的结构图，这说明它们都基于**递归组合**来组织数目可变的对象。这一共同点可能会使你认为 decorator 对象是一个退化的 composite，但这种观点没有领会 Decorator 模式的要点：相似仅止于递归组合，两个模式的目的不同。Decorator 旨在使你**不需要生成子类**即可给对象添加职责，这就避免了为静态实现所有功能组合而导致子类急剧增加；Composite 的目的则是构造类，使**多个相关的对象能够以统一的方式处理**——多个对象可以被当作一个对象来处理。它的重点不在于修饰，而在于**表示**。
 
-* **Decorator** 的目的是**不生成子类就给对象添加职责**——避免为静态实现所有功能组合而导致子类急剧增加
-* **Composite** 的目的是**构造类，使多个相关对象能以统一方式处理**——多个对象可当作一个对象；重点不在修饰，而在**表示**
+尽管两个模式的目的截然不同，它们却具有**互补性**，因此通常协同使用。同时使用这两种模式进行设计时，无须定义新的类，仅需要把一些对象组合在一起即可构建应用：系统中将有一个抽象类，它既有 composite 子类又有 decorator 子类，共用同一个接口。从 Decorator 模式的角度看，composite 是一个 ConcreteComponent；而从 Composite 模式的角度看，decorator 则是一个 Leaf。当然它们不一定要同时使用——正如所见，它们的目的有很大差别。
 
-目的不同却互补，所以二者常协同使用：无须定义新类，把对象插接在一起即可构建应用——同一个抽象类下既有 composite 子类又有 decorator 子类，共用一个接口。从 Decorator 的角度看 composite 是一个 ConcreteComponent；从 Composite 的角度看 decorator 则是一个 Leaf。
+另一种与 Decorator 结构相似的模式是 Proxy。两种模式都描述了怎样为对象提供一定程度上的间接引用：proxy 和 decorator 对象的实现部分都保留了指向另一个对象的引用，并向它发送请求；它们都为用户提供一致的接口。但它们同样具有不同的设计目的。
 
-**Proxy 与 Decorator** 都为对象提供一定程度的间接引用——都保留指向另一个对象的引用并向它转发请求，都给用户提供一致的接口。差别在：
+像 Decorator 一样，Proxy 构成一个对象并为用户提供一致的接口。但与 Decorator 不同的是，**Proxy 不能动态地添加或分离性质，它也不是为递归组合而设计的**。Proxy 的目的是：当直接访问一个实体不方便或不符合需求时，为这个实体提供一个替代者——例如实体在远程设备上、访问受到限制、或者实体是持久存储的。
 
-* **Proxy 不能动态地添加或分离性质，也不是为递归组合设计的**。它的目的是：当直接访问一个实体不方便或不符合需求时，为实体提供替代者（实体在远程设备上、访问受限制、实体是持久存储的）
-* 职责的分工不同：**Proxy 中实体定义关键功能，Proxy 提供（或拒绝）对它的访问；Decorator 中组件只提供部分功能，一个或多个 decorator 负责完成其余功能**
-* 开放性不同：Decorator 适用于编译期不能（至少不方便）确定对象全部功能的情况，这种开放性使递归组合成为 Decorator 必不可少的部分；Proxy 强调 Proxy 与实体之间**一种可以静态表达的关系**
+职责的分工也不一样：在 Proxy 模式中，**实体定义了关键功能，而 Proxy 提供（或拒绝）对它的访问**；在 Decorator 模式中，**组件仅提供了部分功能，一个或多个 decorator 负责完成其余的功能**。
 
-这些差异不意味着模式不能混用——可以想象 proxy-decorator 给 proxy 添加功能，或 decorator-proxy 修饰远程对象，只是这类混合可以拆分成若干有用的模式。
+Decorator 适用于编译时不能（至少不方便）确定对象全部功能的情况，这种开放性使递归组合成为 Decorator 中必不可少的部分；而在 Proxy 中则不是这样，因为 Proxy 强调的是一种**可以静态表达的关系**（Proxy 与它的实体之间的关系）。
+
+模式间的这些差异非常重要，因为它们分别针对面向对象设计过程中一些特定的、经常发生的问题。但这并不意味着这些模式不能结合使用——可以设想一个 proxy-decorator 用来给 proxy 添加功能，或是一个 decorator-proxy 用来修饰一个远程对象。尽管这种混合可能有用（原书坦言手边还没有现成的例子），但它们可以拆分成一些有用的模式。

@@ -17,8 +17,6 @@
 - **Code or configuration files**：装配逻辑用代码还是配置文件（通常是 XML）取决于部署复杂度——简单装配用代码更清晰，装配复杂到接近编程时 XML 会崩溃，应改用真正的语言；建议始终提供编程式接口，配置文件作为可选。
 - **结论**：Service Locator 与 Dependency Injection 的选择，不如「把服务的配置（configuration）与使用（use）分离」这一原则重要。
 
-> 理论的工程落地：Android/Java 世界最主流的 DI 框架见 [设计模式-Dagger2](设计模式-Dagger2.md)。
-
 In the Java community there's been a rush of lightweight containers that help to assemble components from different projects into a cohesive application. Underlying these containers is a common pattern to how they perform the wiring, a concept they refer under the very generic name of "Inversion of Control". In this article I dig into how this pattern works, under the more specific name of "Dependency Injection", and contrast it with the Service Locator alternative. The choice between them is less important than the principle of separating configuration from use.
 
 ***

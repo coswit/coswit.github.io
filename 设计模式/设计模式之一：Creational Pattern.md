@@ -4,8 +4,6 @@
 
 GoF 定义了 5 种 Creational Patterns：Abstract Factory、Builder、Factory Method、Prototype、Singleton。
 
-> 本文件以 Java 示例代码为主；按原书模板（Intent / Participants / Consequences / Implementation）整理的概念笔记见 [GoF/01-Creational-Patterns.md](GoF/01-Creational-Patterns.md)。
-
 ## Abstract Factory（抽象工厂模式，别名 Kit）
 
 > 提供一个创建一系列相关或相互依赖对象的接口，而无需指定它们具体的类。

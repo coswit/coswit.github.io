@@ -4,8 +4,6 @@ Behavioral Pattern 关注对象之间的职责分配与通信方式：算法如�
 
 GoF 定义了 11 种 Behavioral Patterns：Chain of Responsibility、Command、Interpreter、Iterator、Mediator、Memento、Observer、State、Strategy、Template Method、Visitor。
 
-> 本文件以 Java 示例代码为主；按原书模板（Intent / Participants / Consequences / Implementation）整理的概念笔记见 [GoF/03-Behavioral-Patterns.md](GoF/03-Behavioral-Patterns.md)。
-
 ## Chain of Responsibility（责任链模式）
 
 > 使多个对象都有机会处理请求，从而避免请求的发送者与接收者之间的耦合关系。把这些对象连成一条链，沿着链传递请求，直到有一个对象处理它为止。
@@ -336,7 +334,7 @@ public class Wizard {
 >
 > Define an object that encapsulates how a set of objects interact. Mediator promotes loose coupling by keeping objects from referring to each other explicitly, and it lets you vary their interaction independently.
 
-各同事（Colleague）对象之间不直接引用，统一通过 Mediator 协调交互，并由此改变程序的运行时行为。典型场景：机场调度塔台协调多架飞机、聊天室转发消息、MVC 中 Controller 协调 View 与 Model。
+各 Colleague 对象之间不直接引用，统一通过 Mediator 协调交互，并由此改变程序的运行时行为。典型场景：机场调度塔台协调多架飞机、聊天室转发消息、MVC 中 Controller 协调 View 与 Model。
 
 ## Memento（备忘录模式）
 

@@ -4,8 +4,6 @@ Structural Pattern 关注类与对象的组合：如何把类或对象组合成�
 
 GoF 定义了 7 种 Structural Patterns：Adapter、Bridge、Composite、Decorator、Facade、Flyweight、Proxy。
 
-> 本文件以 Java 示例代码为主；按原书模板（Intent / Participants / Consequences / Implementation）整理的概念笔记见 [GoF/02-Structural-Patterns.md](GoF/02-Structural-Patterns.md)。
-
 ## Adapter（适配器模式，别名 Wrapper）
 
 > 将一个类的接口转换成客户端期望的另一种接口，使原本由于接口不兼容而无法一起工作的类可以协同工作。
@@ -277,7 +275,7 @@ class SoulEatingEnchantment implements Enchantment {
 >
 > Compose objects into tree structures to represent part-whole hierarchies. Composite lets clients treat individual objects and compositions of objects uniformly.
 
-典型应用：文件系统中的文件与目录、GUI 中的容器（Container）与叶子控件。
+典型应用：文件系统中的文件与目录、GUI 中的 Container 与 Leaf 控件。
 
 ## Decorator（装饰模式）
 

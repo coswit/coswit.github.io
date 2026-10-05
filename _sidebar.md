@@ -157,7 +157,7 @@
     - [07.中断处理与设备驱动框架.md](./Linux内核分析/07.中断处理与设备驱动框架.md)
     - [08.进程调度与进程切换.md](./Linux内核分析/08.进程调度与进程切换.md)
   - Linux基础
-    - [Linux命令(find、xargs、grep、cut).md](./Linux基础/Linux命令(find、xargs、grep、cut).md)
+    - [Linux命令(find、xargs、grep、cut、split、ps).md](./Linux基础/Linux命令(find、xargs、grep、cut、split、ps).md)
     - [Linux命令(sed、awk).md](./Linux基础/Linux命令(sed、awk).md)
     - [Linux命令行编辑快捷键.md](./Linux基础/Linux命令行编辑快捷键.md)
     - [Linux文件管理.md](./Linux基础/Linux文件管理.md)

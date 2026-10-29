@@ -7,6 +7,10 @@ Android Debug Bridge：启动 `adb` 时，会检查是否已在运行，没有�
 adb start-server
 # 停止
 adb kill-server
+
+# 停止/重启 Android 运行时 framework（需 root）
+adb shell stop
+adb shell start
 ```
 
 ### devices
@@ -15,14 +19,14 @@ adb kill-server
 adb usb
 # 列出已连接的设备
 adb devices
-# 包含 product/mode 详情
+# 包含 product/model 详情
 adb devices -l
-adb connect ip_address_of_device
+# 无线连接设备（默认端口 5555）
+adb connect ip_address_of_device:port
 
-# 只连接 usb 设备
-adb -d
-# 只连接模拟器
-adb -e
+# -d、-e 是全局参数，需与具体命令组合：限定唯一的 usb 设备 / 模拟器
+adb -d shell
+adb -e shell
 ```
 
 ### 常用命令
@@ -59,7 +63,7 @@ adb forward --remove tcp:8080
 ### run-as
 
 ```bash
-# 以 <package>（应用包名）的身份运行后续命令，临时获取该应用的文件访问权限（仅限 /data/data/<package>/ 下的私有文件）
+# 以 <package>（应用包名）的身份运行后续命令，临时获取该应用的文件访问权限（仅限 /data/data/<package>/ 下的私有文件，且仅对 debuggable 应用有效）
 run-as <package> cat <file>
 
 # 查看应用私有文件
@@ -93,7 +97,8 @@ adb shell screencap /sdcard/screenshot.png
 
 # -p: 输出 png 格式
 adb shell screencap -p /sdcard/screenshot.png
-adb shell screencap -p | sed 's/\r$//' > screen.png
+# 直接保存到本地：exec-out 为二进制安全输出，避免 shell 管道破坏 png
+adb exec-out screencap -p > screen.png
 
 # 录屏（按 Ctrl+C 停止）
 adb shell screenrecord /sdcard/record.mp4
@@ -111,13 +116,13 @@ adb shell cmd media_projection stop
 # 包名查询
 adb shell pm list packages | grep name
 
-# 列出包名 + apk 路径
-pm list packages -r
+# 列出包名 + apk 路径（输出格式 package:/path/to/xxx.apk=包名）
+pm list packages -f
 # 只列出第三方包
 pm list packages -3
 # 只列出系统包
 pm list packages -s
-# 列出包名 + 已卸载的包
+# 额外包含已卸载但保留了数据的包
 pm list packages -u
 
 # 按包名查找安装位置
@@ -131,12 +136,12 @@ pm list features
 ### Permission
 
 ```bash
-# 授权
+# 授权 / 撤销（权限须在应用 manifest 中声明，且为运行时权限，即 protectionLevel 为 dangerous）
 pm grant [packageName] [permission]
-# 撤销应用的指定权限
 pm revoke [packageName] [permission]
-# 重置
-pm reset-permissions -p your.app.package
+
+# 将所有应用的运行时权限恢复为默认状态（作用于全部应用，不能只指定单个包）
+pm reset-permissions
 ```
 
 ### 清理
@@ -144,6 +149,8 @@ pm reset-permissions -p your.app.package
 ```bash
 # 清空应用数据与缓存
 pm clear pkgName
+# 只清缓存
+pm clear --cache-only pkgName
 
 # cmd 是一个特殊的 Shell 命令入口，用于访问 Android 系统提供的隐藏 API 或系统服务
 adb shell cmd package clear pkgName
@@ -197,7 +204,7 @@ adb install -d -t -r -g app.apk
 组合：给所有已连接设备安装：
 
 ```bash
-adb devices | tail -n +2 | cut -sf 1 | xargs -IX adb -s X install -r com.myAppPackage
+adb devices | tail -n +2 | cut -sf 1 | xargs -IX adb -s X install -r app.apk
 ```
 
 ### uninstall
@@ -218,10 +225,9 @@ adb devices | tail -n +2 | cut -sf 1 | xargs -IX adb -s X uninstall com.myAppPac
 ### update
 
 ```bash
-# -r 重新安装并保留应用数据
+# -r 覆盖安装已存在的应用并保留其数据
 adb install -r yourApp.apk
-# -k 保留 data 和 cache 目录
-adb install -k <.apk file path on computer>
+# 注意：adb install 没有 -k 选项，保留 data/cache 的卸载对应 adb uninstall -k
 ```
 
 ## input 与 wm
@@ -273,7 +279,7 @@ adb shell monkey -p com.myAppPackage -v 10000 -s 100
 # 获取 Android 版本
 adb shell getprop ro.build.version.release
 
-# 查看 CPU 型号
+# 查看 CPU 架构（ABI）
 adb shell getprop ro.product.cpu.abi
 
 adb shell settings get system HARDWARE_ID

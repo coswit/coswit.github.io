@@ -11,11 +11,17 @@ Enable-WindowsOptionalFeature -Online -FeatureName VirtualMachinePlatform
 # 查看可用版本
 wsl --list --online
 
-# 安装 Ubuntu 指定版本
+# 安装 Ubuntu 指定版本（Ubuntu-20.04 已于 2025 年 5 月底停止官方支持，新装建议 22.04 及以上）
 wsl --install -d Ubuntu-20.04
 
 # 设置为 wsl2
 wsl --set-default-version 2
+
+# 更新 wsl 本体到最新版本
+wsl --update
+
+# 终止所有运行中的 wsl 实例
+wsl --shutdown
 ```
 
 ### 配置
@@ -52,7 +58,7 @@ wsl --unregister Ubuntu-20.04
 
 WSL2 默认可能占用过多内存，在 `%USERPROFILE%\.wslconfig` 中限制：
 
-```bash
+```ini
 [wsl2]
 # 分配给 WSL2 的最大内存
 memory=8GB
@@ -70,7 +76,7 @@ swap=2GB
 
 下载：前往 <https://git-scm.com/download/win>
 
-wsl 中配置 git-bash 中乱码问题，将 commandline 位置从 `$GIT_INSTALL_DIR\\bin\\bash.exe` 修改为 `$GIT_INSTALL_DIR\\usr\\bin\\bash.exe --login -i`。
+Windows Terminal 中 git-bash 的乱码问题：将 profile 的 commandline 从 `$GIT_INSTALL_DIR\bin\bash.exe` 修改为 `$GIT_INSTALL_DIR\usr\bin\bash.exe --login -i`。
 
 wsl2 中的显示问题：
 
@@ -95,7 +101,7 @@ git config --global i18n.commitEncoding utf-8
 
 ### windows 防火墙放开代理端口
 
-将 Clash 的代理端口（如 7897）在防火墙放开，在 cmd 命令行执行：
+将 Clash 的代理端口（如 7897）在防火墙放开，以管理员身份打开 cmd / PowerShell 执行：
 
 ```powershell
 netsh advfirewall firewall add rule name="Open Port 7897" dir=in action=allow protocol=TCP localport=7897
@@ -116,13 +122,84 @@ scoop config proxy 127.0.0.1:7897
 
 在 Windows 下打开记事本，创建或编辑文件 `%USERPROFILE%\.wslconfig`（例如 `C:\Users\你的用户名\.wslconfig`），写入以下内容并保存：
 
-```bash
+```ini
 [wsl2]
 networkingMode=mirrored
 autoProxy=true
 ```
 
 这是官方目前最推荐、体验最丝滑的方式。开启后，WSL2 与 Windows 共享网络栈，在 WSL 中使用 `127.0.0.1` 即可直接访问 Windows 的代理端口。
+
+## 进程查找与终止
+
+### 按名称或 PID 查找进程
+
+```powershell
+# 按名称查找（不带 .exe 后缀）
+Get-Process -Name chrome
+
+# 支持通配符模糊匹配
+Get-Process -Name "*chrome*"
+
+# 按 PID 查找
+Get-Process -Id 1234
+
+# cmd 风格的写法，tasklist 配合 findstr 过滤（映像名要带 .exe）
+tasklist | findstr chrome.exe
+```
+
+### 查看进程详情
+
+同名进程较多时（如 java、node 各起好几个），光靠名称分不清哪个是目标，需要进一步看路径和命令行：
+
+```powershell
+# 查看 PID、可执行文件路径、启动时间
+Get-Process -Name java | Select-Object Id, Path, StartTime
+
+# 查看完整命令行，是区分同名进程的关键
+Get-CimInstance Win32_Process -Filter "Name='java.exe'" |
+    Select-Object ProcessId, CommandLine
+```
+
+### 按端口查找进程
+
+开发时端口被占用（如 8080 被上次没退干净的服务占着），先找到占用端口的 PID：
+
+```powershell
+# 传统方式，输出最后一列就是 PID
+netstat -ano | findstr :8080
+
+# PowerShell 原生方式，更直观
+Get-NetTCPConnection -LocalPort 8080 |
+    Select-Object LocalAddress, LocalPort, State, OwningProcess
+```
+
+### 终止进程
+
+```powershell
+# PowerShell：按名称 / 按 PID 强制结束
+Stop-Process -Name notepad -Force
+Stop-Process -Id 1234 -Force
+
+# cmd 风格：/IM 按映像名（要带 .exe），/PID 按 PID，/F 强制结束
+taskkill /IM notepad.exe /F
+taskkill /PID 1234 /F
+
+# /T 连同整个子进程树一起结束
+taskkill /PID 1234 /T /F
+```
+
+端口被占用的经典组合，一条命令完成「查 PID → kill」：
+
+```powershell
+Stop-Process -Id (Get-NetTCPConnection -LocalPort 8080).OwningProcess -Force
+```
+
+注意：
+
+- kill 前先用 `Get-Process -Id <pid>` 核对进程名与路径，确认不是系统关键进程再动手，避免误杀
+- `taskkill` 不加 `/F` 只是向窗口发送关闭消息（WM_CLOSE），控制台程序往往无响应，实际使用一般直接加 `/F`
+- 结束系统进程或其他用户的进程，需要以管理员身份运行终端
 
 ## Windows Terminal
 
@@ -160,6 +237,10 @@ winget uninstall <name>
 winget list
 # 代理
 winget install <name> --proxy http://127.0.0.1:7897
+# 导出已安装软件清单（重装系统 / 迁移机器时备份）
+winget export -o D:\backup\packages.json
+# 根据清单批量安装
+winget import -i D:\backup\packages.json
 ```
 
 ## powershell7
@@ -352,6 +433,7 @@ scoop install avidemux
 scoop install clash-verge-rev
 scoop install qemu
 scoop uninstall filezilla
+
 scoop search qemu
 scoop update
 ```
@@ -365,13 +447,14 @@ scoop install git@2.19.0.windows.1
 scoop reset terraform@0.12.11
 ```
 
-源：
+### java 版本
 
 ```powershell
-# 增加 main 外的源
-scoop bucket add extras
-
-scoop bucket add java
+scoop install openjdk11
+scoop install openjdk17
+scoop install corretto8-jdk
+# 版本切换
+scoop reset openjdk21
 ```
 
 代理：
@@ -391,6 +474,26 @@ scoop config rm proxy
 scoop help <command>
 ```
 
+### 源添加
+
+```powershell
+# 源查看
+scoop bucket list
+# 查看官方已知的源
+scoop bucket known
+# 删除
+scoop bucket rm <名称>
+
+# 增加 main 外的源
+scoop bucket add extras
+scoop bucket add java
+# 增加其他版本
+scoop bucket add versions
+
+# 国内源
+scoop bucket add extras-cn https://github.com/Scoopforge/Extras-CN
+```
+
 ### scoop update 报 dubious ownership 错误
 
 `scoop update` 报 `fatal: detected dubious ownership in repository at 'C:/Users/xxx/scoop/apps/scoop/current'`，原因是 scoop 目录（主程序或 buckets）被管理员用户所有，git 的安全检查拒绝操作。给对应目录加 `safe.directory` 例外即可：
@@ -406,3 +509,4 @@ git config --global --add safe.directory C:/Users/用户名/scoop/buckets/nerd-f
 ```
 
 这种所有权状态通常是某次用管理员权限运行 scoop 造成的，平时建议用普通用户权限使用 scoop。
+

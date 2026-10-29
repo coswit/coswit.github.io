@@ -1,6 +1,6 @@
 ## 9.1 概述
 
-上一章沿 Activity 与广播链路看了 AMS 与 ATMS 的分工，本章下沉到四大组件中"没有 UI、供后台长期执行业务逻辑"的一个：Service——播放音乐、下载数据、维持长连接、对外提供 Binder 服务。它的调度中枢是 ActiveServices，本章源码（与上一章同一棵 AOSP main 树，Android 16 / API 36 开发阶段）里它有 9444 行，AMS 只是把 `startService`/`bindService`/`stopService` 等 Binder 调用转手给它。
+上一章沿 Activity 与广播链路看了 AMS（ActivityManagerService）与 ATMS（ActivityTaskManagerService）的分工，本章下沉到四大组件中"没有 UI、供后台长期执行业务逻辑"的一个：Service——播放音乐、下载数据、维持长连接、对外提供 Binder 服务。它的调度中枢是 ActiveServices——本章源码与上一章出自同一棵 AOSP（Android Open Source Project）main 树，提交 2025-03，对应 Android 16 / API 36 开发阶段，其中 ActiveServices 有 9444 行。AMS 只是把 `startService`/`bindService`/`stopService` 等 Binder 调用转手给它。
 
 > 版本注意：Service 的准入与前台服务契约在 Android 8/12/13/14 被逐版收紧（后台 start 禁令、类型制、限时类型），生命周期与投递骨架则与 4.0 一致；文中按 Android 16 源码描述，收紧项均标注了引入版本。
 >
@@ -40,7 +40,7 @@ stateDiagram-v2
 
 ### 9.1.2 四条链路总览
 
-全章按 start、bind、销毁与重启、前台服务四条链路推进，先看总览再逐节深入：
+全章按 start、bind、销毁与重启、前台服务（FGS，Foreground Service）四条链路推进，先看总览再逐节深入：
 
 | 链路 | 节 | 服务端入口 | 客户端回调 | 关键超时/退避 |
 |---|---|---|---|---|
@@ -64,6 +64,10 @@ if (cn != null) {
         // "!" 标记：目标 Service 需要调用方没有的权限
         throw new SecurityException("Not allowed to start service " + service
                 + " without permission " + cn.getClassName());
+    } else if (cn.getPackageName().equals("!!")) {
+        // "!!" 标记：app op 禁止前台启动、bring-up 阶段失败等硬性拒绝
+        throw new SecurityException("Unable to start service " + service
+                + ": " + cn.getClassName());
     } else if (cn.getPackageName().equals("?")) {
         // "?" 标记：目标应用整体处于后台，不允许启动它的 Service
         throw ServiceStartNotAllowedException.newInstance(requireForeground,
@@ -78,7 +82,7 @@ if (cn != null && requireForeground) {
 }
 ```
 
-`ServiceStartNotAllowedException` 继承自 IllegalStateException。4.0 时代这类拒绝只是一句笼统的 IllegalStateException，Android 16 源码把各种拒绝原因拆成了专门的异常家族（`ServiceStartNotAllowedException`、`ForegroundServiceStartNotAllowedException`、`MissingForegroundServiceTypeException` 等），看异常名就知道被拒的原因。
+`ServiceStartNotAllowedException` 是个 abstract 基类，继承自 IllegalStateException；客户端真正收到的是它的具体子类，来源有两条路：`"?"` 标记走 `newInstance` 抛 `BackgroundServiceStartNotAllowedException`（普通后台 start 被拒）；`startForegroundService` 被 BFSL 检查拒绝时异常在服务端 startServiceLocked 里直接 throw——`ForegroundServiceStartNotAllowedException` 实现了 Parcelable，跨 Binder 原样回传给客户端。FGS 类型相关的 `MissingForegroundServiceTypeException`、`InvalidForegroundServiceTypeException` 则挂在中间层 `ForegroundServiceTypeException`（同样继承 `ServiceStartNotAllowedException`）之下。4.0 时代这类拒绝只是一句笼统的 IllegalStateException，Android 16 源码把它们拆成了这样一套异常家族，看异常名就知道被拒的原因。
 
 那么服务端凭什么判定"后台不许启动"？答案在 ActiveServices.startServiceLocked——所有 startService 类调用经 Binder 进入 system_server 后，AMS 都转交给它处理，任何请求都要先过这一关。
 
@@ -105,17 +109,17 @@ setFgsRestrictionLocked(callingPackage, callingPid, callingUid, service, r, user
         backgroundStartPrivileges, false /* isBindService */);
 ```
 
-`callerFg` 会一路透传成后面的 `execInFg`：调用方在前台，Service 的生命周期回调就按前台档 20 秒计 ANR（Application Not Responding，应用无响应），反之 200 秒。身份确认之后，才是这道关卡的主体——一组按顺序执行的准入检查，4.0 时代"后台随便 start"的门就是被它们关上的：
+`callerFg` 会一路透传成后面的 `execInFg`：调用方在前台，Service 的生命周期回调就按前台档 20 秒计 ANR（Application Not Responding，应用无响应），反之 200 秒。身份确认之后，才是这道关卡的主体——一组按顺序执行的准入检查，含 startForegroundService 专属的 BFSL（background foreground service launch，从后台启动前台服务的限制），4.0 时代"后台随便 start"的门就是被它们关上的：
 
 ```java
 // startServiceLocked 限制矩阵（节选）
-// ① 目标 app 处于后台（uid 不活跃）？
+// (1) 目标 app 处于后台（uid 不活跃）？
 final boolean bgLaunch = !mAm.isUidActiveLOSP(appUid);
-// ② 用户开了严格后台限制（设置里的 Restricted / Uninstalled apps）？
+// (2) 用户开了严格后台限制（设置里的 Restricted / Uninstalled apps）？
 if (bgLaunch && appRestrictedAnyInBackground(appUid, appPackageName) && ......) {
     forcedStandby = true;
 }
-// ③ startForegroundService 的 FGS 启动豁免检查（BFSL/while-in-use）：
+// (3) startForegroundService 的 FGS 启动豁免检查（BFSL/while-in-use）：
 //    不满足 → Android 14+ 抛 ForegroundServiceStartNotAllowedException，老版本静默拒绝
 if (fgRequired) {
     if (!r.isFgsAllowedStart() && isBgFgsRestrictionEnabled(r, callingUid)) {
@@ -125,7 +129,7 @@ if (fgRequired) {
         return null;
     }
 }
-// ④ 普通后台 startService 禁令（O+）：返回 "?" 标记，即 9.2.1 里客户端
+// (4) 普通后台 startService 禁令（O+）：返回 "?" 标记，即 9.2.1 里客户端
 //    转成 ServiceStartNotAllowedException 抛出的那种情况
 if (forcedStandby || (!r.startRequested && !fgRequired)) {
     final int allowed = mAm.getAppStartModeLOSP(appUid, appPackageName,
@@ -135,11 +139,11 @@ if (forcedStandby || (!r.startRequested && !fgRequired)) {
         return new ComponentName("?", "app is in background uid " + uidRec);
     }
 }
-// ⑤ targetSdk < O 的老应用：不强制 startForegroundService → startForeground 契约
+// (5) targetSdk < O 的老应用：不强制 startForegroundService → startForeground 契约
 if (appTargetSdkVersion < Build.VERSION_CODES.O && fgRequired) {
     fgRequired = false;
 }
-// ⑥ 包正被 freezer 冻结（安装/升级等场景）：延迟到解冻后再拉起
+// (6) 包正被 freezer 冻结（安装/升级等场景）：延迟到解冻后再拉起
 if (deferServiceBringupIfFrozenLocked(r, service, callingPackage, ...)) {
     return null;
 }
@@ -150,7 +154,7 @@ if (deferServiceBringupIfFrozenLocked(r, service, callingPackage, ...)) {
 准入检查全部通过后，`startServiceInnerLocked` 把这次请求登记成 `StartItem`（带自增 `startId`）塞进 `r.pendingStarts`，然后 `bringUpServiceInnerLocked` 分两路：
 
 ```java
-// ActiveServices#bringUpServiceInnerLocked（节选，5741 行起）
+// ActiveServices#bringUpServiceInnerLocked（节选，5743 行起）
 if (r.app != null && r.app.isThreadReady()) {
     // 分支一：进程已活着，直接补投 onStartCommand
     r.updateOomAdjSeq();
@@ -237,26 +241,26 @@ sequenceDiagram
     participant AS as system_server-ActiveServices
     participant Zy as Zygote
     participant New as 目标进程
-    App->>AS: ① startService
+    App->>AS: (1) startService
     AS->>AS: 限制矩阵-BFSL-后台检查
     AS->>AS: retrieveServiceLocked-PKMS解析
     alt 进程已存在
-        AS->>New: ② scheduleCreateService+scheduleServiceArgs
+        AS->>New: (2) scheduleCreateService+scheduleServiceArgs
     else 进程不存在
-        AS->>Zy: ③ startProcessLocked-fork
-        New->>AS: ④ attachApplication
-        AS->>New: ⑤ bindApplication
-        AS->>New: ⑥ scheduleCreateService-scheduleServiceArgs
+        AS->>Zy: (3) startProcessLocked-fork
+        New->>AS: (4) attachApplication
+        AS->>New: (5) bindApplication
+        AS->>New: (6) scheduleCreateService-scheduleServiceArgs
     end
     Note over New: H消息主线程-onCreate-onStartCommand
-    New-->>AS: ⑦ serviceDoneExecuting回执
+    New-->>AS: (7) serviceDoneExecuting回执
 ```
 
 ## 9.3 bindService 全链路
 
 ### 9.3.1 ServiceConnection 的 Binder 跨进程传递
 
-ServiceConnection 是个普通 Java 接口，真正参与 IPC 的是 LoadedApk 里的 `ServiceDispatcher`，其内部类 `InnerConnection` 是 `IServiceConnection.Stub`——**与广播的 `ReceiverDispatcher`/`InnerReceiver` 完全同款的 dispatcher 套路**（原书第 6 章分析过广播那套，这里照搬）：
+ServiceConnection 是个普通 Java 接口，真正参与 IPC（Interprocess Communication，进程间通信）的是 LoadedApk 里的 `ServiceDispatcher`，其内部类 `InnerConnection` 是 `IServiceConnection.Stub`——**与广播的 `ReceiverDispatcher`/`InnerReceiver` 完全同款的 dispatcher 套路**（原书第 6 章分析过广播那套，这里照搬）：
 
 ```java
 // ContextImpl#bindServiceCommon（节选）
@@ -278,11 +282,60 @@ dispatcher 按 `(context, conn)` 缓存：同一个 ServiceConnection 在同一�
 
 ### 9.3.2 服务端登记与 onBind
 
-`ActiveServices.bindServiceLocked`（源码 4060 行起）做三件事：
+客户端的 `bindServiceInstance` Binder 调用进入 system_server 后，由 `ActiveServices.bindServiceLocked`（源码 4060 行起）完成登记与拉起，主干分四步：
 
-1. **创建 ConnectionRecord** 存入 ServiceRecord 的 connections 表（客户端 binder → 连接列表，一个 IServiceConnection 可以绑多个 Service）
-2. **`BIND_AUTO_CREATE` 则 `bringUpServiceLocked`**（进程不存在同样走 fork 链路）；不带该标志的绑定"挂账"，Service 尚未创建时并不拉起
-3. Service 活着则 `requestServiceBindingLocked` → `thread.scheduleBindService`（H.BIND_SERVICE，消息号 121）→ `handleBindService` → `service.onBind(intent)` → `publishService` 通知 AMS → AMS 回调客户端 `conn.connected(...)` → dispatcher 在注册时的 Handler/Executor 上执行 `onServiceConnected`
+```java
+// ActiveServices#bindServiceLocked（节选，4060 行起）
+// 调用方前后台判定与 startServiceLocked 同款：看进程调度组
+final boolean callerFg = callerApp.mState.getSetSchedGroup()
+        != ProcessList.SCHED_GROUP_BACKGROUND;
+......
+ServiceLookupResult res = retrieveServiceLocked(service, instanceName, ...);
+ServiceRecord s = res.record;
+// 取/建"客户端 app × 绑定 Intent"维度的 AppBindRecord
+final AppBindRecord b = s.retrieveAppBindingLocked(service, callerApp, attributedApp);
+// 每进程连接数有上限（默认 3000，mMaxServiceConnectionsPerProcess），超限拒绝绑定
+if (clientPsr.numberOfConnections() >= mAm.mConstants.mMaxServiceConnectionsPerProcess) {
+    return 0;
+}
+......
+// (1) 创建 ConnectionRecord 并三处登记：ServiceRecord 的 connections 表、
+//     AppBindRecord.connections、客户端 Activity 侧的 ActivityServiceConnectionsHolder
+ConnectionRecord c = new ConnectionRecord(b, activity, connection, flags, ...);
+IBinder binder = connection.asBinder();
+s.addConnection(binder, c);
+b.connections.add(c);
+if (activity != null) {
+    activity.addConnection(c);
+}
+// mServiceConnections 按 IServiceConnection 聚合：同一个 connection binder 可以绑多个 Service
+ArrayList<ConnectionRecord> clist = mServiceConnections.get(binder);
+clist.add(c);
+......
+// (2) BIND_AUTO_CREATE 则拉起 Service（进程不存在同样走 fork 链路）；
+//     不带该标志的绑定"挂账"，Service 尚未创建时并不拉起
+if (c.hasFlag(Context.BIND_AUTO_CREATE)) {
+    if (bringUpServiceLocked(s, service.getFlags(), callerFg, false, ...) != null) {
+        return 0;
+    }
+}
+// (3) Service 活着且该 Intent 的 binder 已发布过：不再走 onBind，直接拿
+//     已发布的 binder 回调 connected——同进程场景下这就是同步调用，
+//     9.7.3 说"回调可能早于 bindService 返回"路径之一就在这里
+if (s.app != null && b.intent.received) {
+    c.conn.connected(clientSideComponentName, b.intent.binder, false);
+    // 曾整体解绑过（doRebind 记账）：这次绑回补投 onRebind
+    if (b.intent.apps.size() == 1 && b.intent.doRebind) {
+        requestServiceBindingLocked(s, b.intent, callerFg, true, ...);    // rebind=true
+    }
+} else if (!b.intent.requested) {
+    // (4) 首次绑定该 Intent：投递 onBind
+    requestServiceBindingLocked(s, b.intent, callerFg, false, ...);      // rebind=false
+}
+return 1;
+```
+
+onBind 的实际投递由第 (4) 步的落点 `requestServiceBindingLocked` 完成——它先 bump 执行计数，再把绑定请求发往客户端：
 
 ```java
 // ActiveServices#requestServiceBindingLocked（节选，5214 行起）
@@ -298,18 +351,104 @@ if ((!i.requested || rebind) && i.apps.size() > 0) {
 
 `onBind`/`onRebind`/`onUnbind` 的分界由此驱动：**同一 Intent 的第二次绑定不会再调 onBind**（直接复用已发布的 Binder），`onRebind` 只在曾解绑后又绑回时触发。
 
+首次绑定的 Intent 要走完整的"投递 onBind → 发布 binder"闭环。客户端 `H.BIND_SERVICE`（消息号 121）之后：
+
+```java
+// ActivityThread#handleBindService（节选，5175 行起）
+if (!data.rebind) {
+    IBinder binder = s.onBind(data.intent);
+    // 把 binder 交回 AMS，由 AMS 分发给所有等这条 Intent 的连接
+    ActivityManager.getService().publishService(data.token, data.intent, binder);
+} else {
+    s.onRebind(data.intent);
+    // onRebind 不产生新 binder，只回执销账
+    ActivityManager.getService().serviceDoneExecuting(
+            data.token, SERVICE_DONE_EXECUTING_REBIND, 0, 0, data.intent);
+}
+```
+
+AMS 侧的 `publishService` 转手到 `publishServiceLocked`，"发布"就落在这一段：
+
+```java
+// ActiveServices#publishServiceLocked（节选，4452 行起）
+IntentBindRecord b = r.bindings.get(new Intent.FilterComparison(intent));
+if (b != null && !b.received) {
+    b.binder = service;        // 存下 binder：后续绑同一 Intent 的客户端直接复用
+    b.requested = true;
+    b.received = true;         // "已发布"标志：第二次绑定不再投 onBind 的依据
+    ArrayMap<IBinder, ArrayList<ConnectionRecord>> connections = r.getConnections();
+    for (int conni = connections.size() - 1; conni >= 0; conni--) {
+        ArrayList<ConnectionRecord> clist = connections.valueAt(conni);
+        for (int i = 0; i < clist.size(); i++) {
+            ConnectionRecord c = clist.get(i);
+            if (!filter.equals(c.binding.intent.intent)) {
+                continue;      // 只通知绑同一 Intent 的连接
+            }
+            // 第三个参数 dead=false：正常连接回调，客户端走 onServiceConnected
+            c.conn.connected(clientSideComponentName, service, false);
+        }
+    }
+}
+serviceDoneExecutingLocked(r, ...);   // "bind" 执行销账，对应 requestServiceBindingLocked 里的 bump
+```
+
+`conn.connected` 经客户端 dispatcher（9.3.1 的 `InnerConnection`）在注册时的 Handler/Executor 上执行 `onServiceConnected`——bind 链路到此闭环。
+
 ### 9.3.3 unbind 与销毁联动
 
-`unbindService` 按 ConnectionRecord 减引用：该 app 的最后一个连接断开且无 BIND_AUTO_CREATE 留守、Service 也不再 started，才走 `bringDownServiceLocked`。绑定方死亡经 `binderDied` 走同样的清理路径。
+`unbindService` 的服务端入口是 `unbindServiceLocked`：一个 IServiceConnection 可能绑了多个 Service，先按它的 binder 找出全部 ConnectionRecord 逐个移除，每个连接移除时判断 Service 是否还需要活着：
+
+```java
+// ActiveServices#unbindServiceLocked（节选，4540 行起）
+// 按 connection binder 找出它名下的所有 ConnectionRecord
+ArrayList<ConnectionRecord> clist = mServiceConnections.get(connection.asBinder());
+......
+while (clist.size() > 0) {
+    ConnectionRecord r = clist.get(0);
+    // 移除该连接（从 ServiceRecord、AppBindRecord、Activity 侧各处摘除），
+    // 内部最后走 bringDownServiceIfNeededLocked：startRequested 已清、
+    // 也没有 BIND_AUTO_CREATE 连接留守 → bringDownServiceLocked 真正销毁
+    removeConnectionLocked(r, null, null, true);
+    ......  // 服务进程优先级可能因此下降，排队重算 oom_adj
+}
+```
+
+客户端侧 `handleUnbindService` 调 `onUnbind` 后按返回值分岔——`onUnbind` 返回 true 表示"下次绑回时想收到 onRebind"：
+
+```java
+// ActivityThread#handleUnbindService（节选，5208 行起）
+boolean doRebind = s.onUnbind(data.intent);
+if (doRebind) {
+    ActivityManager.getService().unbindFinished(data.token, data.intent);
+} else {
+    ActivityManager.getService().serviceDoneExecuting(
+            data.token, SERVICE_DONE_EXECUTING_UNBIND, 0, 0, data.intent);
+}
+```
+
+`unbindFinished` 转手到 `unbindFinishedLocked`，onRebind 的记账就落在这里：
+
+```java
+// ActiveServices#unbindFinishedLocked（节选，4607 行起）
+if (b.apps.size() > 0 && !inDestroying) {
+    // 同一 Intent 还有别的 app 绑着（或解绑期间又绑回来过）：立即补投 onRebind
+    requestServiceBindingLocked(r, b, inFg, true, ...);   // rebind=true
+} else {
+    // 没人绑了：记一笔，下次绑定该 Intent 时走 onRebind 而不是 onBind
+    b.doRebind = true;
+}
+```
+
+总结销毁条件：该 Service 的最后一个连接断开、无 BIND_AUTO_CREATE 留守、也不再 started，才走 `bringDownServiceLocked`。绑定方进程死亡经 `binderDied` 走同样的清理路径。
 
 ## 9.4 销毁与重启
 
 ### 9.4.1 stopServiceToken 与 startId 的对账逻辑
 
-`stopService()` 直接停；`stopSelf(startId)` 则是"**只有当这是我经手的最后一次 start 时才停**"：
+`stopService()` 直接停；`stopSelf(startId)` 则是"**只有当这是我经手的最后一次 start 时才停**"。两者经 AMS 的 `stopServiceToken` 转手到 ActiveServices 侧的 `stopServiceTokenLocked`（与 startService 同款转手）：
 
 ```java
-// ActiveServices#stopServiceToken（节选，1776 行起）
+// ActiveServices#stopServiceTokenLocked（节选，1775 行起）
 if (startId >= 0) {
     // 把 startId 之前（含）的所有 start 项从已投递列表丢弃
     ServiceRecord.StartItem si = r.findDeliveredStart(startId, false, false);
@@ -333,7 +472,7 @@ if (startId >= 0) {
 
 ```java
 // ActiveServices#bringDownServiceLocked（节选，6283 行起）
-// ① 通知所有绑定方：第三个参数 dead=true，客户端走 onServiceDisconnected
+// (1) 通知所有绑定方：第三个参数 dead=true，客户端走 onServiceDisconnected
 ArrayMap<IBinder, ArrayList<ConnectionRecord>> connections = r.getConnections();
 for (int conni = connections.size() - 1; conni >= 0; conni--) {
     ArrayList<ConnectionRecord> c = connections.valueAt(conni);
@@ -346,7 +485,7 @@ for (int conni = connections.size() - 1; conni >= 0; conni--) {
         } ......  // 通知失败仅记日志，不阻断清理
     }
 }
-// ② 对每条已绑定(hasBound)的 Intent 投递 onUnbind
+// (2) 对每条已绑定(hasBound)的 Intent 投递 onUnbind
 if (ibr.hasBound) {
     bumpServiceExecutingLocked(r, false, "bring down unbind", ...);
     ibr.hasBound = false;
@@ -356,8 +495,29 @@ if (ibr.hasBound) {
 ```
 
 - **前台收尾**：停 FGS 超时计时、撤通知（short FGS 未停就销毁会记一条警告日志）
-- **归档**：从 ServiceMap 摘除、`scheduleStopService` → 客户端 `handleStopService` → `onDestroy`、释放 URI 权限、更新 procstats
+- **归档**：从 ServiceMap 摘除、清空 deliveredStarts/pendingStarts、释放 URI 权限、更新 procstats
 - 注意 `onServiceDisconnected` 只是**断连通知**，Service 对象此时还在；`onDestroy` 才是终结
+
+销毁本身的投递在 bringDownServiceLocked 尾部——"destroy" 同样计入执行计数，投出去后等客户端回执：
+
+```java
+// ActiveServices#bringDownServiceLocked（节选，6485 行起）
+bumpServiceExecutingLocked(r, false, "destroy", ...);
+mDestroyingServices.add(r);          // 进入"销毁中"名单，回执核对要用
+r.destroying = true;
+r.app.getThread().scheduleStopService(r);
+```
+
+客户端收到后 `handleStopService` 走完生命周期最后一环并回执：
+
+```java
+// ActivityThread#handleStopService（节选，5351 行起）
+Service s = mServices.remove(token);
+s.onDestroy();                       // 主线程
+s.detachAndCleanUp();
+ActivityManager.getService().serviceDoneExecuting(
+        token, SERVICE_DONE_EXECUTING_STOP, 0, 0, null);   // 回执销账
+```
 
 ### 9.4.3 崩溃/被杀后的重启退避
 
@@ -365,17 +525,17 @@ if (ibr.hasBound) {
 
 ```java
 // ActiveServices#scheduleServiceRestartLocked（节选，5286 行起）
-// ① 已投递的 start 项回炉 pendingStarts；但重投/重执次数超限的直接放弃：
+// (1) 已投递的 start 项回炉 pendingStarts；但重投/重执次数超限的直接放弃：
 //    "Canceling start item ..." —— 反复处理失败的 Intent 不会无限循环
 if (!allowCancel || (si.deliveryCount < ServiceRecord.MAX_DELIVERY_COUNT      // 3
         && si.doneExecutingCount < ServiceRecord.MAX_DONE_EXECUTING_COUNT)) { // 6
     r.pendingStarts.add(0, si);
     long dur = SystemClock.uptimeMillis() - si.deliveredTime;
-    dur *= 2;                       // ② 每个start项运行得越久，重启退避越长
+    dur *= 2;                       // (2) 每个start项运行得越久，重启退避越长
     if (minDuration < dur) minDuration = dur;
     ......
 }
-// ③ 退避计算：1s 起步，每次 ×4；稳定运行超过 60s 则重置回 1s
+// (3) 退避计算：1s 起步，每次 ×4；稳定运行超过 60s 则重置回 1s
 r.totalRestartCount++;
 if (r.restartDelay == 0) {
     r.restartCount++;
@@ -400,24 +560,78 @@ if (r.restartDelay == 0) {
 | bound service（被 BIND_AUTO_CREATE 拉起）崩溃 | 30 分钟 ×（崩溃次数-1），最多重试 16 次后放弃——绑定方自己不复活就没人拉它 |
 | 内存压力大 | 额外延迟（`mExtraServiceRestartDelayOnMemPressure`），减轻系统负担 |
 
-**START_STICKY 与 START_REDELIVER_INTENT 的实现差异**就藏在 `deliveredStarts` 的处理里：STICKY 只保留"被 start 过"的事实，重启后 `onStartCommand` 收到 **null intent**；REDELIVER_INTENT 则把 StartItem 重新投递（并带上 `START_FLAG_REDELIVERY`）；NOT_STICKY 干脆不重启。是否重启还受 `canStopIfKilled`（综合最近一次返回值）与"是否还有 AUTO_CREATE 绑定"影响。
+**START_STICKY 与 START_REDELIVER_INTENT 的实现差异**藏在回执对账里。9.2.5 说过"AMS 对每一次投递都有回执核对"，核对发生在 `serviceDoneExecutingLocked`：客户端每次 `onStartCommand` 处理完，都带着返回值 res 回执到这里，AMS 按返回值处置已投递的 start 项：
+
+```java
+// ActiveServices#serviceDoneExecutingLocked（节选，6691 行起）
+if (type == ActivityThread.SERVICE_DONE_EXECUTING_START) {
+    r.callStart = true;
+    r.startCommandResult = res;
+    switch (res) {
+        case Service.START_STICKY: {   // START_STICKY_COMPATIBILITY（targetSdk < 5）与其同分支
+            // 从已投递列表移除该 start 项：重启后不会重投原 Intent
+            r.findDeliveredStart(startId, false, true /* remove */);
+            r.stopIfKilled = false;      // 被杀后要重启
+            break;
+        }
+        case Service.START_NOT_STICKY: {
+            r.findDeliveredStart(startId, false, true);
+            if (r.getLastStartId() == startId) {
+                r.stopIfKilled = true;   // 最后一个任务且明确说不粘：被杀就不重启
+            }
+            break;
+        }
+        case Service.START_REDELIVER_INTENT: {
+            // 不移除该 start 项：留在 deliveredStarts，进程被杀后由
+            // scheduleServiceRestartLocked 回炉 pendingStarts 原样重投
+            ServiceRecord.StartItem si = r.findDeliveredStart(startId, false, false);
+            if (si != null) {
+                si.deliveryCount = 0;    // 计数清零：重投不受"最多 3 次"限制
+                si.doneExecutingCount++;
+                r.stopIfKilled = true;
+            }
+            break;
+        }
+    }
+}
+```
+
+三个返回值在进程死亡时的不同下场由此串起来。
+
+**STICKY**：项已移除，`stopIfKilled = false`；`canStopIfKilled` 判 false → 重启。重启后 pendingStarts 里没有原 Intent，`realStartServiceLocked` 会造一个 **intent 为 null** 的 StartItem 补投——这就是 STICKY 重启后 `onStartCommand` 收到 null intent 的确切由来：
+
+```java
+// ActiveServices#realStartServiceLocked（节选，6123 行起）
+// If the service is in the started state, and there are no
+// pending arguments, then fake up one so its onStartCommand() will be called.
+if (r.startRequested && r.callStart && r.pendingStarts.size() == 0) {
+    r.pendingStarts.add(new ServiceRecord.StartItem(r, false, r.makeNextStartId(),
+            null /* intent */, ...));
+}
+```
+
+**REDELIVER_INTENT**：项留在 deliveredStarts，被杀后回炉 pendingStarts——`canStopIfKilled` 要求 `pendingStarts.isEmpty()` 才允许停，此时队列非空判 false → 依然重启，且原 Intent 带着 `START_FLAG_REDELIVERY` 原样重投。
+
+**NOT_STICKY**：项已移除、最后一个 start 时 `stopIfKilled = true` → `canStopIfKilled` 判 true，不再重启（若还有 AUTO_CREATE 绑定，`scheduleServiceRestartLocked` 里 `shouldStop && !hasAutoCreateConnections()` 的判断会拦住，仍要重启）。
+
+`canStopIfKilled` 的完整条件（ServiceRecord）：`startRequested && (stopIfKilled || isStartCanceled) && pendingStarts.isEmpty()`，short FGS 一律视为可停。
 
 ## 9.5 前台服务（FGS）
 
-FGS（Foreground Service，前台服务）是 Service 的"特殊运行态"：挂常驻通知、享受前台优先级，也因此被套上了层层收紧的契约。本源码树的 FGS 治理围绕三件事：30 秒兑现契约、类型制权限矩阵、限时类型的 onTimeout。
+FGS 是 Service 的"特殊运行态"：挂常驻通知、享受前台优先级，也因此被套上了层层收紧的契约。本源码树的 FGS 治理围绕三件事：30 秒兑现契约、类型制权限矩阵、限时类型的 onTimeout。
 
 ### 9.5.1 startForeground 的校验
 
 `Service.startForeground` 不只是"挂个通知"：`setServiceForegroundInnerLocked` 里有两道硬校验——权限与类型：
 
 ```java
-// ActiveServices#setServiceForegroundInnerLocked（节选，1846 行起）
-// ① 权限：targetSdk P+ 必须 FOREGROUND_SERVICE 权限；Instant app 另有专门通道
+// ActiveServices#setServiceForegroundInnerLocked（节选，2159 行起）
+// (1) 权限：targetSdk P+ 必须 FOREGROUND_SERVICE 权限；Instant app 另有专门通道
 if (r.appInfo.targetSdkVersion >= Build.VERSION_CODES.P) {
     mAm.enforcePermission(android.Manifest.permission.FOREGROUND_SERVICE,
             r.app.getPid(), r.appInfo.uid, "startForeground");
 }
-// ② 类型：传入的 foregroundServiceType 必须是 manifest 声明的子集，
+// (2) 类型：传入的 foregroundServiceType 必须是 manifest 声明的子集，
 //    类型本身还要过 ForegroundServiceTypePolicy 的权限矩阵（该类型要求的
 //    all-of/any-of 权限，如 location 类型要 ACCESS_FINE_LOCATION）
 final int manifestType = r.serviceInfo.getForegroundServiceType();
@@ -428,11 +642,38 @@ if (foregroundServiceType == FOREGROUND_SERVICE_TYPE_MANIFEST) {
 
 `ForegroundServiceTypePolicy`（core/java/android/app/）为每种 `foregroundServiceType` 声明策略：必需权限组合、目标 SDK 分叉的行为开关。类型不齐抛的异常也各不相同（`MissingForegroundServiceTypeException`、`InvalidForegroundServiceTypeException`、`ForegroundServiceTypeException`），从异常名就能定位问题。
 
+`startForeground(id, ...)` 与 `stopForeground(flags)` 共用 `setServiceForegroundInnerLocked`——后者就是 `id == 0` 的分支，负责退出前台状态的收尾：
+
+```java
+// ActiveServices#setServiceForegroundInnerLocked（节选，2745 行起，id == 0 分支）
+if (r.isForeground) {
+    decActiveForegroundAppLocked(smap, r);      // 退出前台 app 登记表
+    maybeStopShortFgsTimeoutLocked(r);          // 停限时类型定时器
+    maybeStopFgsTimeoutLocked(r);
+    if ((flags & Service.STOP_FOREGROUND_REMOVE) != 0) {
+        cancelForegroundNotificationLocked(r);  // 连通知一起撤
+        r.foregroundId = 0;
+        r.foregroundNoti = null;
+    } else if (r.appInfo.targetSdkVersion >= Build.VERSION_CODES.LOLLIPOP) {
+        if (!r.mFgsNotificationShown) {
+            r.postNotification(false);          // 被延迟显示的通知反而强制显示出来
+        }
+        if ((flags & Service.STOP_FOREGROUND_DETACH) != 0) {
+            r.foregroundId = 0;                 // DETACH：通知留给用户，仅解除关联
+            r.foregroundNoti = null;
+        }
+    }
+    mAm.mProcessStateController.setIsForegroundService(r, false);   // 降前台标记
+}
+```
+
+两种收尾的差别就在通知：REMOVE 撤掉，DETACH 保留（9.7.2 的"二选一"即指此）。
+
 ### 9.5.2 startForegroundService 的 30 秒契约与超时
 
-`startForegroundService` 起的 Service，`fgRequired` 置位；若一直不调 `startForeground`，`sendServiceArgsLocked` 里挂 30s 定时（`mServiceStartForegroundTimeoutMs`），超时走 `serviceForegroundTimeoutANR`。另外每条 Service 生命周期回调的执行有独立超时：**前台档 20s/后台档 200s**，由 `bumpServiceExecutingLocked` 的执行计数驱动——进程的第一条 executing service 开始计时，归零撤销。
+`startForegroundService` 起的 Service，`fgRequired` 置位；若一直不调 `startForeground`，`sendServiceArgsLocked` 里挂 30s 定时（`mServiceStartForegroundTimeoutMs`），超时走 `serviceForegroundTimeoutANR`。另外，Service 生命周期回调的执行受超时约束：**前台档 20s/后台档 200s**（`SERVICE_TIMEOUT`/`SERVICE_BACKGROUND_TIMEOUT`）。计时器是**进程级**的，由 `bumpServiceExecutingLocked` 的执行计数驱动——进程的第一条 executing service 开始计时（`scheduleServiceTimeoutLocked`），计数归零撤销。
 
-一个与 freezer 联动的细节：`bumpServiceExecutingLocked` 在进程"已冻结或待冻结"时可跳过超时计时（`isPendingFreeze() || isFrozen()`），解冻后再补挂——**冻结进程不该被 ANR 误杀**。
+一个与 freezer 联动的细节：调用方带上 `skipTimeoutIfPossible` 且进程"已冻结或待冻结"（`isPendingFreeze() || isFrozen()`）时，`bumpServiceExecutingLocked` 跳过本次挂表、只记一个 pending 标志（`noteScheduleServiceTimeoutPending`），解冻后再补挂——**冻结进程不该被 ANR 误杀**。
 
 ### 9.5.3 限时类型与 onTimeout
 
@@ -441,14 +682,14 @@ if (foregroundServiceType == FOREGROUND_SERVICE_TYPE_MANIFEST) {
 static final long DEFAULT_SHORT_FGS_TIMEOUT_DURATION = 3 * 60_000;   // shortService 3 分钟
 ```
 
-`FOREGROUND_SERVICE_TYPE_SHORT_SERVICE` 到 3 分钟、`DATA_SYNC`/`MEDIA_PROCESSING` 到 6 小时（Service.java/ServiceInfo.java 文档），由 `SERVICE_SHORT_FGS_TIMEOUT_MSG` → `onShortFgsTimeout` 处理，客户端收到 **`Service.onTimeout(startId, fgsType)`** 回调，必须**尽快自行 stop**；拖太久系统会替你停（升级为 ANR）。实践上要认清：shortService 是给"快速收尾"用的，不是延长寿命的技巧——时限不会自动续，再调一次 startService 也**不能**续期（源码注释明确：对已超时的 SHORT_SERVICE 重新 start 不会延长时限）。
+`FOREGROUND_SERVICE_TYPE_SHORT_SERVICE` 到 3 分钟、`DATA_SYNC`/`MEDIA_PROCESSING` 到 6 小时（Service.java/ServiceInfo.java 文档），由 `SERVICE_SHORT_FGS_TIMEOUT_MSG` → `onShortFgsTimeout` 处理，再经 `scheduleTimeoutService` 投递到客户端主线程（`handleTimeoutService` → `s.onTimeout`；源码注释明确 onTimeout 不走 serviceDoneExecuting——executing 状态是用来抬优先级的，short FGS 有专门管控，不需要），客户端收到 **`Service.onTimeout(startId, fgsType)`** 回调，必须**尽快自行 stop**；拖太久系统会替你停（升级为 ANR）。实践上要认清：shortService 是给"快速收尾"用的，不是延长寿命的技巧——时限不会自动续，再调一次 startService 也**不能**续期（源码注释明确：对已超时的 SHORT_SERVICE 重新 start 不会延长时限）。
 
 ## 9.6 Service 与进程优先级
 
 Service 是应用抬升自身 oom_adj/进程状态（procstate）的主要"资产"，OomAdjuster 的优先级传播规则大多以 Service 为入口：
 
-- **executing service**：正在执行 onCreate/onStartCommand 等——进程直接抬到前台档（procstate），adj 视情况到 FOREGROUND 或 SERVICE 档；`PROCESS_STATE_SERVICE`、`SERVICE_ADJ = 500` 因此得名
-- **started service 长期驻留**：不前台也不绑定的老 Service 会被划入 SERVICE_B_ADJ = 800（B List，长期无人绑定的旧服务），内存紧张时第一批让位
+- **executing service**：正在执行 onCreate/onStartCommand 等——OomAdjuster 的 exec-service 分支直接给 **adj = FOREGROUND_APP_ADJ**、**procstate = PROCESS_STATE_SERVICE**，调度组按 execFg 取前台/后台组；`PROCESS_STATE_SERVICE` 因此得名，生命周期回调的前台档/后台档 ANR 计时也与此对应
+- **started service 长期驻留**：procstate 至少抬到 `PROCESS_STATE_SERVICE`，近期活跃（`MAX_SERVICE_INACTIVITY` 内）的 adj 抬到 `SERVICE_ADJ = 500`；LRU 靠后（约后 2/3）的 service 进程划入 B List（`SERVICE_B_ADJ = 800`），内存不宽裕时占内存大的 service 进程即使 LRU 靠前也会被强制划入 B List——内存紧张时第一批让位
 - **bind 传播**：客户端的优先级沿 ConnectionRecord 传染给服务进程，传染强度由 BIND 标志决定
 
 BIND 标志速查（adj/能力相关，Context.java）：
@@ -640,7 +881,7 @@ public class CounterService extends Service {
 
 ### 9.7.5 其他要点速查
 
-- **后台启动的合法通道**：应用处于前台/可见的短暂窗口、高优先级 FCM（Firebase Cloud Messaging）、系统闹钟 PendingIntent、用户交互的直接续接。后台 `startService` 抛 `ServiceStartNotAllowedException`（IllegalStateException 子类）；`startForegroundService` 被拒时 Android 14+ 抛 `ForegroundServiceStartNotAllowedException`。**"先 start 再想办法前台化"在 Android 12+ 已走不通**（限制矩阵在 startServiceLocked 前段就拦截）。
+- **后台启动的合法通道**：应用处于前台/可见的短暂窗口、高优先级 FCM（Firebase Cloud Messaging）、系统闹钟 PendingIntent、用户交互的直接续接。后台 `startService` 抛 `BackgroundServiceStartNotAllowedException`（`ServiceStartNotAllowedException` 子类，间接继承 IllegalStateException）；`startForegroundService` 被拒时 Android 14+ 抛 `ForegroundServiceStartNotAllowedException`。**"先 start 再想办法前台化"在 Android 12+ 已走不通**（限制矩阵在 startServiceLocked 前段就拦截）。
 - **FGS 通知是产品语义**：Android 13 起 FGS 通知默认静默、独立分组；用户可在系统的前台服务任务管理器里直接停止你的 FGS——**不要假设 FGS 不会被用户停**。
 - **不要把崩溃重启当可靠性机制**：started service 崩溃后 1s 起指数退避，bound service 30 分钟起步、最多 16 次（9.4.3）。需要可靠执行用 WorkManager，Service 只负责"活着的时候干活"。
 - **同一进程同一 Service 只有一个实例**：多次 startService 只有一次 onCreate、N 次 onStartCommand；要多实例只能拆进程（`android:process` 或 isolated process），而不是再 start 一次。

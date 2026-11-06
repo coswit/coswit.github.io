@@ -97,6 +97,65 @@ git config --global i18n.commitEncoding utf-8
 - <https://github.com/adang1345/PythonWindows>
 - <https://www.python.org/downloads/>
 
+## gradle
+
+### 代理
+
+在 `%USERPROFILE%\.gradle\gradle.properties` 中写入（全局配置，对所有项目生效；放在项目根目录的 `gradle.properties` 则只对该项目生效）：
+
+```properties
+systemProp.http.proxyHost=127.0.0.1
+systemProp.http.proxyPort=7897
+systemProp.https.proxyHost=127.0.0.1
+systemProp.https.proxyPort=7897
+
+# 不走代理的地址，多个用 | 分隔（http 和 https 共用这一项）
+systemProp.http.nonProxyHosts=localhost|127.0.0.1
+```
+
+代理需要认证时追加：
+
+```properties
+systemProp.http.proxyUser=用户名
+systemProp.http.proxyPassword=密码
+```
+
+修改后重新构建（Android Studio 中 Sync 一次）生效。
+
+### 编译乱码
+
+简体中文 Windows 的默认编码是 GBK（代码页 936），而项目源码与构建输出通常按 UTF-8 处理，gradle 编译时的乱码基本都出在这个编码差异上，分两类症状对症处理：
+
+症状一：编译报错「编码 GBK 的不可映射字符」——源码里的中文注释是 UTF-8，编译器却按 GBK 读。在 `build.gradle` 中指定编译编码：
+
+```groovy
+tasks.withType(JavaCompile) {
+    options.encoding = "UTF-8"
+}
+```
+
+Kotlin DSL（`build.gradle.kts`）写法：
+
+```kotlin
+tasks.withType<JavaCompile>() {
+    options.encoding = "UTF-8"
+}
+```
+
+症状二：构建输出、日志里的中文显示乱码——Gradle daemon 输出编码的问题。在 `gradle.properties`（全局在 `%USERPROFILE%\.gradle\`，项目级在项目根目录）中加：
+
+```properties
+org.gradle.jvmargs=-Dfile.encoding=UTF-8
+# 已有 org.gradle.jvmargs 行时在同一行追加，如：org.gradle.jvmargs=-Xmx4g -Dfile.encoding=UTF-8
+# properties 中重复的 key 后一行覆盖前一行，写两行会导致内存参数失效
+```
+
+终端自身的编码也要对上：cmd 默认 GBK，先执行 `chcp 65001` 切到 UTF-8 再跑 gradle；PowerShell 7 / Windows Terminal 默认 UTF-8，一般无需处理。
+
+Android Studio 中编译输出乱码时，还可以通过 Help → Edit Custom VM Options 打开 vmoptions 文件，加一行 `-Dfile.encoding=UTF-8`，重启 IDE 生效。
+
+最后手段：控制面板 → 区域 → 管理 → 更改系统区域设置，勾选「Beta 版: 使用 Unicode UTF-8 提供全球语言支持」，让整个系统默认 UTF-8。影响面大，部分老软件可能反过来乱码，前三步能解决就不要动这里。
+
 ## 代理
 
 ### windows 防火墙放开代理端口

@@ -415,9 +415,21 @@ git reflog
 # 添加每个变化前，都会要求确认，对于同一个文件的多处变化，可以实现分次提交
 git add -p
 
-# 取消 add 操作
+# 取消 add 操作（取消暂存，只影响暂存区，工作区内容保持不变）
+
+# 取消单个文件的暂存
+git restore --staged [file]
+# 老版本 Git（2.23 之前）的等价写法
+git reset HEAD [file]
+
+# 取消全部文件的暂存
 git restore --staged .
 git reset HEAD .
+# git reset 不带任何参数，同样取消全部暂存
+git reset
+
+# 取消后，已跟踪文件回到“已修改但未暂存”状态
+# 新 add 的文件（之前未被跟踪）则回到“未跟踪”状态
 ```
 
 ## 配置

@@ -1,0 +1,8 @@
+{
+  "readableLineLength": true,
+  "foldIndent": true,
+  "showInlineTitle": false,
+  "userIgnoreFilters": [
+    "wt/scripts/build/*"
+  ]
+}

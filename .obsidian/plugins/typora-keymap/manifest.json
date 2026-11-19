@@ -1,0 +1,10 @@
+{
+  "id": "typora-keymap",
+  "name": "Typora Keymap",
+  "version": "1.0.1",
+  "minAppVersion": "1.4.0",
+  "description": "Typora-style editing keymap: heading levels that toggle, heading up/down, task lists, underline, comments, math and image blocks, plus one-click binding of Typora's shortcuts for the core editing commands.",
+  "author": "YuanMouRenYe",
+  "authorUrl": "https://github.com/YuanMouRenYe",
+  "isDesktopOnly": false
+}

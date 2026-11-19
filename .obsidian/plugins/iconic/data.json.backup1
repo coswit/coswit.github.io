@@ -1,0 +1,87 @@
+{
+  "biggerIcons": "mobile",
+  "clickableIcons": "desktop",
+  "showAllFileIcons": false,
+  "showAllFolderIcons": false,
+  "minimalFolderIcons": true,
+  "showMarkdownTabIcons": true,
+  "showTitleIcons": true,
+  "showTagPillIcons": false,
+  "showMenuActions": true,
+  "showSuggestionIcons": true,
+  "showQuickSwitcherIcons": true,
+  "showMoveFileIcons": true,
+  "showItemName": "on",
+  "useSearchKeywords": "on",
+  "maxSearchResults": 100,
+  "colorPicker1": "list",
+  "colorPicker2": "rgb",
+  "uncolorHover": false,
+  "uncolorDrag": false,
+  "uncolorSelect": false,
+  "uncolorQuick": false,
+  "maxBackups": 2,
+  "dialogState": {
+    "iconMode": true,
+    "emojiMode": false,
+    "rulePage": "file"
+  },
+  "appIcons": {},
+  "tabIcons": {},
+  "fileIcons": {
+    "privte": {
+      "icon": "lucide-user-round-key",
+      "color": "yellow"
+    },
+    "wt": {
+      "icon": "lucide-banknote-arrow-up",
+      "color": "green"
+    },
+    "wt/3D文档": {
+      "icon": "lucide-folder",
+      "color": "cyan"
+    },
+    "wt/AI相关": {
+      "icon": "lucide-fan",
+      "color": "green"
+    },
+    "wt/images": {
+      "icon": "lucide-image",
+      "color": "green"
+    },
+    "wt/scripts": {
+      "icon": "lucide-file-terminal",
+      "color": "green"
+    },
+    "wt/工作记录": {
+      "icon": "lucide-pickaxe",
+      "color": "green"
+    }
+  },
+  "bookmarkIcons": {},
+  "tagIcons": {},
+  "propertyIcons": {},
+  "ribbonIcons": {
+    "nutstore-sync:开始同步": {
+      "color": "pink"
+    }
+  },
+  "fileRules": [
+    {
+      "id": "dnwhi",
+      "name": "wt",
+      "match": "all",
+      "conditions": [
+        {
+          "source": "path",
+          "operator": "is",
+          "value": "wt/"
+        }
+      ],
+      "enabled": true,
+      "icon": "lucide-tv-minimal",
+      "color": "cyan"
+    }
+  ],
+  "folderRules": []
+}

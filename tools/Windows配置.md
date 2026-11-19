@@ -12,7 +12,7 @@ Enable-WindowsOptionalFeature -Online -FeatureName VirtualMachinePlatform
 wsl --list --online
 
 # 安装 Ubuntu 指定版本（Ubuntu-20.04 已于 2025 年 5 月底停止官方支持，新装建议 22.04 及以上）
-wsl --install -d Ubuntu-20.04
+wsl --install -d Ubuntu-22.04
 
 # 设置为 wsl2
 wsl --set-default-version 2
@@ -45,13 +45,13 @@ wsl --list --verbose
 wsl --list
 
 # 导出为 tar 备份
-wsl --export Ubuntu-20.04 D:\backup\ubuntu.tar
+wsl --export Ubuntu-22.04 D:\backup\ubuntu.tar
 
 # 导入到新位置（迁移到其他磁盘时也用这个）
 wsl --import Ubuntu-new D:\wsl\Ubuntu-new D:\backup\ubuntu.tar
 
 # 注销（删除）发行版，注意先备份
-wsl --unregister Ubuntu-20.04
+wsl --unregister Ubuntu-22.04
 ```
 
 ### .wslconfig 资源限制
@@ -74,7 +74,11 @@ swap=2GB
 
 ### git
 
-下载：前往 <https://git-scm.com/download/win>
+```powershell
+scoop install git
+```
+
+手动下载备用：<https://git-scm.com/download/win>
 
 Windows Terminal 中 git-bash 的乱码问题：将 profile 的 commandline 从 `$GIT_INSTALL_DIR\bin\bash.exe` 修改为 `$GIT_INSTALL_DIR\usr\bin\bash.exe --login -i`。
 
@@ -90,12 +94,23 @@ git config --global i18n.commitEncoding utf-8
 
 ### Java
 
-安装 Java：<https://www.oracle.com/hk/java/technologies/downloads/>
+```powershell
+# 优先 scoop 的 java 源，多版本并存时用 scoop reset openjdk21 切换
+scoop bucket add java
+scoop install openjdk17
+```
+
+手动下载备用：<https://www.oracle.com/hk/java/technologies/downloads/>
 
 ### python
 
-- <https://github.com/adang1345/PythonWindows>
-- <https://www.python.org/downloads/>
+```powershell
+# 最新版在 main 源，历史版本在 versions 源
+scoop install python
+```
+
+- Windows 专用构建（含调试符号等）：<https://github.com/adang1345/PythonWindows>
+- 官网手动下载备用：<https://www.python.org/downloads/>
 
 ## gradle
 
@@ -262,218 +277,32 @@ Stop-Process -Id (Get-NetTCPConnection -LocalPort 8080).OwningProcess -Force
 
 ## Windows Terminal
 
-安装（Win11 一般自带，Win10 手动装）：
+安装（Win11 一般自带；手动装优先 scoop，winget 备用）：
 
 ```powershell
+# scoop（extras 源），装的是便携版
+scoop bucket add extras
+scoop install windows-terminal
+
+# winget，装 Store 版
 winget install Microsoft.WindowsTerminal
+
+# winget 精确指定 id 的写法
+winget install --id Microsoft.WindowsTerminal -e
 ```
 
-基础配置：打开设置（`Ctrl+,`）→ 选择 JSON 文件，或直接编辑 `%LOCALAPPDATA%\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json`。常用配置项：
+注意两种版本的设置文件位置不同：scoop 便携版从 1.17 起在 `~\scoop\apps\windows-terminal\current\settings\settings.json`（随 persist 目录持久化）；winget / Store 版在 `%LOCALAPPDATA%\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json`。
+
+基础配置：打开设置（`Ctrl+,`）→ 选择 JSON 文件，或直接编辑对应版本的 settings.json（路径见上）。常用配置项：
 
 - **默认配置文件**：`defaultProfile` 指定启动时打开哪个 shell（如 PowerShell 7、bash）
 - **默认起始目录**：profile 中的 `startingDirectory`
 - **外观**：`colorScheme`（配色方案）、字号、`useAcrylic`（亚克力透明）
 - **快捷键**：`keybindings` / `actions` 自定义按键
 
-## winget
-
-Windows 官方包管理器，常用命令：
-
-```powershell
-# 搜索
-winget search <name>
-# 安装
-winget install <name>
-# 升级单个包
-winget upgrade <name>
-# 列出可升级的包
-winget upgrade
-# 全部升级
-winget upgrade --all
-# 卸载
-winget uninstall <name>
-# 列出已安装
-winget list
-# 代理
-winget install <name> --proxy http://127.0.0.1:7897
-# 导出已安装软件清单（重装系统 / 迁移机器时备份）
-winget export -o D:\backup\packages.json
-# 根据清单批量安装
-winget import -i D:\backup\packages.json
-```
-
-## powershell7
-
-### 安装
-
-- 方式一：从 Releases 下载对应 msi 文件进行安装：<https://github.com/PowerShell/PowerShell/releases>
-- 方式二：通过 winget 进行安装：`winget install Microsoft.PowerShell`
-
-更新使用：
-
-```powershell
-winget upgrade Microsoft.PowerShell
-
-# winget 代理
-winget upgrade Microsoft.PowerShell --proxy http://127.0.0.1:7897
-```
-
-或者直接使用微软提供的在线安装脚本，`-UseMSI` 会下载并运行标准的 Windows 程序，并自动替换旧版保留所有设置：
-
-```powershell
-iex "& { $(irm https://aka.ms/install-powershell.ps1) } -UseMSI"
-```
-
-### 快捷键配置
-
-在 PowerShell7 中实现 Linux bash 的快捷键。因为 PowerShell 中用的是 Windows 模式，Linux 用的是 Emacs 模式，切换 Emacs 模式：在终端输入 `notepad $PROFILE`，在文件中加入：
-
-```powershell
-Set-PSReadLineOption -EditMode Emacs
-```
-
-如果只想在当前 shell 中生效，则执行上述命令。如果只想修改单个命令，则使用：
-
-```powershell
-Set-PSReadLineKeyHandler -Key "Ctrl+e" -Function EndOfLine
-```
-
-如果想要让 oh-my-posh 也实现一样的功能，需要增加如下配置：
-
-```powershell
-oh-my-posh init pwsh | Invoke-Expression
-
-# 1. 确保使用的是 Emacs 模式（提供 Ctrl+A, Ctrl+E 等基础体验）
-Set-PSReadLineOption -EditMode Emacs
-
-# 2. 重新定义 Ctrl+e：强制接受所有预测并跳转行尾
-Set-PSReadLineKeyHandler -Key "Ctrl+e" -ScriptBlock {
-    # 尝试采纳当前的预测建议（全量采纳）
-    [Microsoft.PowerShell.PSConsoleReadLine]::AcceptSuggestion()
-    # 强制将光标移动到整行的末尾
-    [Microsoft.PowerShell.PSConsoleReadLine]::EndOfLine()
-}
-
-# 设置预测来源为历史记录
-Set-PSReadLineOption -PredictionSource History
-
-# 设置预测文本的显示方式为列表或内联（内联最像 Linux）
-Set-PSReadLineOption -PredictionViewStyle InlineView
-
-# 设置常用别名
-Set-Alias grep findstr
-Set-Alias touch New-Item
-Set-Alias cat Get-Content
-Set-Alias rm Remove-Item
-Set-Alias mv Move-Item
-Set-Alias mkdir New-Item
-
-function wk { cd D:\workspaces }
-function gs { git status }
-
-function proxy {
-    $env:HTTP_PROXY = "http://127.0.0.1:7897"
-    $env:HTTPS_PROXY = "http://127.0.0.1:7897"
-    Write-Host "Proxy ON" -ForegroundColor Green
-}
-
-function unproxy {
-    $env:HTTP_PROXY = $null
-    $env:HTTPS_PROXY = $null
-    Write-Host "Proxy OFF" -ForegroundColor Red
-}
-```
-
-### 历史与预测
-
-历史记忆由 PSReadLine 模块提供（PowerShell 7 内置），跨会话持久保存。
-
-历史预测——输入时显示灰色的历史建议：
-
-```powershell
-# 预测来源：历史记录
-Set-PSReadLineOption -PredictionSource History
-
-# 显示方式：InlineView 单行灰字（类似 fish）/ ListView 下拉列表
-Set-PSReadLineOption -PredictionViewStyle InlineView
-```
-
-- InlineView：灰色建议出现在光标右侧，`→` 或 `End` 整条采纳，`Ctrl+→` 逐词采纳
-- ListView：下方弹出历史列表，`↓` 进入列表选择，`→` 采纳；`F2` 在两种视图间切换
-
-插件预测——在历史之外挂载预测插件（PSReadLine 2.2+）：
-
-```powershell
-# CompletionPredictor 把 Tab 补全候选也变成灰色预测
-Install-Module CompletionPredictor
-Set-PSReadLineOption -PredictionSource HistoryAndPlugin
-```
-
-历史搜索：
-
-- `Ctrl+r` 向后搜索历史，`Ctrl+s` 向前搜索
-- 输入 `#关键字` 后按 Tab，从历史记录中补全整条命令
-
-历史文件——跨会话“记忆”的载体：
-
-```powershell
-# 查看历史文件路径
-Get-PSReadLineOption | select HistorySavePath
-# 默认在 %APPDATA%\Microsoft\Windows\PowerShell\PSReadLine\ConsoleHost_history.txt
-
-# 历史条数上限（默认 4096）
-Set-PSReadLineOption -MaximumHistoryCount 8192
-```
-
-注意 `Get-History`（别名 `h`）只显示**当前会话**执行过的命令，`Invoke-History 5`（别名 `r 5`）重跑第 5 条；它与 PSReadLine 的交互历史是两套体系。`Clear-History` 只清当前会话，要彻底清空记忆需删除历史文件。
-
-### oh-my-posh
-
-参考文档：<https://ohmyposh.dev/docs>
-
-配置 powershell，安装 powershell 插件：
-
-```powershell
-# 允许运行 Install-Module 脚本
-set-executionpolicy remotesigned
-
-# 更新最新版本的 PSReadLine，为了自动补全
-Install-Module PSReadLine -Force
-
-# 创建 powershell 的初始化脚本，点击确认创建即可
-notepad $profile
-
-# 安装几个插件
-Install-Module posh-git
-Install-Module Terminal-Icons
-```
-
-安装 oh-my-posh：
-
-```powershell
-winget install JanDeDobbeleer.OhMyPosh --source winget --scope machine --force
-```
-
-字体安装：
-
-```powershell
-oh-my-posh font install meslo
-```
-
-在 PowerShell7 中使用下面命令创建空白配置文件：
-
-```powershell
-New-Item -Path $PROFILE -Type File -Force
-# 配置文件位于 ~\Documents\PowerShell
-```
-
-找到 `~\Documents\PowerShell\Microsoft.PowerShell_profile.ps1` 文件，编辑打开，写入：
-
-```powershell
-oh-my-posh init pwsh | Invoke-Expression
-```
-
 ## scoop
+
+Windows 下优先使用的包管理器：用户级安装不需要管理员权限，软件集中在 `~\scoop\` 统一管理，卸载干净，命令行软件尤其推荐用它装。下面的 winget 作为备用。
 
 安装：
 
@@ -497,14 +326,42 @@ scoop search qemu
 scoop update
 ```
 
-版本相关：
+### 版本查看与回退
+
+scoop 的每个版本单独占一个目录，`current` 是指向当前版本的链接（junction），`scoop update` 装新版后旧版本目录默认保留，随时可以切回：
 
 ```powershell
-# 安装指定版本
-scoop install git@2.19.0.windows.1
-# 切换版本
-scoop reset terraform@0.12.11
+# 查看当前版本（scoop list 只显示 current 指向的版本）
+scoop list android-studio
+
+# 查看本机保留的所有版本，info 输出的 Installed 段会全部列出
+scoop info android-studio
+
+# 直接看版本目录也行
+ls ~\scoop\apps\android-studio
 ```
+
+回退到本机已装过的旧版本（重建 current 指向，瞬间完成）：
+
+```powershell
+scoop reset android-studio@2024.3.1.13
+
+# 不带版本号则切回本机已装的最新版本
+scoop reset android-studio
+```
+
+安装本机没有的旧版本用 @版本号。bucket 里只有最新版的 manifest，scoop 会到 bucket 的 git 历史里找旧版 manifest，找不到再按 autoupdate 规则自动生成，前提是旧版本的下载链接仍有效（Android Studio 的历史包在 dl.google.com 长期保留，一般能装上）：
+
+```powershell
+scoop install android-studio@2024.2.2.13
+scoop install git@2.19.0.windows.1
+```
+
+注意：
+
+- `scoop cleanup <app>` / `scoop cleanup *` 会删除旧版本目录，删了就无法 reset 回退，只能重新 install；想保留回退能力就别 cleanup
+- 锁定版本防止误升级：`scoop hold android-studio`，解锁 `scoop unhold android-studio`
+- versions bucket 收的是独立命名的旧版本包（python38、nodejs16）和预览通道包（android-studio-beta / android-studio-canary），不是正式版的历史版本；android-studio 正式版在 extras
 
 ### java 版本
 
@@ -568,4 +425,318 @@ git config --global --add safe.directory C:/Users/用户名/scoop/buckets/nerd-f
 ```
 
 这种所有权状态通常是某次用管理员权限运行 scoop 造成的，平时建议用普通用户权限使用 scoop。
+
+## winget
+
+Windows 官方自带的包管理器，作为 scoop 的备用：商店版软件、系统组件类（VC 运行库等）用它装更合适，也适合给已装软件做统一升级。常用命令：
+
+```powershell
+# 搜索
+winget search <name>
+# 安装
+winget install <name>
+# 升级单个包
+winget upgrade <name>
+# 列出可升级的包
+winget upgrade
+# 全部升级
+winget upgrade --all
+# 卸载
+winget uninstall <name>
+# 列出已安装
+winget list
+# 代理
+winget install <name> --proxy http://127.0.0.1:7897
+# 导出已安装软件清单（重装系统 / 迁移机器时备份）
+winget export -o D:\backup\packages.json
+# 根据清单批量安装
+winget import -i D:\backup\packages.json
+```
+
+## powershell7
+
+### 安装
+
+- 方式一：scoop 安装：`scoop install powershell`
+- 方式二：winget 安装：`winget install Microsoft.PowerShell`
+- 方式三：从 Releases 下载对应 msi 文件手动安装：<https://github.com/PowerShell/PowerShell/releases>
+
+更新（按当初的安装来源选对应方式）：
+
+```powershell
+# scoop 安装的
+scoop update powershell
+
+# winget 安装的（需要代理时）
+winget upgrade Microsoft.PowerShell --proxy http://127.0.0.1:7897
+```
+
+或者直接使用微软提供的在线安装脚本，`-UseMSI` 会下载并运行标准的 Windows 程序，并自动替换旧版保留所有设置：
+
+```powershell
+iex "& { $(irm https://aka.ms/install-powershell.ps1) } -UseMSI"
+```
+
+### $PROFILE 配置文件
+
+`$PROFILE` 是 PowerShell 每次启动时自动加载的脚本，后面 oh-my-posh、PSReadLine、别名等配置都写在这里：
+
+```powershell
+# 查看路径，PowerShell 7 位于 ~\Documents\PowerShell\Microsoft.PowerShell_profile.ps1
+$PROFILE
+
+# 不存在时创建（已存在则什么都不做，不会清空内容）
+if (!(Test-Path -Path $PROFILE)) { New-Item -Type File -Path $PROFILE -Force }
+
+# 用记事本编辑
+notepad $PROFILE
+
+# 保存后重载生效，不用重开终端
+. $PROFILE
+```
+
+### oh-my-posh
+
+oh-my-posh 是提示符主题引擎，把默认 prompt 换成带图标、git 状态、执行耗时等信息的彩色提示符，相当于 zsh 下 powerlevel10k 的角色，快捷键、预测这些输入体验仍由 PSReadLine 负责。参考文档：<https://ohmyposh.dev/docs>
+
+**放开执行策略**。Windows 默认禁止运行本地脚本，profile 本身就是脚本，不放开的话启动时报「无法加载文件……因为在此系统上禁止运行脚本」：
+
+```powershell
+# 只对当前用户生效，无需管理员
+Set-ExecutionPolicy RemoteSigned -Scope CurrentUser
+```
+
+**安装本体与字体**（优先 scoop，winget 备用）：
+
+```powershell
+# scoop（main 源自带全部主题，同样会设置 POSH_THEMES_PATH 环境变量）
+scoop install oh-my-posh
+
+# winget 备用，默认用户级；--scope machine 装到 Program Files（需管理员）
+winget install JanDeDobbeleer.OhMyPosh --source winget
+
+# 安装 Nerd Font，官方推荐 Meslo（提示符图标依赖它的图标字形）
+oh-my-posh font install meslo
+
+# 查看所有可安装的字体
+oh-my-posh font list
+
+# 字体也可以走 scoop 的 nerd-fonts 源
+scoop bucket add nerd-fonts
+scoop install Meslo-NF
+```
+
+装完新开一个终端，PATH 和 POSH_THEMES_PATH 环境变量才会生效。
+
+**终端设置字体**。字体装好后还要让终端用上它，否则提示符图标显示为乱码方块。Windows Terminal 设置（`Ctrl+,`）→ 选中 PowerShell 配置文件 → 外观 → 字体，选择 `MesloLGM Nerd Font`，对应 settings.json 中的配置：
+
+```json
+{
+    "profiles": {
+        "defaults": {
+            "font": { "face": "MesloLGM Nerd Font" }
+        }
+    }
+}
+```
+
+**初始化**。在 `$PROFILE` 中写入：
+
+```powershell
+oh-my-posh init pwsh | Invoke-Expression
+```
+
+重开终端（或 `. $PROFILE`），提示符变成主题样式即成功。
+
+### 主题配置
+
+`oh-my-posh init pwsh` 不带参数时用内置默认主题，换主题要加 `--config`，三种取值：
+
+```powershell
+# 主题名，不带扩展名（联网下载，有本地缓存）
+oh-my-posh init pwsh --config jandedobbeleer | Invoke-Expression
+
+# 本地主题文件。winget / scoop 安装都自带全部主题，POSH_THEMES_PATH 指向该目录
+# （scoop 在 ~\scoop\apps\oh-my-posh\current\themes）
+oh-my-posh init pwsh --config "$env:POSH_THEMES_PATH\jandedobbeleer.omp.json" | Invoke-Expression
+
+# 远程 URL
+oh-my-posh init pwsh --config "https://raw.githubusercontent.com/JanDeDobbeleer/oh-my-posh/main/themes/jandedobbeleer.omp.json" | Invoke-Expression
+```
+
+- 主题效果预览：<https://ohmyposh.dev/docs/themes>，每个主题对应 themes 目录下的同名 json
+- 主题名 / URL 方式启动时要联网检查，本地文件方式最稳
+- 在现有主题基础上改配色、增删模块，先导出成自己的配置文件再改：
+
+```powershell
+oh-my-posh config export --config jandedobbeleer --output ~/.mytheme.omp.json
+```
+
+- 改配置文件时开实时重载，保存即生效，不用重启终端：
+
+```powershell
+oh-my-posh enable reload
+```
+
+升级按安装来源选：scoop 装的用 `scoop update oh-my-posh`，winget 装的用 `winget upgrade JanDeDobbeleer.OhMyPosh --source winget`。
+
+### PSReadLine 快捷键
+
+PSReadLine 默认用 Windows 编辑模式，Linux shell 用的是 Emacs 模式，`Ctrl+a` / `Ctrl+e` 跳行首行尾这些快捷键习惯都来自后者。在 `$PROFILE` 中切换：
+
+```powershell
+Set-PSReadLineOption -EditMode Emacs
+```
+
+只想临时体验的话，在当前 shell 直接执行上述命令即可；只想改单个键则用：
+
+```powershell
+Set-PSReadLineKeyHandler -Key "Ctrl+e" -Function EndOfLine
+```
+
+### 历史与预测
+
+历史记忆由 PSReadLine 模块提供（PowerShell 7 内置，一般够用，想升级到新版本时执行 `Install-Module PSReadLine -Force`），跨会话持久保存。
+
+历史预测——输入时显示灰色的历史建议：
+
+```powershell
+# 预测来源：历史记录
+Set-PSReadLineOption -PredictionSource History
+
+# 显示方式：InlineView 单行灰字（类似 fish）/ ListView 下拉列表
+Set-PSReadLineOption -PredictionViewStyle InlineView
+```
+
+- InlineView：灰色建议出现在光标右侧，`→` 或 `End` 整条采纳，`Ctrl+→` 逐词采纳
+- ListView：下方弹出历史列表，`↓` 进入列表选择，`→` 采纳；`F2` 在两种视图间切换
+
+Emacs 模式下 `Ctrl+e` 默认跳到行尾；想让它先整条采纳灰色预测、再跳到行尾，在 `$PROFILE` 中自定义：
+
+```powershell
+Set-PSReadLineKeyHandler -Key "Ctrl+e" -ScriptBlock {
+    # 采纳当前整条内联预测（没有预测时不做任何事）
+    [Microsoft.PowerShell.PSConsoleReadLine]::AcceptSuggestion()
+    # 光标移到行尾
+    [Microsoft.PowerShell.PSConsoleReadLine]::EndOfLine()
+}
+```
+
+插件预测——在历史之外挂载预测插件（PSReadLine 2.2+）：
+
+```powershell
+# CompletionPredictor 把 Tab 补全候选也变成灰色预测
+Install-Module CompletionPredictor
+Set-PSReadLineOption -PredictionSource HistoryAndPlugin
+```
+
+历史搜索：
+
+- `Ctrl+r` 向后搜索历史，`Ctrl+s` 向前搜索
+- 输入 `#关键字` 后按 Tab，从历史记录中补全整条命令
+
+历史文件——跨会话"记忆"的载体：
+
+```powershell
+# 查看历史文件路径
+Get-PSReadLineOption | select HistorySavePath
+# 默认在 %APPDATA%\Microsoft\Windows\PowerShell\PSReadLine\ConsoleHost_history.txt
+
+# 历史条数上限（默认 4096）
+Set-PSReadLineOption -MaximumHistoryCount 8192
+```
+
+注意 `Get-History`（别名 `h`）只显示**当前会话**执行过的命令，`Invoke-History 5`（别名 `r 5`）重跑第 5 条；它与 PSReadLine 的交互历史是两套体系。`Clear-History` 只清当前会话，要彻底清空记忆需删除历史文件。
+
+### 别名与常用函数
+
+让 PowerShell 更贴近 Linux 使用习惯的配置，都写在 `$PROFILE` 中。
+
+扩展模块（安装后还要导入才生效）：
+
+```powershell
+# 安装，只需一次
+Install-Module posh-git
+Install-Module Terminal-Icons
+
+# $PROFILE 中导入
+Import-Module posh-git          # git 分支状态显示与参数补全
+Import-Module Terminal-Icons    # Get-ChildItem / ls 显示文件类型图标
+```
+
+常用别名：
+
+```powershell
+Set-Alias grep findstr
+Set-Alias touch New-Item
+Set-Alias cat Get-Content
+Set-Alias rm Remove-Item
+Set-Alias mv Move-Item
+# mkdir 不要设别名：内置 mkdir 是 New-Item -Type Directory 的封装，
+# 设成 New-Item 后 mkdir foo 会创建同名文件而不是目录
+```
+
+自定义函数：
+
+```powershell
+function wk { cd D:\workspaces }
+function gs { git status }
+
+function proxy {
+    $env:HTTP_PROXY = "http://127.0.0.1:7897"
+    $env:HTTPS_PROXY = "http://127.0.0.1:7897"
+    Write-Host "Proxy ON" -ForegroundColor Green
+}
+
+function unproxy {
+    $env:HTTP_PROXY = $null
+    $env:HTTPS_PROXY = $null
+    Write-Host "Proxy OFF" -ForegroundColor Red
+}
+```
+
+### profile 完整示例
+
+以上各节整合后的完整 `$PROFILE`，可直接抄：
+
+```powershell
+# ===== 扩展模块 =====
+Import-Module posh-git
+Import-Module Terminal-Icons
+
+# ===== PSReadLine =====
+Set-PSReadLineOption -EditMode Emacs
+Set-PSReadLineOption -PredictionSource History
+Set-PSReadLineOption -PredictionViewStyle InlineView
+Set-PSReadLineKeyHandler -Key "Ctrl+e" -ScriptBlock {
+    [Microsoft.PowerShell.PSConsoleReadLine]::AcceptSuggestion()
+    [Microsoft.PowerShell.PSConsoleReadLine]::EndOfLine()
+}
+
+# ===== 别名与函数 =====
+Set-Alias grep findstr
+Set-Alias touch New-Item
+Set-Alias cat Get-Content
+Set-Alias rm Remove-Item
+Set-Alias mv Move-Item
+
+function wk { cd D:\workspaces }
+function gs { git status }
+
+function proxy {
+    $env:HTTP_PROXY = "http://127.0.0.1:7897"
+    $env:HTTPS_PROXY = "http://127.0.0.1:7897"
+    Write-Host "Proxy ON" -ForegroundColor Green
+}
+
+function unproxy {
+    $env:HTTP_PROXY = $null
+    $env:HTTPS_PROXY = $null
+    Write-Host "Proxy OFF" -ForegroundColor Red
+}
+
+# ===== oh-my-posh（官方建议放最后，避免 prompt 被其他模块覆盖）=====
+oh-my-posh init pwsh --config "$env:POSH_THEMES_PATH\jandedobbeleer.omp.json" | Invoke-Expression
+```
+
 

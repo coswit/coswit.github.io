@@ -1,0 +1,235 @@
+{
+  "account": "",
+  "credential": "",
+  "nutstoreEnterpriseBaseUrl": "",
+  "remoteDir": "/blog/",
+  "conflictStrategy": "no-conflict-merge",
+  "oauthResponseText": "yfO09p9r9ahIfUCl8UfayhPjN8w2tJGcHTklvxqAKGG0QM-l5b12iHEkD1_vtA7lIWH0KqjcpPkO8g2vwtlM8wgkg-0xjYtoPpAWMJ43upqXdpM43t8uqSDgdOyib6x83GoXjP_bIoFcIRnkdv5d0GnoUaN4sTKXfNADM6MyfhlJ7Snwz8gBZA==",
+  "loginMode": "sso",
+  "confirmBeforeSync": true,
+  "confirmBeforeDeleteInAutoSync": true,
+  "syncMode": "loose",
+  "filterRules": {
+    "rules": [
+      {
+        "expr": "**/*.nutstore-sync-*.download",
+        "options": {
+          "caseSensitive": false
+        },
+        "type": "exclude"
+      },
+      {
+        "expr": "**/__MACOSX",
+        "options": {
+          "caseSensitive": false
+        },
+        "type": "exclude"
+      },
+      {
+        "expr": "**/.DS_Store",
+        "options": {
+          "caseSensitive": false
+        },
+        "type": "exclude"
+      },
+      {
+        "expr": "**/.env",
+        "options": {
+          "caseSensitive": false
+        },
+        "type": "exclude"
+      },
+      {
+        "expr": "**/.nomedia",
+        "options": {
+          "caseSensitive": false
+        },
+        "type": "exclude"
+      },
+      {
+        "expr": "**/.env.*",
+        "options": {
+          "caseSensitive": false
+        },
+        "type": "exclude"
+      },
+      {
+        "expr": "**/.git",
+        "options": {
+          "caseSensitive": false
+        },
+        "type": "exclude"
+      },
+      {
+        "expr": "**/.github",
+        "options": {
+          "caseSensitive": false
+        },
+        "type": "exclude"
+      },
+      {
+        "expr": "**/.gitlab",
+        "options": {
+          "caseSensitive": false
+        },
+        "type": "exclude"
+      },
+      {
+        "expr": "**/.idea",
+        "options": {
+          "caseSensitive": false
+        },
+        "type": "exclude"
+      },
+      {
+        "expr": "**/.svn",
+        "options": {
+          "caseSensitive": false
+        },
+        "type": "exclude"
+      },
+      {
+        "expr": "**/.trash",
+        "options": {
+          "caseSensitive": false
+        },
+        "type": "exclude"
+      },
+      {
+        "expr": "**/.vscode",
+        "options": {
+          "caseSensitive": false
+        },
+        "type": "exclude"
+      },
+      {
+        "expr": "**/.codex",
+        "options": {
+          "caseSensitive": false
+        },
+        "type": "exclude"
+      },
+      {
+        "expr": "**/.opencode",
+        "options": {
+          "caseSensitive": false
+        },
+        "type": "exclude"
+      },
+      {
+        "expr": "**/.claude",
+        "options": {
+          "caseSensitive": false
+        },
+        "type": "exclude"
+      },
+      {
+        "expr": "**/.cursor",
+        "options": {
+          "caseSensitive": false
+        },
+        "type": "exclude"
+      },
+      {
+        "expr": "**/~$*.doc",
+        "options": {
+          "caseSensitive": false
+        },
+        "type": "exclude"
+      },
+      {
+        "expr": "**/~$*.docx",
+        "options": {
+          "caseSensitive": false
+        },
+        "type": "exclude"
+      },
+      {
+        "expr": "**/~$*.ppt",
+        "options": {
+          "caseSensitive": false
+        },
+        "type": "exclude"
+      },
+      {
+        "expr": "**/~$*.pptx",
+        "options": {
+          "caseSensitive": false
+        },
+        "type": "exclude"
+      },
+      {
+        "expr": "**/~$*.xls",
+        "options": {
+          "caseSensitive": false
+        },
+        "type": "exclude"
+      },
+      {
+        "expr": "**/~$*.xlsx",
+        "options": {
+          "caseSensitive": false
+        },
+        "type": "exclude"
+      },
+      {
+        "expr": "**/desktop.ini",
+        "options": {
+          "caseSensitive": false
+        },
+        "type": "exclude"
+      },
+      {
+        "expr": "**/node_modules",
+        "options": {
+          "caseSensitive": false
+        },
+        "type": "exclude"
+      },
+      {
+        "expr": "**/Thumbs.db",
+        "options": {
+          "caseSensitive": false
+        },
+        "type": "exclude"
+      },
+      {
+        "expr": "**/build/*",
+        "options": {
+          "caseSensitive": false
+        },
+        "type": "exclude"
+      },
+      {
+        "expr": "",
+        "options": {
+          "caseSensitive": false
+        },
+        "type": "exclude"
+      }
+    ]
+  },
+  "skipLargeFiles": {
+    "maxSize": "30 MB"
+  },
+  "mobileAppDownloadFileChunkSize": "16 MiB",
+  "realtimeSync": false,
+  "startupSyncDelaySeconds": 0,
+  "autoSyncIntervalSeconds": 300,
+  "ai": {
+    "providers": {},
+    "yolo": false,
+    "subagents": {
+      "explorer": {
+        "enabled": false
+      }
+    },
+    "memory": {
+      "enabled": true,
+      "path": ".agents/nutstore-sync/MEMORY.md"
+    },
+    "disabledSkills": [],
+    "nutstoreLlmGateway": {}
+  },
+  "configDirSyncMode": "all"
+}

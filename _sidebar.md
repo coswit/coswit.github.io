@@ -288,6 +288,7 @@
     - [Windows批处理脚本.md](./tools/Windows批处理脚本.md)
     - [Windows配置.md](./tools/Windows配置.md)
     - [cmake.md](./tools/cmake.md)
+    - [herdr使用指南.md](./tools/herdr使用指南.md)
     - [nodejs.md](./tools/nodejs.md)
     - [tmux常用命令.md](./tools/tmux常用命令.md)
   - vim
